@@ -263,7 +263,7 @@ model Debt {
   customerId  String     @map("customer_id")
   totalAmount Decimal    @map("total_amount")
   paidAmount  Decimal    @default(0) @map("paid_amount")
-  remaining   Decimal    // totalAmount - paidAmount
+  remaining   Decimal    @default(0) // AUTO: totalAmount - paidAmount — always set this in service layer
   status      DebtStatus @default(ACTIVE)
   dueDate     DateTime   @map("due_date")
   description String?

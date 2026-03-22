@@ -64,8 +64,8 @@ export const bookingsApi = {
   get: (id: string) => apiClient.get(`/bookings/${id}`),
   create: (data: unknown) => apiClient.post('/bookings', data),
   update: (id: string, data: unknown) => apiClient.patch(`/bookings/${id}`, data),
-  updateStatus: (id: string, data: { status: string; reason?: string }) =>
-    apiClient.patch(`/bookings/${id}/status`, data),
+  updateStatus: (id: string, toStatus: string, reason?: string) =>
+    apiClient.patch(`/bookings/${id}/status`, { toStatus, reason }),
   addTicket: (id: string, data: unknown) =>
     apiClient.post(`/bookings/${id}/tickets`, data),
   addPayment: (id: string, data: unknown) =>

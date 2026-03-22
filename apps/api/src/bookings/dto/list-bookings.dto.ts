@@ -1,75 +1,9 @@
-// APG Manager RMS - Bookings DTOs (validate input)
+// APG Manager RMS - DTO query danh sách booking
 import {
-  IsString, IsOptional, IsEnum,
-  IsInt, Min, Max, IsIn,
+  IsOptional, IsString, IsInt, Min, Max, IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { BookingSource, PaymentMethod } from '@prisma/client';
 
-// DTO tạo booking mới
-export class CreateBookingDto {
-  @IsString()
-  customerId: string;
-
-  @IsEnum(BookingSource)
-  source: BookingSource;
-
-  @IsString()
-  contactName: string;
-
-  @IsString()
-  contactPhone: string;
-
-  @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
-
-  @IsOptional()
-  @IsString()
-  notes?: string;
-
-  @IsOptional()
-  @IsString()
-  internalNotes?: string;
-}
-
-// DTO cập nhật booking
-export class UpdateBookingDto {
-  @IsOptional()
-  @IsString()
-  contactName?: string;
-
-  @IsOptional()
-  @IsString()
-  contactPhone?: string;
-
-  @IsOptional()
-  @IsEnum(PaymentMethod)
-  paymentMethod?: PaymentMethod;
-
-  @IsOptional()
-  @IsString()
-  pnr?: string;
-
-  @IsOptional()
-  @IsString()
-  notes?: string;
-
-  @IsOptional()
-  @IsString()
-  internalNotes?: string;
-}
-
-// DTO chuyển trạng thái booking
-export class UpdateBookingStatusDto {
-  @IsString()
-  toStatus: string;
-
-  @IsOptional()
-  @IsString()
-  reason?: string;
-}
-
-// DTO query danh sách booking
 export class ListBookingsDto {
   @IsOptional()
   @Type(() => Number)

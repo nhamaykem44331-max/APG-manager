@@ -9,6 +9,8 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
+import { AddTicketDto } from './dto/add-ticket.dto';
+import { AddPaymentDto } from './dto/add-payment.dto';
 
 // Máy trạng thái booking - quy định chuyển trạng thái hợp lệ
 const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
@@ -200,19 +202,32 @@ export class BookingsService {
   }
 
   // Thêm vé vào booking và tính lại lợi nhuận
-  async addTicket(bookingId: string, ticketData: Record<string, unknown>) {
+  async addTicket(bookingId: string, dto: AddTicketDto) {
     await this.findOne(bookingId);
+
+    const profit = dto.sellPrice - dto.netPrice - dto.tax - dto.serviceFee + dto.commission;
 
     const ticket = await this.prisma.ticket.create({
       data: {
         bookingId,
-        ...(ticketData as Omit<Prisma.TicketUncheckedCreateInput, "bookingId">),
-        // Tính lợi nhuận từng vé
-        profit: (ticketData.sellPrice as number ?? 0)
-          - (ticketData.netPrice as number ?? 0)
-          - (ticketData.tax as number ?? 0)
-          - (ticketData.serviceFee as number ?? 0)
-          + (ticketData.commission as number ?? 0),
+        passengerId: dto.passengerId,
+        airline: dto.airline,
+        flightNumber: dto.flightNumber,
+        departureCode: dto.departureCode,
+        arrivalCode: dto.arrivalCode,
+        departureTime: new Date(dto.departureTime),
+        arrivalTime: new Date(dto.arrivalTime),
+        seatClass: dto.seatClass,
+        fareClass: dto.fareClass,
+        sellPrice: dto.sellPrice,
+        netPrice: dto.netPrice,
+        tax: dto.tax,
+        serviceFee: dto.serviceFee,
+        commission: dto.commission,
+        profit,
+        eTicketNumber: dto.eTicketNumber,
+        baggageAllowance: dto.baggageAllowance,
+        status: 'ISSUED',
       },
     });
 
@@ -223,13 +238,17 @@ export class BookingsService {
   }
 
   // Ghi nhận thanh toán
-  async addPayment(bookingId: string, paymentData: Record<string, unknown>) {
+  async addPayment(bookingId: string, dto: AddPaymentDto) {
     await this.findOne(bookingId);
 
     const payment = await this.prisma.payment.create({
       data: {
         bookingId,
-        ...(paymentData as Omit<Prisma.PaymentUncheckedCreateInput, "bookingId">),
+        amount: dto.amount,
+        method: dto.method,
+        reference: dto.reference,
+        paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+        notes: dto.notes,
       },
     });
 

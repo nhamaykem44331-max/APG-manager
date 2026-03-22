@@ -47,14 +47,18 @@ async function main() {
   ];
 
   for (const deposit of airlines) {
-    await prisma.airlineDeposit.upsert({
-      where: { id: deposit.airline },
-      update: { balance: deposit.balance },
-      create: {
-        id: deposit.airline,
-        ...deposit,
-      },
+    // Dùng airline field làm unique key để tránh dùng airline code như UUID
+    const existing = await prisma.airlineDeposit.findFirst({
+      where: { airline: deposit.airline },
     });
+    if (existing) {
+      await prisma.airlineDeposit.update({
+        where: { id: existing.id },
+        data: { balance: deposit.balance, alertThreshold: deposit.alertThreshold },
+      });
+    } else {
+      await prisma.airlineDeposit.create({ data: deposit });
+    }
   }
   console.log('✅ Khởi tạo deposit các hãng bay');
 

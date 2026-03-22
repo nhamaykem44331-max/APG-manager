@@ -1,5 +1,6 @@
 // APG Manager RMS - Finance Service (tài chính, đối soát, công nợ)
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
 
@@ -183,6 +184,3 @@ export class FinanceService {
     return reconciliation;
   }
 }
-
-// Import Prisma types
-import { Prisma } from '@prisma/client';
