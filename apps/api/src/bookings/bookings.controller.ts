@@ -12,6 +12,7 @@ import { UserRole, User } from '@prisma/client';
 import {
   CreateBookingDto, UpdateBookingDto,
   UpdateBookingStatusDto, ListBookingsDto,
+  AddTicketDto, AddPaymentDto,
 } from './dto/index';
 
 @Controller('bookings')
@@ -65,9 +66,9 @@ export class BookingsController {
   @HttpCode(HttpStatus.CREATED)
   async addTicket(
     @Param('id') id: string,
-    @Body() ticketData: Record<string, unknown>,
+    @Body() dto: AddTicketDto,
   ) {
-    return this.bookingsService.addTicket(id, ticketData);
+    return this.bookingsService.addTicket(id, dto);
   }
 
   // POST /bookings/:id/payments - Ghi nhận thanh toán
@@ -75,9 +76,9 @@ export class BookingsController {
   @HttpCode(HttpStatus.CREATED)
   async addPayment(
     @Param('id') id: string,
-    @Body() paymentData: Record<string, unknown>,
+    @Body() dto: AddPaymentDto,
   ) {
-    return this.bookingsService.addPayment(id, paymentData);
+    return this.bookingsService.addPayment(id, dto);
   }
 
   // GET /bookings/:id/timeline - Lịch sử trạng thái

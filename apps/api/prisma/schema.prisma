@@ -286,6 +286,7 @@ model AirlineDeposit {
   notes          String?
   updatedAt      DateTime @updatedAt @map("updated_at")
 
+  @@unique([airline])
   @@map("airline_deposits")
 }
 
