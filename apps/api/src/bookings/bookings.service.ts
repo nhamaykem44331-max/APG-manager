@@ -230,14 +230,30 @@ export class BookingsService {
 
   // Thêm vé vào booking và tính lại lợi nhuận
   async addTicket(bookingId: string, dto: AddTicketDto) {
-    await this.findOne(bookingId);
+    const booking = await this.findOne(bookingId);
+
+    // Nếu không có passengerId, tạo mới Passenger inline
+    let passengerId = dto.passengerId;
+    if (!passengerId) {
+      if (!dto.passengerName) {
+        throw new BadRequestException('Cần cung cấp passengerId hoặc passengerName.');
+      }
+      const newPassenger = await this.prisma.passenger.create({
+        data: {
+          fullName: dto.passengerName,
+          type: dto.passengerType ?? 'ADT',
+          customerId: booking.customerId,
+        },
+      });
+      passengerId = newPassenger.id;
+    }
 
     const profit = dto.sellPrice - dto.netPrice - dto.tax - dto.serviceFee + dto.commission;
 
     const ticket = await this.prisma.ticket.create({
       data: {
         bookingId,
-        passengerId: dto.passengerId,
+        passengerId,
         airline: dto.airline,
         flightNumber: dto.flightNumber,
         departureCode: dto.departureCode,
@@ -254,8 +270,9 @@ export class BookingsService {
         profit,
         eTicketNumber: dto.eTicketNumber,
         baggageAllowance: dto.baggageAllowance,
-        status: 'ISSUED',
+        status: 'ACTIVE',
       },
+      include: { passenger: true },
     });
 
     // Tính lại tổng booking
@@ -263,6 +280,7 @@ export class BookingsService {
 
     return ticket;
   }
+
 
   // Ghi nhận thanh toán
   async addPayment(bookingId: string, dto: AddPaymentDto) {

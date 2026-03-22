@@ -6,8 +6,15 @@ import { Type } from 'class-transformer';
 import { Airline } from '@prisma/client';
 
 export class AddTicketDto {
-  @IsString()
-  passengerId: string;
+  // Hành khách: chỉ cần 1 trong 2 (passengerId HOẶC passengerName)
+  @IsOptional() @IsString()
+  passengerId?: string;
+
+  @IsOptional() @IsString()
+  passengerName?: string;       // Dùng khi tạo hành khách mới inline
+
+  @IsOptional() @IsEnum(['ADT', 'CHD', 'INF'])
+  passengerType?: 'ADT' | 'CHD' | 'INF'; // Mặc định ADT
 
   @IsEnum(Airline)
   airline: Airline;
@@ -30,40 +37,27 @@ export class AddTicketDto {
   @IsString()
   seatClass: string;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   fareClass?: string;
 
-  @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
+  @Type(() => Number) @IsNumber() @IsPositive()
   sellPrice: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
+  @Type(() => Number) @IsNumber() @IsPositive()
   netPrice: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @Type(() => Number) @IsNumber() @Min(0)
   tax: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @Type(() => Number) @IsNumber() @Min(0)
   serviceFee: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @Type(() => Number) @IsNumber() @Min(0)
   commission: number;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   eTicketNumber?: string;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   baggageAllowance?: string;
 }
