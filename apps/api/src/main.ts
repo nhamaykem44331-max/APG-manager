@@ -1,7 +1,8 @@
 // APG Manager RMS - Điểm khởi động NestJS API
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,10 @@ async function bootstrap() {
       transform: true,        // Tự động chuyển đổi kiểu dữ liệu
     }),
   );
+
+  // Global exception filter cho Prisma database errors
+  const { httpAdapter } = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new PrismaClientExceptionFilter(httpAdapter));
 
   // CORS cho phép frontend kết nối
   const allowedOrigins = [

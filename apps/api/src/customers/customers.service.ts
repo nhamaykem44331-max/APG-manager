@@ -2,26 +2,60 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { Prisma, VipTier } from '@prisma/client';
+import { IsString, IsOptional, IsEnum, IsNumber, Min, IsArray } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
+  @IsString()
   fullName: string;
+
+  @IsString()
   phone: string;
+
+  @IsOptional() @IsString()
   email?: string;
+
+  @IsOptional() @IsString()
   idNumber?: string;
+
+  @IsOptional() @IsString()
   passport?: string;
+
+  @IsOptional() @IsString()
   dateOfBirth?: string;
+
+  @IsOptional() @IsIn(['INDIVIDUAL', 'CORPORATE'])
   type?: 'INDIVIDUAL' | 'CORPORATE';
+
+  @IsOptional() @IsString()
   companyName?: string;
+
+  @IsOptional() @IsString()
   companyTaxId?: string;
+
+  @IsOptional() @IsString()
   notes?: string;
+
+  @IsOptional() @IsArray() @IsString({ each: true })
   tags?: string[];
 }
 
+import { IsIn } from 'class-validator';
+
 export class ListCustomersDto {
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(1)
   page?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(1)
   pageSize?: number;
+
+  @IsOptional() @IsString()
   search?: string;
+
+  @IsOptional() @IsString()
   type?: string;
+
+  @IsOptional() @IsEnum(VipTier)
   vipTier?: string;
 }
 
