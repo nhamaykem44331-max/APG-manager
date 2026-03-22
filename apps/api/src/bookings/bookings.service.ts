@@ -40,7 +40,7 @@ export class BookingsService {
       sortBy = 'createdAt', order = 'desc',
     } = dto;
 
-    const where: Prisma.BookingWhereInput = {};
+    const where: Prisma.BookingWhereInput = { deletedAt: null };
 
     if (status) where.status = status as BookingStatus;
     if (source) where.source = source as Prisma.EnumBookingSourceFilter;
@@ -79,8 +79,8 @@ export class BookingsService {
 
   // Lấy chi tiết booking kèm tất cả relations
   async findOne(id: string) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, deletedAt: null },
       include: {
         customer: true,
         staff: { select: { id: true, fullName: true, email: true, role: true } },
@@ -150,6 +150,33 @@ export class BookingsService {
       where: { id },
       data: dto,
     });
+  }
+
+  // Soft delete booking
+  async remove(id: string, staffId: string) {
+    const booking = await this.findOne(id);
+
+    // Chuyển trạng thái sang CANCELLED và set deletedAt
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.booking.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          deletedAt: new Date(),
+          notes: booking.notes ? `[DELETED] ${booking.notes}` : '[DELETED]',
+        },
+      }),
+      this.prisma.bookingStatusLog.create({
+        data: {
+          bookingId: id,
+          fromStatus: booking.status,
+          toStatus: 'CANCELLED',
+          changedBy: staffId,
+          reason: 'Xóa booking (soft delete)',
+        },
+      }),
+    ]);
+    return updated;
   }
 
   // Chuyển trạng thái booking (có validation)

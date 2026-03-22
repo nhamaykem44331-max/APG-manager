@@ -185,6 +185,7 @@ model Booking {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt      @map("updated_at")
   issuedAt  DateTime? @map("issued_at")
+  deletedAt DateTime? @map("deleted_at")
 
   customer      Customer           @relation(fields: [customerId], references: [id])
   staff         User               @relation(fields: [staffId], references: [id])

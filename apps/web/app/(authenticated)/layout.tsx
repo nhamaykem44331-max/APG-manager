@@ -1,15 +1,15 @@
-// APG Manager RMS - Dashboard Layout (Sidebar + Header + main content)
+// APG Manager RMS - Authenticated Layout (Shared: Sidebar + Header)
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
-export default async function DashboardLayout({
+export default async function AuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Kiểm tra đăng nhập phía server
+  // Kiểm tra đăng nhập phía server (bảo vệ tất cả route bên trong)
   const session = await auth();
 
   if (!session) {

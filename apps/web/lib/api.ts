@@ -81,7 +81,7 @@ export const customersApi = {
   update: (id: string, data: unknown) => apiClient.patch(`/customers/${id}`, data),
   getStats: (id: string) => apiClient.get(`/customers/${id}/stats`),
   searchByPhone: (phone: string) =>
-    apiClient.get(`/customers?phone=${phone}&pageSize=1`),
+    apiClient.get(`/customers?search=${phone}&pageSize=1`),
 };
 
 // Finance

@@ -99,7 +99,7 @@ export class FinanceService {
       where: { status: { in: ['ACTIVE', 'OVERDUE', 'PARTIAL_PAID'] } },
     });
 
-    const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '>90': 0 };
+    const buckets: Record<string, number> = { 'Chưa đến hạn': 0, '0-30': 0, '30-60': 0, '60-90': 0, '>90': 0 };
 
     debts.forEach(debt => {
       const days = Math.floor(
@@ -107,7 +107,8 @@ export class FinanceService {
       );
       const remaining = Number(debt.remaining);
 
-      if (days <= 30) buckets['0-30'] += remaining;
+      if (days <= 0) buckets['Chưa đến hạn'] += remaining;
+      else if (days <= 30) buckets['0-30'] += remaining;
       else if (days <= 60) buckets['30-60'] += remaining;
       else if (days <= 90) buckets['60-90'] += remaining;
       else buckets['>90'] += remaining;
@@ -118,16 +119,7 @@ export class FinanceService {
 
   // Lấy số dư deposit các hãng
   async getDeposits() {
-    const deposits = await this.prisma.airlineDeposit.findMany();
-
-    // Kiểm tra và cảnh báo deposit thấp
-    for (const deposit of deposits) {
-      if (Number(deposit.balance) < Number(deposit.alertThreshold)) {
-        await this.n8n.sendDepositAlert(deposit.airline, Number(deposit.balance));
-      }
-    }
-
-    return deposits;
+    return this.prisma.airlineDeposit.findMany();
   }
 
   // Nạp tiền / cập nhật deposit
