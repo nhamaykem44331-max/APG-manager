@@ -2,6 +2,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useSession, signOut } from 'next-auth/react';
 import {
@@ -66,14 +67,18 @@ export function Header() {
             {i > 0 && (
               <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             )}
-            <span className={cn(
-              'text-sm truncate',
-              crumb.isLast
-                ? 'text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground cursor-pointer',
-            )}>
-              {crumb.label}
-            </span>
+            {crumb.isLast ? (
+              <span className="text-sm truncate text-foreground font-medium">
+                {crumb.label}
+              </span>
+            ) : (
+              <Link
+                href={crumb.href}
+                className="text-sm truncate text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {crumb.label}
+              </Link>
+            )}
           </span>
         ))}
       </nav>
