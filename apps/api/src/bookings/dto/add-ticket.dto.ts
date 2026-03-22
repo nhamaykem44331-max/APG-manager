@@ -40,6 +40,9 @@ export class AddTicketDto {
   @IsOptional() @IsString()
   fareClass?: string;
 
+  @IsOptional() @IsString()
+  airlineBookingCode?: string;   // Mã đặt chỗ hãng bay: 64NTWM
+
   @Type(() => Number) @IsNumber() @IsPositive()
   sellPrice: number;
 

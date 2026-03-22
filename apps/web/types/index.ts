@@ -108,6 +108,7 @@ export interface Ticket {
   arrivalTime: string;
   seatClass: string;
   fareClass?: string;
+  airlineBookingCode?: string;  // Mã đặt chỗ hãng bay (e.g. 64NTWM)
   sellPrice: number;
   netPrice: number;
   tax: number;

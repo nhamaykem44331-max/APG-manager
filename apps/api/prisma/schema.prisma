@@ -208,6 +208,7 @@ model Ticket {
   arrivalTime   DateTime @map("arrival_time")
   seatClass     String   @map("seat_class")  // Economy/Business
   fareClass     String?  @map("fare_class")  // Booking class: Y/M/B
+  airlineBookingCode String? @map("airline_booking_code") // Mã đặt chỗ hãng bay: 64NTWM
   sellPrice     Decimal  @map("sell_price")
   netPrice      Decimal  @map("net_price")
   tax           Decimal  @default(0)

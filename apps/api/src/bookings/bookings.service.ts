@@ -270,6 +270,7 @@ export class BookingsService {
         profit,
         eTicketNumber: dto.eTicketNumber,
         baggageAllowance: dto.baggageAllowance,
+        airlineBookingCode: dto.airlineBookingCode,
         status: 'ACTIVE',
       },
       include: { passenger: true },

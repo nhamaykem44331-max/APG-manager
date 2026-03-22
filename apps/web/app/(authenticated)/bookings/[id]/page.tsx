@@ -104,6 +104,7 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
     arrivalTime: '',
     seatClass: 'Economy',
     fareClass: '',
+    airlineBookingCode: '',  // Mã đặt chỗ hãng bay: 64NTWM
     sellPrice: '',
     netPrice: '',
     tax: '0',
@@ -132,6 +133,7 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
       arrivalTime: form.arrivalTime,
       seatClass: form.seatClass,
       fareClass: form.fareClass || undefined,
+      airlineBookingCode: form.airlineBookingCode.toUpperCase() || undefined,
       sellPrice: Number(form.sellPrice),
       netPrice: Number(form.netPrice),
       tax: Number(form.tax),
@@ -226,6 +228,17 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
                 {SEAT_CLASSES.map(s => <option key={s} value={s}>{s}</option>)}
               </FormSelect>
               <FormInput label="Mã hạng vé" placeholder="G, Y, M, B..." value={form.fareClass} onChange={set('fareClass')} />
+            </div>
+            {/* Booking code riêng của hãng */}
+            <div className="mt-3">
+              <FormInput
+                label="Mã đặt chỗ hãng bay (Booking Code)"
+                placeholder="Ví dụ: 64NTWM"
+                value={form.airlineBookingCode}
+                onChange={set('airlineBookingCode')}
+                className="uppercase"
+                style={{ textTransform: 'uppercase' }}
+              />
             </div>
           </div>
 
@@ -680,16 +693,19 @@ export default function BookingDetailPage() {
                       </div>
                     </div>
 
-                    {/* Passenger + eticket */}
+                    {/* Passenger + eticket + booking code */}
                     {ticket.passenger && (
                       <p className="mt-2.5 text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">{ticket.passenger.fullName}</span>
                         <span className="ml-1 opacity-60">({ticket.passenger.type})</span>
+                        {ticket.airlineBookingCode && (
+                          <span className="ml-2 font-mono font-bold text-primary"> · Code: {ticket.airlineBookingCode}</span>
+                        )}
                         {ticket.eTicketNumber && (
-                          <span className="ml-2 font-mono text-primary opacity-80">· {ticket.eTicketNumber}</span>
+                          <span className="ml-2 font-mono text-primary opacity-80"> · {ticket.eTicketNumber}</span>
                         )}
                         {ticket.baggageAllowance && (
-                          <span className="ml-2 opacity-60">· {ticket.baggageAllowance}</span>
+                          <span className="ml-2 opacity-60"> · {ticket.baggageAllowance}</span>
                         )}
                       </p>
                     )}
