@@ -1,1 +1,35 @@
-node_modules
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment files (SECRETS - không commit lên GitHub)
+.env
+.env.local
+.env.production
+apps/api/.env
+apps/web/.env.local
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Prisma generated (chỉ cần schema, không cần generated client)
+apps/api/node_modules/
+
+# Turbo cache
+.turbo/
