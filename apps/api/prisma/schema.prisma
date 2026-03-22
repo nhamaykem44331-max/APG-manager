@@ -1,0 +1,388 @@
+// prisma/schema.prisma
+// APG Manager RMS - Database Schema
+// Tân Phú APG - Hệ thống quản lý đại lý vé máy bay
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== ENUMS ==========
+
+enum UserRole {
+  ADMIN       // Chủ doanh nghiệp (Andy)
+  MANAGER     // Quản lý
+  SALES       // Nhân viên bán hàng
+  ACCOUNTANT  // Kế toán
+}
+
+enum BookingStatus {
+  NEW              // Mới tạo
+  PROCESSING       // Đang xử lý
+  QUOTED           // Đã báo giá
+  PENDING_PAYMENT  // Chờ thanh toán
+  ISSUED           // Đã xuất vé
+  COMPLETED        // Hoàn thành (sau bay)
+  CHANGED          // Đã đổi
+  REFUNDED         // Đã hoàn
+  CANCELLED        // Đã hủy
+}
+
+enum BookingSource {
+  WEBSITE   // book.tanphuapg.com
+  ZALO      // Zalo OA
+  MESSENGER // Facebook Messenger
+  PHONE     // Điện thoại
+  WALK_IN   // Trực tiếp
+  REFERRAL  // Giới thiệu
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  MOMO
+  VNPAY
+  DEBT // Công nợ (khách doanh nghiệp)
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+  REFUNDED
+}
+
+enum CustomerType {
+  INDIVIDUAL // Khách lẻ
+  CORPORATE  // Khách doanh nghiệp
+}
+
+enum VipTier {
+  NORMAL
+  SILVER   // > 10 triệu/năm
+  GOLD     // > 50 triệu/năm
+  PLATINUM // > 200 triệu/năm
+}
+
+enum Airline {
+  VN    // Vietnam Airlines
+  VJ    // Vietjet Air
+  QH    // Bamboo Airways
+  BL    // Pacific Airlines (Jetstar)
+  VU    // Vietravel Airlines
+  OTHER
+}
+
+enum DebtStatus {
+  ACTIVE
+  PARTIAL_PAID
+  PAID
+  OVERDUE
+  WRITTEN_OFF
+}
+
+enum InteractionType {
+  CALL          // Cuộc gọi
+  MEETING       // Gặp mặt
+  MESSAGE       // Tin nhắn
+  FOLLOW_UP     // Follow-up
+  QUOTATION     // Gửi báo giá
+  COMPLAINT     // Khiếu nại
+  FEEDBACK      // Phản hồi
+  OTHER
+}
+
+enum InteractionChannel {
+  PHONE
+  ZALO
+  MESSENGER
+  EMAIL
+  IN_PERSON
+  WEBSITE
+}
+
+// ========== MODELS ==========
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String    // bcrypt hashed
+  fullName    String    @map("full_name")
+  phone       String?
+  role        UserRole  @default(SALES)
+  isActive    Boolean   @default(true)  @map("is_active")
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt      @map("updated_at")
+
+  bookings      Booking[]
+  auditLogs     AuditLog[]
+  interactions  CustomerInteraction[]
+  customerNotes CustomerNote[]
+
+  @@map("users")
+}
+
+model Customer {
+  id            String       @id @default(uuid())
+  fullName      String       @map("full_name")
+  phone         String       @unique
+  email         String?
+  idNumber      String?      @map("id_number") // CCCD
+  passport      String?
+  dateOfBirth   DateTime?    @map("date_of_birth")
+  type          CustomerType @default(INDIVIDUAL)
+  companyName   String?      @map("company_name")
+  companyTaxId  String?      @map("company_tax_id")
+  vipTier       VipTier      @default(NORMAL) @map("vip_tier")
+  totalSpent    Decimal      @default(0)       @map("total_spent")
+  totalBookings Int          @default(0)       @map("total_bookings")
+  preferredSeat String?      @map("preferred_seat")
+  notes         String?
+  tags          String[]     // ["VIP", "thường_bay_SGN"]
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt      @map("updated_at")
+
+  bookings       Booking[]
+  passengers     Passenger[]
+  debts          Debt[]
+  interactions   CustomerInteraction[]
+  customerNotes  CustomerNote[]
+  communications CommunicationLog[]
+
+  @@map("customers")
+}
+
+model Booking {
+  id           String        @id @default(uuid())
+  bookingCode  String        @unique @map("booking_code")
+  customerId   String        @map("customer_id")
+  staffId      String        @map("staff_id")
+  status       BookingStatus @default(NEW)
+  source       BookingSource @default(PHONE)
+  contactPhone String        @map("contact_phone")
+  contactName  String        @map("contact_name")
+
+  // Tài chính
+  totalSellPrice Decimal       @default(0) @map("total_sell_price")
+  totalNetPrice  Decimal       @default(0) @map("total_net_price")
+  totalFees      Decimal       @default(0) @map("total_fees")
+  profit         Decimal       @default(0)
+  paymentMethod  PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
+
+  // GDS
+  pnr          String?
+  gdsBookingId String? @map("gds_booking_id")
+  notes        String?
+  internalNotes String? @map("internal_notes")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt      @map("updated_at")
+  issuedAt  DateTime? @map("issued_at")
+
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  staff         User               @relation(fields: [staffId], references: [id])
+  tickets       Ticket[]
+  payments      Payment[]
+  statusHistory BookingStatusLog[]
+
+  @@map("bookings")
+}
+
+model Ticket {
+  id            String   @id @default(uuid())
+  bookingId     String   @map("booking_id")
+  passengerId   String   @map("passenger_id")
+  airline       Airline
+  flightNumber  String   @map("flight_number")
+  departureCode String   @map("departure_code") // IATA: SGN
+  arrivalCode   String   @map("arrival_code")
+  departureTime DateTime @map("departure_time")
+  arrivalTime   DateTime @map("arrival_time")
+  seatClass     String   @map("seat_class")  // Economy/Business
+  fareClass     String?  @map("fare_class")  // Booking class: Y/M/B
+  sellPrice     Decimal  @map("sell_price")
+  netPrice      Decimal  @map("net_price")
+  tax           Decimal  @default(0)
+  serviceFee    Decimal  @default(0) @map("service_fee")
+  commission    Decimal  @default(0)
+  profit        Decimal  @default(0)
+  eTicketNumber String?  @map("e_ticket_number")
+  baggageAllowance String? @map("baggage_allowance")
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  booking   Booking   @relation(fields: [bookingId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [id])
+
+  @@map("tickets")
+}
+
+model Passenger {
+  id          String    @id @default(uuid())
+  customerId  String?   @map("customer_id")
+  fullName    String    @map("full_name")
+  dateOfBirth DateTime? @map("date_of_birth")
+  gender      String?   // M/F
+  idNumber    String?   @map("id_number")
+  passport    String?
+  phone       String?
+  email       String?
+  type        String    @default("ADT") // ADT/CHD/INF
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  tickets  Ticket[]
+
+  @@map("passengers")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  bookingId String        @map("booking_id")
+  amount    Decimal
+  method    PaymentMethod
+  reference String?       // Mã giao dịch / biên lai
+  paidAt    DateTime      @default(now()) @map("paid_at")
+  notes     String?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("payments")
+}
+
+model Debt {
+  id          String     @id @default(uuid())
+  customerId  String     @map("customer_id")
+  totalAmount Decimal    @map("total_amount")
+  paidAmount  Decimal    @default(0) @map("paid_amount")
+  remaining   Decimal    // totalAmount - paidAmount
+  status      DebtStatus @default(ACTIVE)
+  dueDate     DateTime   @map("due_date")
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt      @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("debts")
+}
+
+model AirlineDeposit {
+  id             String   @id @default(uuid())
+  airline        Airline
+  balance        Decimal  @default(0)
+  lastTopUp      Decimal  @default(0) @map("last_top_up")
+  lastTopUpAt    DateTime? @map("last_top_up_at")
+  alertThreshold Decimal  @default(5000000) @map("alert_threshold")
+  notes          String?
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("airline_deposits")
+}
+
+model DailyReconciliation {
+  id           String   @id @default(uuid())
+  date         DateTime @unique
+  totalTickets Int      @map("total_tickets")
+  totalRevenue Decimal  @map("total_revenue")
+  totalCost    Decimal  @map("total_cost")
+  totalProfit  Decimal  @map("total_profit")
+  discrepancies Json?   // Chi tiết chênh lệch
+  isVerified   Boolean  @default(false) @map("is_verified")
+  verifiedBy   String?  @map("verified_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("daily_reconciliations")
+}
+
+model BookingStatusLog {
+  id         String        @id @default(uuid())
+  bookingId  String        @map("booking_id")
+  fromStatus BookingStatus @map("from_status")
+  toStatus   BookingStatus @map("to_status")
+  changedBy  String        @map("changed_by")
+  reason     String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("booking_status_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String   // CREATE/UPDATE/DELETE
+  entity    String   // booking/customer/payment
+  entityId  String   @map("entity_id")
+  oldData   Json?    @map("old_data")
+  newData   Json?    @map("new_data")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// ========== CUSTOMER INTELLIGENCE ==========
+
+// Ghi lại tương tác với khách (cuộc gọi, gặp mặt, Zalo...)
+model CustomerInteraction {
+  id          String             @id @default(uuid())
+  customerId  String             @map("customer_id")
+  staffId     String             @map("staff_id")
+  type        InteractionType
+  channel     InteractionChannel
+  subject     String
+  content     String?
+  outcome     String?            // "Đã đặt vé", "Hẹn gọi lại", "Không nghe máy"
+  followUpAt  DateTime?          @map("follow_up_at")
+  duration    Int?               // phút (cho cuộc gọi)
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  staff    User     @relation(fields: [staffId], references: [id])
+
+  @@map("customer_interactions")
+}
+
+// Ghi chú nội bộ về khách hàng
+model CustomerNote {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  staffId    String   @map("staff_id")
+  content    String
+  isPinned   Boolean  @default(false) @map("is_pinned")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt      @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  staff    User     @relation(fields: [staffId], references: [id])
+
+  @@map("customer_notes")
+}
+
+// Log liên lạc tự động (từ n8n webhooks)
+model CommunicationLog {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  channel    String   // ZALO, SMS, EMAIL, TELEGRAM
+  direction  String   // INBOUND, OUTBOUND
+  content    String
+  status     String   @default("SENT") // SENT, DELIVERED, READ, FAILED
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("communication_logs")
+}

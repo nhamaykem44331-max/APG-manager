@@ -1,0 +1,312 @@
+// APG Manager RMS - Bookings Service (nghiệp vụ đặt vé)
+import {
+  Injectable, NotFoundException, BadRequestException,
+} from '@nestjs/common';
+import { PrismaService } from '../common/prisma.service';
+import { N8nService } from '../automation/n8n.service';
+import { BookingStatus, Prisma } from '@prisma/client';
+import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
+import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
+import { ListBookingsDto } from './dto/list-bookings.dto';
+
+// Máy trạng thái booking - quy định chuyển trạng thái hợp lệ
+const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+  NEW:             ['PROCESSING', 'CANCELLED'],
+  PROCESSING:      ['QUOTED', 'CANCELLED'],
+  QUOTED:          ['PENDING_PAYMENT', 'PROCESSING', 'CANCELLED'],
+  PENDING_PAYMENT: ['ISSUED', 'CANCELLED'],
+  ISSUED:          ['COMPLETED', 'CHANGED', 'REFUNDED'],
+  COMPLETED:       [],
+  CHANGED:         ['ISSUED', 'REFUNDED'],
+  REFUNDED:        [],
+  CANCELLED:       [],
+};
+
+@Injectable()
+export class BookingsService {
+  constructor(
+    private prisma: PrismaService,
+    private n8n: N8nService,
+  ) {}
+
+  // Lấy danh sách booking có filter, sort, paginate
+  async findAll(dto: ListBookingsDto) {
+    const {
+      page = 1, pageSize = 20,
+      status, source, search,
+      sortBy = 'createdAt', order = 'desc',
+    } = dto;
+
+    const where: Prisma.BookingWhereInput = {};
+
+    if (status) where.status = status as BookingStatus;
+    if (source) where.source = source as Prisma.EnumBookingSourceFilter;
+    if (search) {
+      where.OR = [
+        { bookingCode: { contains: search, mode: 'insensitive' } },
+        { contactName: { contains: search, mode: 'insensitive' } },
+        { contactPhone: { contains: search } },
+        { pnr: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, fullName: true, vipTier: true } },
+          staff: { select: { id: true, fullName: true } },
+          tickets: { take: 1 }, // Chỉ lấy ticket đầu tiên cho hiển thị danh sách
+        },
+        orderBy: { [sortBy]: order },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // Lấy chi tiết booking kèm tất cả relations
+  async findOne(id: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        staff: { select: { id: true, fullName: true, email: true, role: true } },
+        tickets: { include: { passenger: true } },
+        payments: { orderBy: { paidAt: 'desc' } },
+        statusHistory: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
+    }
+
+    return booking;
+  }
+
+  // Tạo booking mới
+  async create(dto: CreateBookingDto, staffId: string) {
+    // Sinh mã booking theo format APG-YYMMDD-XXX
+    const bookingCode = await this.generateBookingCode();
+
+    const booking = await this.prisma.booking.create({
+      data: {
+        bookingCode,
+        customerId: dto.customerId,
+        staffId,
+        source: dto.source,
+        contactName: dto.contactName,
+        contactPhone: dto.contactPhone,
+        paymentMethod: dto.paymentMethod,
+        notes: dto.notes,
+        internalNotes: dto.internalNotes,
+      },
+      include: {
+        customer: { select: { fullName: true, phone: true } },
+        staff: { select: { fullName: true } },
+      },
+    });
+
+    // Ghi log tạo mới
+    await this.prisma.bookingStatusLog.create({
+      data: {
+        bookingId: booking.id,
+        fromStatus: 'NEW',
+        toStatus: 'NEW',
+        changedBy: staffId,
+        reason: 'Tạo booking mới',
+      },
+    });
+
+    // Trigger n8n webhook thông báo booking mới
+    await this.n8n.triggerWebhook('/booking-new', {
+      bookingCode: booking.bookingCode,
+      customerName: booking.customer.fullName,
+      customerPhone: booking.customer.phone,
+      staffName: booking.staff.fullName,
+    });
+
+    return booking;
+  }
+
+  // Cập nhật thông tin booking
+  async update(id: string, dto: UpdateBookingDto) {
+    await this.findOne(id); // Kiểm tra tồn tại
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  // Chuyển trạng thái booking (có validation)
+  async updateStatus(id: string, dto: UpdateBookingStatusDto, changedBy: string) {
+    const booking = await this.findOne(id);
+
+    const allowedTransitions = STATUS_TRANSITIONS[booking.status];
+    const targetStatus = dto.toStatus as BookingStatus;
+
+    // Kiểm tra chuyển trạng thái có hợp lệ không
+    if (!allowedTransitions.includes(targetStatus)) {
+      throw new BadRequestException(
+        `Không thể chuyển từ "${booking.status}" sang "${targetStatus}". ` +
+        `Cho phép: ${allowedTransitions.join(', ') || 'Không có (trạng thái cuối)'}`
+      );
+    }
+
+    // Cập nhật trong transaction để đảm bảo tính toàn vẹn
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.booking.update({
+        where: { id },
+        data: {
+          status: targetStatus,
+          issuedAt: targetStatus === 'ISSUED' ? new Date() : undefined,
+        },
+      }),
+      this.prisma.bookingStatusLog.create({
+        data: {
+          bookingId: id,
+          fromStatus: booking.status,
+          toStatus: targetStatus,
+          changedBy,
+          reason: dto.reason,
+        },
+      }),
+    ]);
+
+    // Gửi thông báo khi xuất vé hoặc hủy
+    if (targetStatus === 'ISSUED' || targetStatus === 'CANCELLED') {
+      await this.n8n.triggerWebhook('/booking-status', {
+        bookingCode: booking.bookingCode,
+        customerName: booking.customer?.fullName,
+        customerPhone: booking.customer?.phone,
+        status: targetStatus,
+        reason: dto.reason,
+      });
+    }
+
+    return updated;
+  }
+
+  // Thêm vé vào booking và tính lại lợi nhuận
+  async addTicket(bookingId: string, ticketData: Record<string, unknown>) {
+    await this.findOne(bookingId);
+
+    const ticket = await this.prisma.ticket.create({
+      data: {
+        bookingId,
+        ...(ticketData as Omit<Prisma.TicketUncheckedCreateInput, "bookingId">),
+        // Tính lợi nhuận từng vé
+        profit: (ticketData.sellPrice as number ?? 0)
+          - (ticketData.netPrice as number ?? 0)
+          - (ticketData.tax as number ?? 0)
+          - (ticketData.serviceFee as number ?? 0)
+          + (ticketData.commission as number ?? 0),
+      },
+    });
+
+    // Tính lại tổng booking
+    await this.recalculateBookingTotals(bookingId);
+
+    return ticket;
+  }
+
+  // Ghi nhận thanh toán
+  async addPayment(bookingId: string, paymentData: Record<string, unknown>) {
+    await this.findOne(bookingId);
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        bookingId,
+        ...(paymentData as Omit<Prisma.PaymentUncheckedCreateInput, "bookingId">),
+      },
+    });
+
+    // Cập nhật trạng thái thanh toán
+    await this.updatePaymentStatus(bookingId);
+
+    // Gửi webhook cập nhật Google Sheets kế toán
+    await this.n8n.triggerWebhook('/payment', {
+      bookingId,
+      amount: payment.amount,
+      method: payment.method,
+      reference: payment.reference,
+    });
+
+    return payment;
+  }
+
+  // Tính lại tổng tiền booking từ các vé
+  private async recalculateBookingTotals(bookingId: string) {
+    const tickets = await this.prisma.ticket.findMany({
+      where: { bookingId, status: 'ACTIVE' },
+    });
+
+    const totals = tickets.reduce(
+      (acc, t) => ({
+        totalSellPrice: acc.totalSellPrice + Number(t.sellPrice),
+        totalNetPrice: acc.totalNetPrice + Number(t.netPrice) + Number(t.tax),
+        totalFees: acc.totalFees + Number(t.serviceFee),
+        profit: acc.profit + Number(t.profit),
+      }),
+      { totalSellPrice: 0, totalNetPrice: 0, totalFees: 0, profit: 0 },
+    );
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: totals,
+    });
+  }
+
+  // Cập nhật trạng thái thanh toán dựa trên tổng payments
+  private async updatePaymentStatus(bookingId: string) {
+    const [booking, payments] = await Promise.all([
+      this.prisma.booking.findUnique({ where: { id: bookingId } }),
+      this.prisma.payment.findMany({ where: { bookingId } }),
+    ]);
+
+    if (!booking) return;
+
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalSell = Number(booking.totalSellPrice);
+
+    let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
+    if (totalPaid >= totalSell) paymentStatus = 'PAID';
+    else if (totalPaid > 0) paymentStatus = 'PARTIAL';
+    else paymentStatus = 'UNPAID';
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { paymentStatus },
+    });
+  }
+
+  // Sinh mã booking APG-YYMMDD-XXX
+  private async generateBookingCode(): Promise<string> {
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+    const dd = now.getDate().toString().padStart(2, '0');
+    const prefix = `APG-${yy}${mm}${dd}`;
+
+    // Đếm số booking trong ngày
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const count = await this.prisma.booking.count({
+      where: { createdAt: { gte: startOfDay } },
+    });
+
+    const seq = (count + 1).toString().padStart(3, '0');
+    return `${prefix}-${seq}`;
+  }
+}

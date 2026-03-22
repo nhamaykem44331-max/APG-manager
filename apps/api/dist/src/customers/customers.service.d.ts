@@ -1,0 +1,212 @@
+import { PrismaService } from '../common/prisma.service';
+import { Prisma } from '@prisma/client';
+export declare class CreateCustomerDto {
+    fullName: string;
+    phone: string;
+    email?: string;
+    idNumber?: string;
+    passport?: string;
+    dateOfBirth?: string;
+    type?: 'INDIVIDUAL' | 'CORPORATE';
+    companyName?: string;
+    companyTaxId?: string;
+    notes?: string;
+    tags?: string[];
+}
+export declare class ListCustomersDto {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    type?: string;
+    vipTier?: string;
+}
+export declare class CustomersService {
+    private prisma;
+    constructor(prisma: PrismaService);
+    findByPhone(phone: string): Promise<{
+        email: string | null;
+        id: string;
+        fullName: string;
+        phone: string;
+        createdAt: Date;
+        updatedAt: Date;
+        notes: string | null;
+        idNumber: string | null;
+        passport: string | null;
+        dateOfBirth: Date | null;
+        type: import(".prisma/client").$Enums.CustomerType;
+        companyName: string | null;
+        companyTaxId: string | null;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+        totalSpent: Prisma.Decimal;
+        totalBookings: number;
+        preferredSeat: string | null;
+        tags: string[];
+    } | null>;
+    findAll(dto: ListCustomersDto): Promise<{
+        data: {
+            email: string | null;
+            id: string;
+            fullName: string;
+            phone: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            idNumber: string | null;
+            passport: string | null;
+            dateOfBirth: Date | null;
+            type: import(".prisma/client").$Enums.CustomerType;
+            companyName: string | null;
+            companyTaxId: string | null;
+            vipTier: import(".prisma/client").$Enums.VipTier;
+            totalSpent: Prisma.Decimal;
+            totalBookings: number;
+            preferredSeat: string | null;
+            tags: string[];
+        }[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+    }>;
+    findOne(id: string): Promise<{
+        bookings: ({
+            tickets: {
+                id: string;
+                createdAt: Date;
+                airline: import(".prisma/client").$Enums.Airline;
+                flightNumber: string;
+                departureTime: Date;
+                status: string;
+                profit: Prisma.Decimal;
+                bookingId: string;
+                passengerId: string;
+                departureCode: string;
+                arrivalCode: string;
+                arrivalTime: Date;
+                seatClass: string;
+                fareClass: string | null;
+                sellPrice: Prisma.Decimal;
+                netPrice: Prisma.Decimal;
+                tax: Prisma.Decimal;
+                serviceFee: Prisma.Decimal;
+                commission: Prisma.Decimal;
+                eTicketNumber: string | null;
+                baggageAllowance: string | null;
+            }[];
+        } & {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            customerId: string;
+            source: import(".prisma/client").$Enums.BookingSource;
+            contactName: string;
+            contactPhone: string;
+            paymentMethod: import(".prisma/client").$Enums.PaymentMethod;
+            notes: string | null;
+            internalNotes: string | null;
+            pnr: string | null;
+            status: import(".prisma/client").$Enums.BookingStatus;
+            totalSellPrice: Prisma.Decimal;
+            profit: Prisma.Decimal;
+            bookingCode: string;
+            staffId: string;
+            totalNetPrice: Prisma.Decimal;
+            totalFees: Prisma.Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            gdsBookingId: string | null;
+            issuedAt: Date | null;
+        })[];
+        debts: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            dueDate: Date;
+            customerId: string;
+            status: import(".prisma/client").$Enums.DebtStatus;
+            remaining: Prisma.Decimal;
+            description: string | null;
+            totalAmount: Prisma.Decimal;
+            paidAmount: Prisma.Decimal;
+        }[];
+    } & {
+        email: string | null;
+        id: string;
+        fullName: string;
+        phone: string;
+        createdAt: Date;
+        updatedAt: Date;
+        notes: string | null;
+        idNumber: string | null;
+        passport: string | null;
+        dateOfBirth: Date | null;
+        type: import(".prisma/client").$Enums.CustomerType;
+        companyName: string | null;
+        companyTaxId: string | null;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+        totalSpent: Prisma.Decimal;
+        totalBookings: number;
+        preferredSeat: string | null;
+        tags: string[];
+    }>;
+    create(dto: CreateCustomerDto): Promise<{
+        email: string | null;
+        id: string;
+        fullName: string;
+        phone: string;
+        createdAt: Date;
+        updatedAt: Date;
+        notes: string | null;
+        idNumber: string | null;
+        passport: string | null;
+        dateOfBirth: Date | null;
+        type: import(".prisma/client").$Enums.CustomerType;
+        companyName: string | null;
+        companyTaxId: string | null;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+        totalSpent: Prisma.Decimal;
+        totalBookings: number;
+        preferredSeat: string | null;
+        tags: string[];
+    }>;
+    update(id: string, data: Partial<CreateCustomerDto>): Promise<{
+        email: string | null;
+        id: string;
+        fullName: string;
+        phone: string;
+        createdAt: Date;
+        updatedAt: Date;
+        notes: string | null;
+        idNumber: string | null;
+        passport: string | null;
+        dateOfBirth: Date | null;
+        type: import(".prisma/client").$Enums.CustomerType;
+        companyName: string | null;
+        companyTaxId: string | null;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+        totalSpent: Prisma.Decimal;
+        totalBookings: number;
+        preferredSeat: string | null;
+        tags: string[];
+    }>;
+    getStats(id: string): Promise<{
+        totalBookings: number;
+        totalSpent: Prisma.Decimal;
+        yearlySpend: number;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+        topRoutes: {
+            route: string;
+            count: number;
+        }[];
+        lastBookingDate: Date;
+        averageTicketValue: number;
+    }>;
+    recalculateVipTier(customerId: string): Promise<import(".prisma/client").$Enums.VipTier>;
+    getUpcomingBirthdays(): Promise<{
+        id: string;
+        fullName: string;
+        phone: string;
+        dateOfBirth: Date | null;
+        vipTier: import(".prisma/client").$Enums.VipTier;
+    }[]>;
+}

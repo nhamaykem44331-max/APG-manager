@@ -1,0 +1,54 @@
+# APG Manager RMS - Docker Compose (môi trường dev local)
+# Dùng cho: PostgreSQL + pgAdmin
+# Chạy: docker compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL 16
+  postgres:
+    image: postgres:16-alpine
+    container_name: apg_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apg
+      POSTGRES_PASSWORD: apg_dev_2026
+      POSTGRES_DB: apg_manager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apg -d apg_manager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin (database GUI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: apg_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: andy@tanphuapg.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+    name: apg_postgres_data
+  pgadmin_data:
+    name: apg_pgadmin_data
+
+# Sau khi chạy docker compose up -d:
+# PostgreSQL: localhost:5432
+# pgAdmin:    http://localhost:5050
+#
+# DATABASE_URL cho .env:
+# postgresql://apg:apg_dev_2026@localhost:5432/apg_manager

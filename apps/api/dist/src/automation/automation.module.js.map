@@ -1,0 +1,1 @@
+{"version":3,"file":"automation.module.js","sourceRoot":"","sources":["../../../src/automation/automation.module.ts"],"names":[],"mappings":";;;;;;;;;AACA,2CAAwC;AACxC,+CAA2C;AAMpC,IAAM,gBAAgB,GAAtB,MAAM,gBAAgB;CAAG,CAAA;AAAnB,4CAAgB;2BAAhB,gBAAgB;IAJ5B,IAAA,eAAM,EAAC;QACN,SAAS,EAAE,CAAC,wBAAU,CAAC;QACvB,OAAO,EAAE,CAAC,wBAAU,CAAC;KACtB,CAAC;GACW,gBAAgB,CAAG"}
