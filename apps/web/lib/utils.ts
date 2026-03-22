@@ -7,27 +7,37 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// Format tiền VND
-export function formatVND(amount: number): string {
-  if (amount >= 1_000_000_000) {
-    return `${(amount / 1_000_000_000).toFixed(1)}B`;
-  }
-  if (amount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(1)}M`;
-  }
-  if (amount >= 1_000) {
-    return `${(amount / 1_000).toFixed(0)}K`;
-  }
-  return amount.toLocaleString('vi-VN') + '₫';
+// Format tiền VND - luôn hiển thị đầy đủ với dấu chấm phân cách hàng nghìn
+// Ví dụ: 2000000 -> "2.000.000 ₫"
+export function formatVND(amount: number | string | null | undefined): string {
+  const num = Number(amount ?? 0);
+  if (isNaN(num)) return '0 ₫';
+  return num.toLocaleString('vi-VN') + ' ₫';
 }
 
-// Format tiền đầy đủ
-export function formatVNDFull(amount: number): string {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(amount);
+// Format số không có ký hiệu tiền (dùng cho biểu đồ, bảng)
+export function formatNumber(amount: number | string | null | undefined): string {
+  const num = Number(amount ?? 0);
+  if (isNaN(num)) return '0';
+  return num.toLocaleString('vi-VN');
 }
+
+// Chuyển chuỗi có dấu chấm thành số thuần ("2.000.000" -> 2000000)
+export function parseMoneyInput(value: string): number {
+  const cleaned = value.replace(/\./g, '').replace(/[^0-9-]/g, '');
+  return parseInt(cleaned, 10) || 0;
+}
+
+// Format giá trị input thành chuỗi có dấu chấm khi người dùng gõ
+// "2000000" -> "2.000.000"
+export function formatMoneyInput(raw: string): string {
+  const digits = raw.replace(/\./g, '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('vi-VN');
+}
+
+// Backward-compat alias
+export const formatVNDFull = formatVND;
 
 // Format ngày tháng tiếng Việt
 export function formatDate(date: string | Date): string {

@@ -15,6 +15,7 @@ import {
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
   BOOKING_SOURCE_LABELS, AIRLINE_NAMES, AIRLINE_COLORS,
 } from '@/lib/utils';
+import { MoneyInput } from '@/components/ui/money-input';
 import type { Booking, BookingStatus } from '@/types';
 
 // ────────────────────────────────────────────────────
@@ -248,11 +249,11 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
               Giá vé (VND)
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <FormInput label="Giá bán (khách)" required type="number" min="0" step="1000" placeholder="2500000" value={form.sellPrice} onChange={set('sellPrice')} />
-              <FormInput label="Giá net (hãng)" required type="number" min="0" step="1000" placeholder="2200000" value={form.netPrice} onChange={set('netPrice')} />
-              <FormInput label="Thuế & phí (TAX)" type="number" min="0" step="1000" placeholder="0" value={form.tax} onChange={set('tax')} />
-              <FormInput label="Phí dịch vụ" type="number" min="0" step="1000" placeholder="0" value={form.serviceFee} onChange={set('serviceFee')} />
-              <FormInput label="Hoa hồng (Commission)" type="number" min="0" step="1000" placeholder="0" value={form.commission} onChange={set('commission')} />
+              <MoneyInput label="Giá bán (khách)" required value={form.sellPrice} onChange={v => setForm(p => ({...p, sellPrice: v}))} placeholder="2.500.000" />
+              <MoneyInput label="Giá net (hãng)" required value={form.netPrice} onChange={v => setForm(p => ({...p, netPrice: v}))} placeholder="2.200.000" />
+              <MoneyInput label="Thuế & phí (TAX)" value={form.tax} onChange={v => setForm(p => ({...p, tax: v}))} placeholder="0" />
+              <MoneyInput label="Phí dịch vụ" value={form.serviceFee} onChange={v => setForm(p => ({...p, serviceFee: v}))} placeholder="0" />
+              <MoneyInput label="Hoa hồng (Commission)" value={form.commission} onChange={v => setForm(p => ({...p, commission: v}))} placeholder="0" />
 
               {/* Profit preview */}
               <div className="space-y-1">
@@ -381,18 +382,13 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Amount + quick-fill */}
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-muted-foreground">
-              Số tiền (VND)<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="number" min="1" step="1000"
-              placeholder="0"
+            <MoneyInput
+              label="Số tiền (VND)"
+              required
               value={form.amount}
-              onChange={set('amount')}
-              className={cn(
-                'w-full px-3 py-2.5 text-lg font-bold rounded-lg border border-border bg-background',
-                'text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary',
-              )}
+              onChange={(v) => setForm(p => ({ ...p, amount: v }))}
+              placeholder="2.000.000"
+              className="[&_input]:text-lg [&_input]:font-bold [&_input]:py-2.5"
             />
             {quickAmounts.length > 0 && (
               <div className="flex gap-2">
