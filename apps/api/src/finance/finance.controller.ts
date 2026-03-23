@@ -130,6 +130,13 @@ export class FinanceController {
     return this.supplier.findOne(id);
   }
 
+  // Seed NCC mặc định từ dữ liệu vận hành — Đặt TRƯỚC @Post('suppliers') để tránh NestJS match sai route
+  @Post('suppliers/seed-defaults')
+  @Roles(UserRole.ADMIN)
+  seedSuppliers() {
+    return this.supplier.seedDefaults();
+  }
+
   @Post('suppliers')
   @Roles(UserRole.ADMIN)
   createSupplier(@Body() body: Record<string, unknown>) {
@@ -140,13 +147,6 @@ export class FinanceController {
   @Roles(UserRole.ADMIN)
   updateSupplier(@Param('id') id: string, @Body() body: Record<string, unknown>) {
     return this.supplier.update(id, body);
-  }
-
-  // Seed NCC mặc định từ dữ liệu vận hành
-  @Post('suppliers/seed-defaults')
-  @Roles(UserRole.ADMIN)
-  seedSuppliers() {
-    return this.supplier.seedDefaults();
   }
 
   // ─── Phase B: Dòng tiền (CashFlow) ────────────────────────────────

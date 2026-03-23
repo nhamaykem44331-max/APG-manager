@@ -13,6 +13,7 @@ import { PrismaModule } from './common/prisma.module';
 import { SalesModule } from './sales/sales.module';
 import { TicketParserModule } from './ticket-parser/ticket-parser.module';
 import { SheetSyncModule } from './sheet-sync/sheet-sync.module';
+import { FlightsModule } from './flights/flights.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SheetSyncModule } from './sheet-sync/sheet-sync.module';
     SalesModule,
     TicketParserModule,
     SheetSyncModule,
+    FlightsModule, // FIX 10: Đăng ký Flights Module (airports data + search endpoint)
   ],
 })
 export class AppModule {}
