@@ -7,12 +7,14 @@ import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, User, Plane, CreditCard, Check,
-  Loader2, UserPlus, Trash2, Baby, Users, Eye,
+  Loader2, UserPlus, Trash2, Baby, Users, Eye, MapPin,
 } from 'lucide-react';
 import Link from 'next/link';
 import { bookingsApi, customersApi } from '@/lib/api';
 import { cn, formatVNDFull } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
+import { AirportInput } from '@/components/ui/airport-input';
+import { haversineKm, type Airport } from '@/hooks/use-airport-search';
 
 // ===== CONSTANTS =====
 
@@ -89,6 +91,30 @@ export default function NewBookingPage() {
 
   // Step 2: Passengers
   const [passengers, setPassengers] = useState<PassengerForm[]>([emptyPassenger('ADT')]);
+
+  // Route / Flight info (Cách 1 + 3)
+  const [depIata, setDepIata] = useState('');
+  const [arrIata, setArrIata] = useState('');
+  const [depAirport, setDepAirport] = useState<Airport | null>(null);
+  const [arrAirport, setArrAirport] = useState<Airport | null>(null);
+  const [flightDate, setFlightDate] = useState('');
+
+  // Route distance + transit (Cách 3)
+  const routeDistKm = depAirport && arrAirport
+    ? haversineKm(depAirport, arrAirport)
+    : null;
+  const estimatedFlightH = routeDistKm
+    ? Math.round((routeDistKm / 850) * 10) / 10
+    : null;
+
+  // Transit suggestion: nếu > 5000km gợi ý hub Dubai (DXB) hoặc Singapore (SIN)
+  const HUBS: Record<string, string[]> = {
+    'VN': ['DXB', 'SIN', 'HKG'], // from Vietnam
+    'default': ['DXB', 'IST', 'SIN'],
+  };
+  const transitHubs = routeDistKm && routeDistKm > 5000
+    ? (HUBS[depAirport?.country ?? ''] ?? HUBS['default'])
+    : [];
 
   // Step 3: Notes
   const [notes, setNotes] = useState('');
@@ -436,6 +462,68 @@ export default function NewBookingPage() {
                 </div>
               );
             })}
+          </div>
+
+          {/* === Route / Flight Section (Cách 1 + 3) === */}
+          <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/10">
+            <div className="flex items-center gap-2 mb-1">
+              <Plane className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">Lộ trình bay (tuỳ chọn)</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <AirportInput
+                label="Điểm đi"
+                placeholder="HAN, SGN, DXB..."
+                value={depIata}
+                onChange={(iata, ap) => { setDepIata(iata); setDepAirport(ap ?? null); }}
+              />
+              <AirportInput
+                label="Điểm đến"
+                placeholder="HAN, SGN, DXB..."
+                value={arrIata}
+                onChange={(iata, ap) => { setArrIata(iata); setArrAirport(ap ?? null); }}
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground block mb-1">Ngày bay</label>
+              <input
+                type="date"
+                value={flightDate}
+                onChange={(e) => setFlightDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            {/* Distance + Transit (Cách 3) */}
+            {routeDistKm && (
+              <div className="flex flex-col gap-1 pt-1 border-t border-border/50 mt-2">
+                <div className="flex items-center gap-2 text-[12px]">
+                  <MapPin className="w-3 h-3 text-primary" />
+                  <span className="text-foreground font-medium">
+                    {depAirport?.iata} → {arrAirport?.iata}
+                  </span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">{routeDistKm.toLocaleString()} km</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">~{estimatedFlightH}h bay</span>
+                </div>
+
+                {transitHubs.length > 0 && (
+                  <div className="flex items-center gap-2 text-[12px] mt-1">
+                    <span className="text-yellow-600 dark:text-yellow-400">✦ Gợi ý transit:</span>
+                    <div className="flex gap-1">
+                      {transitHubs.map((hub) => (
+                        <span key={hub} className="px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 font-mono text-[11px] font-bold">
+                          {depAirport?.iata} → {hub} → {arrAirport?.iata}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Notes */}

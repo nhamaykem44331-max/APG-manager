@@ -11,6 +11,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ========== AIRPORT (IATA/ICAO - ip2location dataset) ==========
+
+model Airport {
+  id          String  @id @default(cuid())
+  iata        String  @unique
+  icao        String?
+  name        String
+  nameVi      String? // Tên tiếng Việt (optional, cho sân bay VN)
+  region      String  // Region/Province
+  countryCode String  @map("country_code")
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([iata])
+  @@index([name])
+  @@index([countryCode])
+  @@map("airports")
+}
+
+
 // ========== ENUMS ==========
 
 enum UserRole {

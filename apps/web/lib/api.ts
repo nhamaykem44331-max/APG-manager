@@ -273,3 +273,28 @@ export const sheetSyncApi = {
   },
 };
 
+// ==========================================
+// AIRPORTS API (Cách 2 & 3 - DB Search + Distance)
+// ==========================================
+export interface AirportRecord {
+  id: string;
+  iata: string;
+  icao?: string;
+  name: string;
+  nameVi?: string;
+  region: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+}
+
+export const airportsApi = {
+  /** Cách 2: Full-text search by IATA, name, or city */
+  search: (q: string, limit = 10) =>
+    apiClient.get<{ data: AirportRecord[]; total: number }>('/airports/search', { params: { q, limit } }),
+  /** Cách 3: Haversine distance + transit suggestions */
+  distance: (origin: string, destination: string) =>
+    apiClient.get<{ data: { distanceKm: number; estimatedFlightHours: number; transitSuggestions: { hub: string; route: string }[] } }>(
+      '/airports/distance', { params: { origin, destination } },
+    ),
+};
