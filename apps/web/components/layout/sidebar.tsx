@@ -76,9 +76,9 @@ export function Sidebar() {
     pathname === href || pathname.startsWith(href + '/');
 
   // Xử lý đổi tên admin -> Đức Anh theo yêu cầu
-  let userName = session?.user?.name || 'Đức Anh';
-  if (userName.toLowerCase() === 'admin' || userName === 'Administrator') {
-    userName = 'Đức Anh';
+  let userName = session?.user?.name || 'Vũ Đức Anh';
+  if (userName.toLowerCase() === 'admin' || userName === 'Administrator' || userName === 'Đức Anh') {
+    userName = 'Vũ Đức Anh';
   }
   const roleName = session?.user?.role || 'ADMIN';
   const initial = userName.charAt(0).toUpperCase();
@@ -101,7 +101,7 @@ export function Sidebar() {
             <img 
               src="/logo-apg.png" 
               alt="Logo" 
-              className="absolute inset-0 w-full h-full object-contain grayscale brightness-0 invert dark:brightness-100 dark:invert-0 opacity-0 bg-foreground" 
+              className="absolute inset-0 w-full h-full object-contain grayscale brightness-0 invert dark:brightness-100 dark:invert-0 bg-foreground" 
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           </div>

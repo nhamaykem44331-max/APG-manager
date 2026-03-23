@@ -88,8 +88,8 @@ export function RevenueChartInner({ data }: RevenueChartProps) {
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             axisLine={false}
             tickLine={false}
-            width={70}
-            dx={-10}
+            width={90}
+            dx={-5}
           />
 
           <Tooltip 

@@ -59,7 +59,7 @@ export function PayableTab() {
         <div className="flex gap-4 border-b border-border w-full sm:w-auto">
           {SUB_TABS.map((t) => (
             <button key={t.key} onClick={() => setSubTab(t.key)}
-              className={cn('pb-2 text-[13px] font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
+              className={cn('pb-3 pt-1 text-[13px] font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
                 subTab === t.key ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               )}
             >{t.label}</button>

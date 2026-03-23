@@ -63,7 +63,7 @@ export default function FinancePage() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 h-10 min-w-max text-[13px] font-medium transition-colors border-b-2 -mb-px',
+              'flex items-center gap-1.5 px-4 pb-3 pt-2 min-w-max text-[13px] font-medium transition-colors border-b-2 -mb-px',
               activeTab === tab.key
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',

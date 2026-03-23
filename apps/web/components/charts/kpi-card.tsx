@@ -37,7 +37,7 @@ export function KpiCard({
         <p className="text-xs text-muted-foreground">
           {label}
         </p>
-        <p className="text-2xl font-semibold font-tabular tracking-tight text-foreground truncate">
+        <p className="text-2xl font-semibold font-tabular tracking-tight text-foreground">
           {value}
         </p>
 

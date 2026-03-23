@@ -58,15 +58,6 @@ export function Header() {
         >
           <Menu className="w-4 h-4" />
         </button>
-
-        {/* Project Switcher Vercel style */}
-        <div className="hidden sm:flex items-center gap-2 cursor-pointer group">
-          <div className="flex items-center justify-center w-5 h-5 rounded bg-black dark:bg-white text-white dark:text-black">
-            <svg viewBox="0 0 76 65" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-[10px] h-[10px]"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z" fill="currentColor"/></svg>
-          </div>
-          <span className="text-[13px] font-medium text-foreground">All Projects</span>
-          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
-        </div>
       </div>
 
       {/* Center Breadcrumbs */}
