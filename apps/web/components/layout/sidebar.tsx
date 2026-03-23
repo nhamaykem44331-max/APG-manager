@@ -95,13 +95,13 @@ export function Sidebar() {
       {/* Logo Area (Top Left) */}
       <div className="flex items-center h-14 pl-4 pr-3 mx-2 mt-2 select-none">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="relative flex items-center justify-center w-[26px] h-[26px] bg-foreground rounded-lg flex-shrink-0 overflow-hidden">
+          <div className="relative flex items-center justify-center w-7 h-7 rounded-full flex-shrink-0 overflow-hidden bg-muted">
              {/* Fallback styling for monochrome logo */}
-            <Plane className="w-[14px] h-[14px] text-background rotate-45 transform" />
+            <Plane className="w-[14px] h-[14px] text-muted-foreground rotate-45 transform" />
             <img 
               src="/logo-apg.png" 
               alt="Logo" 
-              className="absolute inset-0 w-full h-full object-contain grayscale brightness-0 invert dark:brightness-100 dark:invert-0 bg-foreground" 
+              className="absolute inset-0 w-full h-full object-cover" 
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           </div>
