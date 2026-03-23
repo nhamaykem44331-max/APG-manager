@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { Prisma, VipTier } from '@prisma/client';
-import { IsString, IsOptional, IsEnum, IsNumber, Min, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, Min, IsArray, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
@@ -40,7 +40,7 @@ export class CreateCustomerDto {
   tags?: string[];
 }
 
-import { IsIn } from 'class-validator';
+
 
 export class ListCustomersDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(1)

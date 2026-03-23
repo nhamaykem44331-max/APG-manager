@@ -101,11 +101,12 @@ export class BookingsService {
   async create(dto: CreateBookingDto, staffId: string) {
     // Sinh mã booking theo format APG-YYMMDD-XXX
     const bookingCode = await this.generateBookingCode();
+    const customerId = await this.resolveCustomerId(dto);
 
     const booking = await this.prisma.booking.create({
       data: {
         bookingCode,
-        customerId: dto.customerId,
+        customerId,
         staffId,
         source: dto.source,
         contactName: dto.contactName,
@@ -373,5 +374,40 @@ export class BookingsService {
 
     const seq = (count + 1).toString().padStart(3, '0');
     return `${prefix}-${seq}`;
+  }
+
+  private async resolveCustomerId(dto: CreateBookingDto) {
+    const providedCustomerId = dto.customerId?.trim();
+
+    if (providedCustomerId && providedCustomerId !== 'new') {
+      const existingCustomer = await this.prisma.customer.findUnique({
+        where: { id: providedCustomerId },
+        select: { id: true },
+      });
+
+      if (existingCustomer) {
+        return existingCustomer.id;
+      }
+    }
+
+    const existingByPhone = await this.prisma.customer.findUnique({
+      where: { phone: dto.contactPhone },
+      select: { id: true },
+    });
+
+    if (existingByPhone) {
+      return existingByPhone.id;
+    }
+
+    const newCustomer = await this.prisma.customer.create({
+      data: {
+        fullName: dto.contactName,
+        phone: dto.contactPhone,
+        tags: [],
+      },
+      select: { id: true },
+    });
+
+    return newCustomer.id;
   }
 }

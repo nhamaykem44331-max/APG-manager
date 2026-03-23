@@ -1,21 +1,29 @@
+const apiBaseUrl = (
+  process.env.API_INTERNAL_URL
+  ?? process.env.NEXT_PUBLIC_API_URL
+  ?? 'http://localhost:3001/api/v1'
+).replace(/\/$/, '');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Cho phép images từ các domain bên ngoài
   images: {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'images.kiwi.com', // Logo hãng bay
+        hostname: 'images.kiwi.com',
       },
     ],
   },
 
-  // Proxy API calls đến NestJS backend
   async rewrites() {
+    if (process.env.NODE_ENV === 'development') {
+      return [];
+    }
+
     return [
       {
         source: '/api/v1/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1'}/:path*`,
+        destination: `${apiBaseUrl}/:path*`,
       },
     ];
   },

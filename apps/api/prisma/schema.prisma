@@ -193,6 +193,12 @@ model Booking {
   payments      Payment[]
   statusHistory BookingStatusLog[]
 
+  @@index([customerId])
+  @@index([staffId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([paymentStatus])
   @@map("bookings")
 }
 
@@ -223,6 +229,9 @@ model Ticket {
   booking   Booking   @relation(fields: [bookingId], references: [id])
   passenger Passenger @relation(fields: [passengerId], references: [id])
 
+  @@index([bookingId])
+  @@index([passengerId])
+  @@index([airline])
   @@map("tickets")
 }
 
@@ -242,6 +251,7 @@ model Passenger {
   customer Customer? @relation(fields: [customerId], references: [id])
   tickets  Ticket[]
 
+  @@index([customerId])
   @@map("passengers")
 }
 
@@ -257,6 +267,8 @@ model Payment {
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
+  @@index([bookingId])
+  @@index([paidAt])
   @@map("payments")
 }
 
@@ -274,6 +286,9 @@ model Debt {
 
   customer Customer @relation(fields: [customerId], references: [id])
 
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
   @@map("debts")
 }
 
@@ -317,6 +332,8 @@ model BookingStatusLog {
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
+  @@index([bookingId])
+  @@index([createdAt])
   @@map("booking_status_logs")
 }
 
@@ -333,6 +350,9 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -355,6 +375,9 @@ model CustomerInteraction {
   customer Customer @relation(fields: [customerId], references: [id])
   staff    User     @relation(fields: [staffId], references: [id])
 
+  @@index([customerId])
+  @@index([staffId])
+  @@index([followUpAt])
   @@map("customer_interactions")
 }
 
@@ -371,6 +394,8 @@ model CustomerNote {
   customer Customer @relation(fields: [customerId], references: [id])
   staff    User     @relation(fields: [staffId], references: [id])
 
+  @@index([customerId])
+  @@index([staffId])
   @@map("customer_notes")
 }
 
@@ -387,5 +412,6 @@ model CommunicationLog {
 
   customer Customer @relation(fields: [customerId], references: [id])
 
+  @@index([customerId])
   @@map("communication_logs")
 }

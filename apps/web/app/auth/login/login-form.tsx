@@ -1,10 +1,10 @@
-// APG Manager RMS - Login Form (client component với validation)
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { getSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { setAuthToken } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export function LoginForm() {
@@ -36,6 +36,8 @@ export function LoginForm() {
       if (result?.error) {
         setError('Email hoặc mật khẩu không đúng');
       } else {
+        const session = await getSession();
+        setAuthToken(session?.user?.accessToken ?? null);
         router.push('/dashboard');
         router.refresh();
       }
@@ -48,7 +50,6 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Email */}
       <div className="space-y-1.5">
         <label
           htmlFor="email"
@@ -75,7 +76,6 @@ export function LoginForm() {
         />
       </div>
 
-      {/* Password */}
       <div className="space-y-1.5">
         <label
           htmlFor="password"
@@ -89,7 +89,7 @@ export function LoginForm() {
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="********"
             autoComplete="current-password"
             disabled={isLoading}
             className={cn(
@@ -115,7 +115,6 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Error message */}
       {error && (
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
           <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
@@ -123,7 +122,6 @@ export function LoginForm() {
         </div>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
         disabled={isLoading}
@@ -140,7 +138,6 @@ export function LoginForm() {
         {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
       </button>
 
-      {/* Dev hint */}
       <p className="text-xs text-center text-muted-foreground">
         Demo: <span className="text-primary">andy@tanphuapg.com</span> / Admin@2026!
       </p>

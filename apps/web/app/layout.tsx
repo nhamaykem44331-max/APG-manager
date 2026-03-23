@@ -1,10 +1,9 @@
-// APG Manager RMS - Root Layout (Provider wrapper toàn app)
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { ThemeProvider } from '@/components/layout/theme-provider';
-import { QueryProvider } from '@/components/layout/query-provider';
 import { SessionProvider } from 'next-auth/react';
-import { auth } from '@/auth';
+import { QueryProvider } from '@/components/layout/query-provider';
+import { SessionTokenSync } from '@/components/layout/session-token-sync';
+import { ThemeProvider } from '@/components/layout/theme-provider';
 import './globals.css';
 
 const inter = Inter({
@@ -18,26 +17,22 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-
   return (
     <html lang="vi" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
-        {/* Quản lý session NextAuth */}
-        <SessionProvider session={session}>
-          {/* Dark mode provider (next-themes) */}
+        <SessionProvider refetchOnWindowFocus={false}>
+          <SessionTokenSync />
           <ThemeProvider
             attribute="class"
             defaultTheme="dark"
             enableSystem
             disableTransitionOnChange
           >
-            {/* TanStack Query provider */}
             <QueryProvider>
               {children}
             </QueryProvider>

@@ -1,10 +1,6 @@
-// APG Manager RMS - Biểu đồ phân bổ theo hãng bay (Donut chart)
 'use client';
 
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
-import { AIRLINE_COLORS, AIRLINE_NAMES } from '@/lib/utils';
+import dynamic from 'next/dynamic';
 
 interface AirlineChartProps {
   data: Array<{
@@ -14,65 +10,22 @@ interface AirlineChartProps {
   }>;
 }
 
-function CustomTooltip({
-  active, payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; payload: { percent: number } }>;
-}) {
-  if (!active || !payload?.length) return null;
-  const item = payload[0];
-
-  return (
-    <div className="bg-card border border-border rounded-lg shadow-lg p-3 text-xs">
-      <p className="font-medium text-foreground">{AIRLINE_NAMES[item.name] ?? item.name}</p>
-      <p className="text-muted-foreground mt-1">
-        {item.value} vé ({item.payload.percent}%)
-      </p>
-    </div>
-  );
-}
-
-export function AirlineChart({ data }: AirlineChartProps) {
-  return (
-    <div className="card p-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-foreground">Phân bổ theo hãng bay</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">Tháng này</p>
+const AirlineChartInner = dynamic(
+  () => import('./airline-chart-inner').then((module) => module.AirlineChartInner),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="card p-5">
+        <div className="space-y-2 mb-4">
+          <div className="h-4 w-32 rounded bg-muted/60 animate-pulse" />
+          <div className="h-3 w-20 rounded bg-muted/40 animate-pulse" />
+        </div>
+        <div className="h-[220px] rounded-xl bg-muted/40 animate-pulse" />
       </div>
+    ),
+  },
+);
 
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="45%"
-            innerRadius={55}
-            outerRadius={80}
-            paddingAngle={3}
-            dataKey="value"
-            nameKey="airline"
-          >
-            {data.map((entry) => (
-              <Cell
-                key={entry.airline}
-                fill={AIRLINE_COLORS[entry.airline] ?? '#6b7280'}
-                stroke="transparent"
-              />
-            ))}
-          </Pie>
-
-          <Tooltip content={<CustomTooltip />} />
-
-          <Legend
-            formatter={(value) => (
-              <span className="text-xs text-muted-foreground">
-                {AIRLINE_NAMES[value] ?? value}
-              </span>
-            )}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
+export function AirlineChart(props: AirlineChartProps) {
+  return <AirlineChartInner {...props} />;
 }

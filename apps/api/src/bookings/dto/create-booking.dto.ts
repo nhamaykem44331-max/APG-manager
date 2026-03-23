@@ -5,8 +5,9 @@ import {
 import { BookingSource, PaymentMethod } from '@prisma/client';
 
 export class CreateBookingDto {
+  @IsOptional()
   @IsString()
-  customerId: string;
+  customerId?: string;
 
   @IsEnum(BookingSource)
   source: BookingSource;

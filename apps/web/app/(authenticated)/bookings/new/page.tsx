@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import type { AxiosError } from 'axios';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -93,6 +94,7 @@ export default function NewBookingPage() {
 
   // Step 4: Payment
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [createError, setCreateError] = useState('');
 
   // Tìm khách hàng theo SĐT
   const handlePhoneSearch = async () => {
@@ -117,15 +119,26 @@ export default function NewBookingPage() {
   // Tạo booking mutation
   const createMutation = useMutation({
     mutationFn: () => bookingsApi.create({
-      customerId: foundCustomer?.id ?? 'new',
+      customerId: foundCustomer?.id,
       source,
       contactName,
       contactPhone: customerPhone,
       paymentMethod,
       notes,
     }),
+    onMutate: () => {
+      setCreateError('');
+    },
     onSuccess: (res) => {
       router.push(`/bookings/${res.data.id}`);
+    },
+    onError: (error: AxiosError<{ message?: string | string[] }>) => {
+      const message = error.response?.data?.message;
+      setCreateError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : message ?? 'Có lỗi xảy ra khi tạo booking. Vui lòng thử lại.',
+      );
     },
   });
 
@@ -620,7 +633,7 @@ export default function NewBookingPage() {
 
           {createMutation.isError && (
             <p className="text-xs text-red-500 text-center">
-              Có lỗi xảy ra khi tạo booking. Vui lòng thử lại.
+              {createError || 'Có lỗi xảy ra khi tạo booking. Vui lòng thử lại.'}
             </p>
           )}
         </div>
