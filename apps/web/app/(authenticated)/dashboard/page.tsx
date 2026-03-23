@@ -58,14 +58,9 @@ export default function DashboardPage() {
     {
       header: 'Mã vé',
       accessorKey: 'pnr',
-      cell: (b) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="font-mono font-bold text-foreground tracking-widest text-[13px]">
-            {b.pnr || <span className="text-muted-foreground font-normal text-[11px]">Chưa có PNR</span>}
-          </span>
-          <span className="text-[10px] text-muted-foreground font-mono">{b.bookingCode}</span>
-        </div>
-      ),
+      cell: (b) => b.pnr
+        ? <span className="font-mono font-bold text-foreground tracking-widest text-[13px]">{b.pnr}</span>
+        : <span className="text-muted-foreground text-[11px] italic">Chưa có PNR</span>,
     },
     {
       header: 'Khách hàng',

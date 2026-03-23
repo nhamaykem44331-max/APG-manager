@@ -189,6 +189,11 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
           commission: t.commission,
         });
       }
+
+      // ✅ Lưu PNR vào booking sau khi tất cả vé đã được thêm
+      if (parseResult?.pnr) {
+        await bookingsApi.update(bookingId, { pnr: parseResult.pnr });
+      }
     },
     onSuccess: () => {
       onSuccess();

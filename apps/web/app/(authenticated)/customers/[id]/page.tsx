@@ -362,12 +362,9 @@ function BookingsTab({ customerId, bookings }: { customerId: string; bookings?: 
         columns={[
           {
             header: 'PNR',
-            cell: (b: Booking) => (
-              <div className="flex flex-col gap-0">
-                <span className="font-mono font-bold tracking-widest text-[13px]">{b.pnr || '—'}</span>
-                <span className="text-[10px] text-muted-foreground font-mono">{b.bookingCode}</span>
-              </div>
-            ),
+            cell: (b: Booking) => b.pnr
+              ? <span className="font-mono font-bold tracking-widest text-[13px]">{b.pnr}</span>
+              : <span className="text-muted-foreground text-[11px] italic">Chưa có PNR</span>,
           },
           {
             header: 'Trạng thái',

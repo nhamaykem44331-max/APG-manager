@@ -89,6 +89,9 @@ export default function NewBookingPage() {
   const [source, setSource] = useState('PHONE');
   const [searchLoading, setSearchLoading] = useState(false);
 
+  // PNR — bắt buộc
+  const [pnr, setPnr] = useState('');
+
   // Step 2: Passengers
   const [passengers, setPassengers] = useState<PassengerForm[]>([emptyPassenger('ADT')]);
 
@@ -151,6 +154,7 @@ export default function NewBookingPage() {
       contactName,
       contactPhone: customerPhone,
       paymentMethod,
+      pnr: pnr.trim().toUpperCase(),
       notes,
     }),
     onMutate: () => {
@@ -248,6 +252,22 @@ export default function NewBookingPage() {
         <div className="card p-5 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-border">
             <h2 className="text-[13px] font-medium text-foreground">Thông tin khách hàng</h2>
+          </div>
+
+          {/* ★ PNR — bắt buộc */}
+          <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+            <label className="text-xs font-semibold text-primary block mb-1.5 uppercase tracking-wide">
+              ★ Mã PNR (Bắt buộc)
+            </label>
+            <input
+              type="text"
+              placeholder="VD: HURMDW, AEWVKK..."
+              value={pnr}
+              onChange={(e) => setPnr(e.target.value.toUpperCase())}
+              maxLength={8}
+              className="w-full h-9 px-3 rounded-md border border-primary/40 bg-background text-foreground font-mono font-bold text-[15px] tracking-widest focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent uppercase"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Mã đặt chỗ từ hệ thống GDS (Amadeus, Sabre...). 5-6 ký tự in hoa.</p>
           </div>
 
           {/* Phone search */}

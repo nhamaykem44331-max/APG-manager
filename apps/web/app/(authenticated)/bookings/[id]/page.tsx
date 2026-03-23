@@ -638,7 +638,14 @@ export default function BookingDetailPage() {
           {/* Tickets */}
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-[13px] font-medium text-foreground">Hành trình ({bk.tickets?.length ?? 0} vé)</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="text-[13px] font-medium text-foreground">Hành trình ({bk.tickets?.length ?? 0} vé)</h3>
+                {bk.pnr && (
+                  <span className="px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded-md font-mono font-bold text-amber-600 dark:text-amber-400 text-[13px] tracking-widest">
+                    {bk.pnr}
+                  </span>
+                )}
+              </div>
               {canAddTicket && (
                 <button
                   onClick={() => setShowAddTicket(true)}
