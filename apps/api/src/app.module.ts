@@ -10,6 +10,9 @@ import { CustomerIntelligenceModule } from './customer-intelligence/customer-int
 import { ReportsModule } from './reports/reports.module';
 import { AutomationModule } from './automation/automation.module';
 import { PrismaModule } from './common/prisma.module';
+import { SalesModule } from './sales/sales.module';
+import { TicketParserModule } from './ticket-parser/ticket-parser.module';
+import { SheetSyncModule } from './sheet-sync/sheet-sync.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { PrismaModule } from './common/prisma.module';
     CustomerIntelligenceModule,
     ReportsModule,
     AutomationModule,
+    SalesModule,
+    TicketParserModule,
+    SheetSyncModule,
   ],
 })
 export class AppModule {}

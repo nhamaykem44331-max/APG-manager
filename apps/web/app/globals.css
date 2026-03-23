@@ -2,94 +2,117 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== CSS Variables cho Light/Dark Mode ===== */
 @layer base {
   :root {
+    /* Vercel-inspired Light Mode */
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --primary: 217 91% 60%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 217 91% 60%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 221 83% 53%;
     --radius: 0.5rem;
+    --success: 160 84% 39%;
+    --warning: 38 92% 50%;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
-    --border: 217 33% 25%;
-    --input: 217 33% 25%;
-    --primary: 217 91% 60%;
+    /* Vercel-inspired Dark Mode (near-black) */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 20%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 20%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 20%;
-    --accent-foreground: 210 40% 98%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 10%;
+    --accent-foreground: 0 0% 93%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 217 91% 60%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 221 83% 53%;
+    --success: 160 84% 39%;
+    --warning: 38 92% 50%;
   }
 }
 
-/* ===== Base Styles ===== */
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-    box-sizing: border-box;
-  }
-
+  * { border-color: hsl(var(--border)); box-sizing: border-box; }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-
+  ::selection { background: hsl(var(--primary) / 0.15); }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.3); }
 }
 
-/* ===== Utility Classes ===== */
 @layer utilities {
+  /* Card component — border-only, no shadow */
   .card {
     background-color: hsl(var(--card));
     color: hsl(var(--card-foreground));
-    border-radius: 0.5rem;
+    border-radius: var(--radius);
     border: 1px solid hsl(var(--border));
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
 
-  /* Badge trạng thái booking */
-  .status-new        { background-color: #dbeafe; color: #1d4ed8; }
-  .status-processing { background-color: #fef9c3; color: #a16207; }
-  .status-quoted     { background-color: #f3e8ff; color: #7e22ce; }
-  .status-pending    { background-color: #ffedd5; color: #c2410c; }
-  .status-issued     { background-color: #dcfce7; color: #15803d; }
-  .status-completed  { background-color: #d1fae5; color: #065f46; }
-  .status-cancelled  { background-color: #fee2e2; color: #b91c1c; }
-  .status-refunded   { background-color: #f3f4f6; color: #374151; }
+  /* Vercel-style subtle dotted grid background */
+  .bg-grid {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 
-  .dark .status-new        { background-color: rgba(29,78,216,0.2); color: #93c5fd; }
-  .dark .status-processing { background-color: rgba(161,98,7,0.2);  color: #fcd34d; }
-  .dark .status-quoted     { background-color: rgba(126,34,206,0.2); color: #d8b4fe; }
-  .dark .status-pending    { background-color: rgba(194,65,12,0.2);  color: #fdba74; }
-  .dark .status-issued     { background-color: rgba(21,128,61,0.2);  color: #86efac; }
-  .dark .status-completed  { background-color: rgba(6,95,70,0.2);    color: #6ee7b7; }
-  .dark .status-cancelled  { background-color: rgba(185,28,28,0.2);  color: #fca5a5; }
-  .dark .status-refunded   { background-color: rgba(55,65,81,0.4);   color: #9ca3af; }
+  /* Status badges — muted, pill shape */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+  .badge-default { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+  .badge-success { background: hsl(var(--success) / 0.1); color: hsl(var(--success)); }
+  .badge-warning { background: hsl(var(--warning) / 0.1); color: hsl(var(--warning)); }
+  .badge-danger  { background: hsl(var(--destructive) / 0.1); color: hsl(var(--destructive)); }
+  .badge-primary { background: hsl(var(--primary) / 0.1); color: hsl(var(--primary)); }
+
+  /* Booking status badges */
+  .status-new        { @apply badge badge-primary; }
+  .status-processing { @apply badge badge-warning; }
+  .status-quoted     { @apply badge; background: hsl(270 60% 50% / 0.1); color: hsl(270 60% 50%); }
+  .status-pending    { @apply badge badge-warning; }
+  .status-issued     { @apply badge badge-success; }
+  .status-completed  { @apply badge badge-success; }
+  .status-refunded   { @apply badge; background: hsl(200 60% 50% / 0.1); color: hsl(200 60% 50%); }
+  .status-cancelled  { @apply badge badge-danger; }
+
+  /* Tabular numbers for financial data */
+  .font-tabular { font-variant-numeric: tabular-nums; }
 }

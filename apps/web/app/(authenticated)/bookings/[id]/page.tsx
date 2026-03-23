@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plane, User, Clock, CreditCard,
-  Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote,
+  Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap,
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
@@ -16,7 +16,9 @@ import {
   BOOKING_SOURCE_LABELS, AIRLINE_NAMES, AIRLINE_COLORS,
 } from '@/lib/utils';
 import { MoneyInput } from '@/components/ui/money-input';
+import { PageHeader } from '@/components/ui/page-header';
 import type { Booking, BookingStatus } from '@/types';
+import { SmartImportModal } from '@/components/booking/smart-import-modal';
 
 // ────────────────────────────────────────────────────
 // Status state machine
@@ -55,13 +57,13 @@ const PASSENGER_TYPES = [
 function FormInput({ label, required, className, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; required?: boolean }) {
   return (
     <div className={cn('space-y-1', className)}>
-      <label className="block text-xs font-medium text-muted-foreground">
+      <label className="block text-xs font-medium text-foreground mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <input
         {...props}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border border-border bg-background',
+          'w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background',
           'text-foreground placeholder:text-muted-foreground',
           'focus:outline-none focus:ring-1 focus:ring-primary',
         )}
@@ -73,13 +75,13 @@ function FormInput({ label, required, className, ...props }: React.InputHTMLAttr
 function FormSelect({ label, required, children, className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; required?: boolean }) {
   return (
     <div className={cn('space-y-1', className)}>
-      <label className="block text-xs font-medium text-muted-foreground">
+      <label className="block text-xs font-medium text-foreground mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <select
         {...props}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border border-border bg-background',
+          'w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background',
           'text-foreground focus:outline-none focus:ring-1 focus:ring-primary',
         )}
       >
@@ -257,9 +259,9 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
 
               {/* Profit preview */}
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-muted-foreground">Lợi nhuận (tính ngay)</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">Lợi nhuận (tính ngay)</label>
                 <div className={cn(
-                  'w-full px-3 py-2 text-sm rounded-lg border font-semibold',
+                  'w-full px-3 h-9 text-[13px] flex items-center rounded-md border font-semibold',
                   profit >= 0 ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500' : 'border-red-500/50 bg-red-500/10 text-red-500',
                 )}>
                   {profit >= 0 ? '+' : ''}{formatVND(profit)}
@@ -288,12 +290,12 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-border flex gap-3 flex-shrink-0">
+        <div className="px-6 py-4 border-t border-border flex gap-3 flex-shrink-0 bg-muted/20">
           <button
             type="submit"
             form="add-ticket-form"
             disabled={mutation.isPending}
-            className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             Thêm vé
@@ -301,9 +303,9 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-accent"
+            className="px-5 h-9 border border-border bg-card rounded-md text-[13px] font-medium text-foreground hover:bg-accent active:scale-[0.98] transition-all duration-150"
           >
-            Hủy
+            Hủy bỏ
           </button>
         </div>
       </div>
@@ -386,9 +388,9 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
               label="Số tiền (VND)"
               required
               value={form.amount}
-              onChange={(v) => setForm(p => ({ ...p, amount: v }))}
+              onChange={(v) => setForm(p => ({ ...p, amount: String(v) }))}
               placeholder="2.000.000"
-              className="[&_input]:text-lg [&_input]:font-bold [&_input]:py-2.5"
+              className="[&_input]:text-[15px] [&_input]:font-bold [&_input]:h-10"
             />
             {quickAmounts.length > 0 && (
               <div className="flex gap-2">
@@ -414,14 +416,14 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
           <FormInput label="Thời gian thanh toán" type="datetime-local" value={form.paidAt} onChange={set('paidAt')} />
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-muted-foreground">Ghi chú</label>
+            <label className="block text-xs font-medium text-foreground mb-1.5">Ghi chú</label>
             <textarea
               placeholder="Ghi chú thêm..."
               value={form.notes}
               onChange={set('notes')}
               rows={2}
               className={cn(
-                'w-full px-3 py-2 text-sm rounded-lg border border-border bg-background',
+                'w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background',
                 'text-foreground placeholder:text-muted-foreground resize-none',
                 'focus:outline-none focus:ring-1 focus:ring-primary',
               )}
@@ -435,21 +437,21 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-2">
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Xác nhận thanh toán
+              Xác nhận
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-accent"
+              className="px-5 h-9 border border-border bg-card rounded-md text-[13px] font-medium text-foreground hover:bg-accent active:scale-[0.98] transition-all duration-150"
             >
-              Hủy
+              Hủy bỏ
             </button>
           </div>
         </form>
@@ -490,6 +492,7 @@ export default function BookingDetailPage() {
   const [statusReason, setStatusReason]   = useState('');
   const [confirmAction, setConfirmAction] = useState<{ status: BookingStatus; label: string } | null>(null);
   const [showAddTicket, setShowAddTicket]   = useState(false);
+  const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
 
   const { data: booking, isLoading } = useQuery({
@@ -526,69 +529,75 @@ export default function BookingDetailPage() {
   return (
     <div className="max-w-[1200px] space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/bookings" className="p-1.5 rounded-md hover:bg-accent transition-colors">
-          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
-        </Link>
-        <div className="flex-1">
+      <PageHeader
+        title={
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold text-foreground font-mono">{bk.bookingCode}</h1>
-            <span className={cn('inline-block px-2.5 py-1 rounded-full text-xs font-semibold', BOOKING_STATUS_CLASSES[bk.status])}>
+            <Link href="/bookings" className="p-1 rounded-md hover:bg-accent transition-colors -ml-1">
+              <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            <span className="font-mono">{bk.bookingCode}</span>
+            <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium', BOOKING_STATUS_CLASSES[bk.status])}>
               {BOOKING_STATUS_LABELS[bk.status]}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {BOOKING_SOURCE_LABELS[bk.source]} · {formatDateTime(bk.createdAt)}
-          </p>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-2 flex-wrap justify-end">
-          {canAddTicket && (
-            <button
-              onClick={() => setShowAddTicket(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 flex items-center gap-1.5 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Thêm vé
-            </button>
-          )}
-          {canAddPayment && (
-            <button
-              onClick={() => setShowAddPayment(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 flex items-center gap-1.5 transition-colors"
-            >
-              <Banknote className="w-3.5 h-3.5" /> Ghi thanh toán
-            </button>
-          )}
-          {actions.map((action) => (
-            <button
-              key={action.status}
-              onClick={() => setConfirmAction({ status: action.status, label: action.label })}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                action.variant === 'primary' && 'bg-primary text-white hover:bg-primary/90',
-                action.variant === 'success' && 'bg-emerald-600 text-white hover:bg-emerald-700',
-                action.variant === 'danger'  && 'bg-red-600 text-white hover:bg-red-700',
-                action.variant === 'warning' && 'bg-orange-500 text-white hover:bg-orange-600',
-              )}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        }
+        description={`${BOOKING_SOURCE_LABELS[bk.source]} · ${formatDateTime(bk.createdAt)}`}
+        actions={
+          <div className="flex gap-2 flex-wrap justify-end">
+            {canAddTicket && (
+              <>
+                <button
+                  onClick={() => setShowSmartImport(true)}
+                  className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+                  title="Nhập vé tự động từ text/ảnh"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-500" /> Nhập nhanh
+                </button>
+                <button
+                  onClick={() => setShowAddTicket(true)}
+                  className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5 text-muted-foreground" /> Thêm vé
+                </button>
+              </>
+            )}
+            {canAddPayment && (
+              <button
+                onClick={() => setShowAddPayment(true)}
+                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+              >
+                <Banknote className="w-3.5 h-3.5 text-emerald-500" /> Ghi thanh toán
+              </button>
+            )}
+            {actions.map((action) => (
+              <button
+                key={action.status}
+                onClick={() => setConfirmAction({ status: action.status, label: action.label })}
+                className={cn(
+                  'px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors border border-transparent',
+                  action.variant === 'primary' && 'bg-foreground text-background hover:opacity-90',
+                  action.variant === 'success' && 'bg-emerald-600 text-white hover:bg-emerald-700',
+                  action.variant === 'danger'  && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+                  action.variant === 'warning' && 'bg-warning text-warning-foreground hover:bg-warning/90',
+                )}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: Details (70%) */}
         <div className="lg:col-span-2 space-y-4">
           {/* Contact info */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <User className="w-4 h-4 text-muted-foreground" />
-              Thông tin liên hệ
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="card p-4">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+              <h3 className="text-[13px] font-medium text-foreground">Thông tin liên hệ</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-[13px]">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Tên liên hệ</p>
                 <p className="font-medium text-foreground">{bk.contactName}</p>
@@ -621,16 +630,14 @@ export default function BookingDetailPage() {
 
           {/* Tickets */}
           <div className="card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border flex items-center gap-2">
-              <Plane className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">Hành trình</h3>
-              <span className="ml-auto text-xs text-muted-foreground">{bk.tickets?.length ?? 0} vé</span>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h3 className="text-[13px] font-medium text-foreground">Hành trình ({bk.tickets?.length ?? 0} vé)</h3>
               {canAddTicket && (
                 <button
                   onClick={() => setShowAddTicket(true)}
-                  className="ml-2 flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
+                  className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground font-medium"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Thêm
+                  <Plus className="w-3.5 h-3.5" /> Thêm mới
                 </button>
               )}
             </div>
@@ -652,23 +659,23 @@ export default function BookingDetailPage() {
               <div className="divide-y divide-border">
                 {(bk.tickets ?? []).map((ticket) => (
                   <div key={ticket.id} className="p-5">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <div
-                          className="px-2 py-0.5 rounded text-white text-xs font-bold"
+                          className="px-2 py-0.5 rounded text-background text-[11px] font-bold"
                           style={{ backgroundColor: AIRLINE_COLORS[ticket.airline] ?? '#64748b' }}
                         >
                           {ticket.airline}
                         </div>
-                        <span className="text-sm font-mono font-medium text-foreground">{ticket.flightNumber}</span>
-                        <span className="text-xs text-muted-foreground">{ticket.seatClass}</span>
+                        <span className="text-[13px] font-mono font-medium text-foreground mt-0.5">{ticket.flightNumber}</span>
+                        <span className="text-[11px] text-muted-foreground mt-0.5 ml-1">{ticket.seatClass}</span>
                         {ticket.fareClass && (
-                          <span className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">{ticket.fareClass}</span>
+                          <span className="px-1.5 py-0.5 bg-accent rounded text-[11px] font-mono mt-0.5">{ticket.fareClass}</span>
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-foreground">{formatVND(ticket.sellPrice)}</p>
-                        <p className="text-xs text-emerald-500">LN: +{formatVND(ticket.profit)}</p>
+                        <p className="text-[13px] font-bold font-tabular text-foreground">{formatVND(ticket.sellPrice)}</p>
+                        <p className="text-[11px] font-tabular text-emerald-500">+{formatVND(ticket.profit)}</p>
                       </div>
                     </div>
 
@@ -712,12 +719,11 @@ export default function BookingDetailPage() {
           </div>
 
           {/* Financial summary */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-muted-foreground" />
-              Tài chính
-            </h3>
-            <div className="space-y-2.5 text-sm">
+          <div className="card p-4">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+              <h3 className="text-[13px] font-medium text-foreground">Tài chính</h3>
+            </div>
+            <div className="space-y-2.5 text-[13px]">
               {[
                 { label: 'Giá bán (khách)',    value: formatVND(bk.totalSellPrice),  bold: false },
                 { label: 'Giá net (hãng bay)', value: formatVND(bk.totalNetPrice),   bold: false },
@@ -780,11 +786,10 @@ export default function BookingDetailPage() {
         {/* Right: Timeline + Staff */}
         <div className="space-y-4">
           {/* Status timeline */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              Lịch sử trạng thái
-            </h3>
+          <div className="card p-4">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+              <h3 className="text-[13px] font-medium text-foreground">Lịch sử trạng thái</h3>
+            </div>
             <div className="space-y-3">
               {(bk.statusHistory ?? []).map((log, i) => (
                 <div key={log.id} className="flex gap-3">
@@ -813,14 +818,18 @@ export default function BookingDetailPage() {
 
           {/* Staff info */}
           <div className="card p-4">
-            <p className="text-xs text-muted-foreground mb-1">Nhân viên phụ trách</p>
-            <p className="text-sm font-medium text-foreground">{bk.staff?.fullName ?? 'Chưa phân công'}</p>
-            {bk.staff?.email && <p className="text-xs text-muted-foreground">{bk.staff.email}</p>}
+            <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
+              <h3 className="text-[13px] font-medium text-foreground">Nhân viên phụ trách</h3>
+            </div>
+            <p className="text-[13px] font-medium text-foreground">{bk.staff?.fullName ?? 'Chưa phân công'}</p>
+            {bk.staff?.email && <p className="text-[11px] text-muted-foreground">{bk.staff.email}</p>}
           </div>
 
           {/* Quick stats */}
-          <div className="card p-4 space-y-3 text-sm">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tóm tắt</p>
+          <div className="card p-4 space-y-3 text-[13px]">
+            <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
+              <h3 className="text-[13px] font-medium text-foreground">Tóm tắt</h3>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Số vé</span>
               <span className="font-medium text-foreground">{bk.tickets?.length ?? 0} vé</span>
@@ -902,6 +911,19 @@ export default function BookingDetailPage() {
           bookingId={bk.id}
           totalSellPrice={Number(bk.totalSellPrice)}
           onClose={() => setShowAddPayment(false)}
+        />
+      )}
+
+      {showSmartImport && (
+        <SmartImportModal
+          bookingId={bk.id}
+          customerId={bk.customerId}
+          isOpen={showSmartImport}
+          onClose={() => setShowSmartImport(false)}
+          onSuccess={() => {
+            setShowSmartImport(false);
+            queryClient.invalidateQueries({ queryKey: ['booking', id] });
+          }}
         />
       )}
     </div>

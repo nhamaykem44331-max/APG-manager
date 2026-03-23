@@ -45,6 +45,13 @@ module.exports = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      fontFamily: {
+        sans: ['Inter', 'Geist Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['Geist Mono', 'JetBrains Mono', 'SF Mono', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['10px', { lineHeight: '14px' }],
+      },
       animation: {
         'fade-in':  'fadeIn 0.2s ease-in-out',
         'slide-in': 'slideIn 0.3s ease-out',

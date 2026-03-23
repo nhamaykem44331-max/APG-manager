@@ -8,7 +8,7 @@ import { useSession } from 'next-auth/react';
 import {
   LayoutDashboard, Plane, Users, Wallet,
   Search, BarChart3, Settings, ChevronLeft,
-  ChevronRight, Building2, LogOut,
+  ChevronRight, Building2, LogOut, Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui.store';
@@ -20,7 +20,8 @@ const NAV_ITEMS = [
   { href: '/bookings', label: 'Đặt vé', icon: Plane },
   { href: '/customers', label: 'Khách hàng', icon: Users },
   { href: '/finance', label: 'Tài chính', icon: Wallet },
-  { href: '/flights', label: 'Tra cứu giá', icon: Search },
+  { href: '/sales', label: 'Sales Pipeline', icon: Target },
+  { href: 'https://book.tanphuapg.com', label: 'Tra cứu giá', icon: Search },
   { href: '/reports', label: 'Báo cáo', icon: BarChart3 },
 ];
 
@@ -54,17 +55,17 @@ export function Sidebar() {
     <aside
       className={cn(
         'relative flex flex-col h-screen border-r transition-all duration-300 ease-in-out',
-        'bg-card border-border',
-        sidebarCollapsed ? 'w-16' : 'w-[260px]',
+        'bg-background border-border',
+        sidebarCollapsed ? 'w-12' : 'w-56',
       )}
     >
       {/* Logo & Brand */}
       <div className={cn(
-        'flex items-center h-16 border-b border-border px-4 flex-shrink-0',
-        sidebarCollapsed ? 'justify-center' : 'gap-3',
+        'flex items-center h-12 border-b border-border px-3 flex-shrink-0',
+        sidebarCollapsed ? 'justify-center' : 'gap-2.5',
       )}>
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-          <Plane className="w-4 h-4 text-white" strokeWidth={2.5} />
+        <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center flex-shrink-0">
+          <Plane className="w-3.5 h-3.5 text-background" strokeWidth={2.5} />
         </div>
         {!sidebarCollapsed && (
           <div className="overflow-hidden">
@@ -99,15 +100,14 @@ export function Sidebar() {
 
         {/* User info & logout */}
         <div className={cn(
-          'flex items-center mt-2 px-2 py-2 rounded-lg',
-          'hover:bg-accent cursor-pointer transition-colors',
-          sidebarCollapsed ? 'justify-center' : 'gap-3',
+          'flex items-center mt-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors',
+          sidebarCollapsed ? 'justify-center' : 'gap-2',
         )}
           onClick={() => signOut({ callbackUrl: '/auth/login' })}
         >
           {/* Avatar */}
-          <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-3.5 h-3.5 text-primary" />
+          <div className="w-6 h-6 rounded-full bg-border flex items-center justify-center flex-shrink-0">
+            <Building2 className="w-3 h-3 text-muted-foreground" />
           </div>
           {!sidebarCollapsed && (
             <>
@@ -157,25 +157,29 @@ function NavItem({
 }) {
   const Icon = item.icon;
 
+  const isExternal = item.href.startsWith('http');
+
   return (
     <Link
       href={item.href}
       title={collapsed ? item.label : undefined}
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noopener noreferrer" : undefined}
       className={cn(
-        'flex items-center rounded-lg px-2 py-2 text-sm transition-all duration-150',
-        'hover:bg-accent hover:text-accent-foreground',
-        collapsed ? 'justify-center' : 'gap-3',
+        'flex items-center rounded-md px-2 py-1.5 text-[13px] transition-all duration-150 h-8',
+        'hover:bg-accent hover:text-foreground',
+        collapsed ? 'justify-center' : 'gap-2.5',
         isActive
-          ? 'bg-primary/10 text-primary font-medium'
+          ? 'bg-accent text-foreground font-medium'
           : 'text-muted-foreground',
       )}
     >
       <Icon className={cn(
         'w-4 h-4 flex-shrink-0',
-        isActive ? 'text-primary' : 'text-muted-foreground',
+        isActive ? 'text-foreground' : 'text-muted-foreground',
       )} />
       {!collapsed && (
-        <span className="truncate">{item.label}</span>
+        <span className="truncate leading-none pt-0.5">{item.label}</span>
       )}
       {/* Active indicator */}
       {isActive && !collapsed && (

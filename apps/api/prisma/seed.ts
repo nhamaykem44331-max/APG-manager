@@ -76,6 +76,26 @@ async function main() {
   });
   console.log(`✅ Khách hàng mẫu: ${customer.fullName}`);
 
+  // ── Bước 1g: Seed Supplier Profiles (hãng bay + GDS) ──────────────
+  // Tài liệu APG_Debt_Upgrade_Prompt_1.md - Bước 1g
+  const suppliers = [
+    { code: 'VN', name: 'Vietnam Airlines',       type: 'AIRLINE'       as const, paymentTerms: 15 },
+    { code: 'VJ', name: 'Vietjet Air',             type: 'AIRLINE'       as const, paymentTerms: 15 },
+    { code: 'QH', name: 'Bamboo Airways',          type: 'AIRLINE'       as const, paymentTerms: 15 },
+    { code: 'BL', name: 'Pacific Airlines',        type: 'AIRLINE'       as const, paymentTerms: 30 },
+    { code: 'VU', name: 'Vietravel Airlines',      type: 'AIRLINE'       as const, paymentTerms: 15 },
+    { code: 'AMADEUS', name: 'Amadeus GDS',        type: 'GDS_PROVIDER'  as const, paymentTerms: 30 },
+    { code: 'SCCM', name: 'SCCM Group',            type: 'PARTNER'       as const, paymentTerms: 30 },
+  ];
+  for (const s of suppliers) {
+    await prisma.supplierProfile.upsert({
+      where: { code: s.code },
+      update: {},
+      create: s,
+    });
+  }
+  console.log('✅ Nhà cung cấp mẫu (suppliers)');
+
   console.log('\n🎉 Seed hoàn tất!');
   console.log('📧 Admin login: andy@tanphuapg.com / Admin@2026!');
   console.log('📧 Staff login: sales1@tanphuapg.com / Staff@2026!');

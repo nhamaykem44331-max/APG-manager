@@ -86,6 +86,55 @@ enum DebtStatus {
   WRITTEN_OFF
 }
 
+// Thêm cho hệ thống công nợ 2 chiều
+enum LedgerDirection {
+  RECEIVABLE  // Phải thu — khách nợ APG
+  PAYABLE     // Phải trả — APG nợ nhà cung cấp
+}
+
+enum LedgerPartyType {
+  CUSTOMER_INDIVIDUAL  // Khách lẻ
+  CUSTOMER_CORPORATE   // Khách doanh nghiệp
+  AIRLINE              // Hãng bay (VN, VJ, QH, BL, VU)
+  GDS_PROVIDER         // Amadeus, Sabre
+  PARTNER              // Đối tác feedback (Mr Sơn VTC, Mr Lưu SCCM...)
+  OTHER_SUPPLIER       // Nhà cung cấp khác
+}
+
+// Phase B: Quản lý dòng tiền
+enum CashFlowDirection {
+  INFLOW   // Tiền vào
+  OUTFLOW  // Tiền ra
+}
+
+enum CashFlowCategory {
+  TICKET_PAYMENT       // Khách thanh toán vé
+  TICKET_REFUND        // Hoàn tiền vé cho khách
+  PARTNER_FEEDBACK     // Trả phí hoa hồng đối tác
+  AIRLINE_PAYMENT      // Nạp deposit / thanh toán hãng
+  SALARY               // Lương nhân viên
+  OFFICE_RENT          // Thuê văn phòng
+  OFFICE_SUPPLIES      // Đồ dùng VP, thiết bị
+  ENTERTAINMENT        // Tiếp khách, ăn uống
+  TRAVEL               // Công tác phí (vé, KS, taxi)
+  RITUAL               // Lễ, thắp hương, phong thủy
+  MARKETING            // Quảng cáo, quà tặng
+  TECHNOLOGY           // Server, domain, phần mềm
+  DISBURSEMENT         // Giải ngân, nộp tiền vào TK công ty
+  OTHER                // Khác
+}
+
+// Phase D: CRM Sales Pipeline
+enum LeadStatus {
+  NEW           // Mới tiếp cận
+  CONTACTED     // Đã liên hệ
+  NEGOTIATING   // Đang đàm phán
+  WON           // Đã chốt hợp đồng
+  ACTIVE        // Đang phát sinh doanh số
+  LOST          // Mất lead
+  ON_HOLD       // Tạm dừng
+}
+
 enum InteractionType {
   CALL          // Cuộc gọi
   MEETING       // Gặp mặt
@@ -145,12 +194,14 @@ model Customer {
   preferredSeat String?      @map("preferred_seat")
   notes         String?
   tags          String[]     // ["VIP", "thường_bay_SGN"]
+  customerCode  String?      @unique @map("customer_code") // Mã KH nội bộ: SCCM01, TB01, PHONG01, APG1...
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt      @map("updated_at")
 
   bookings       Booking[]
   passengers     Passenger[]
   debts          Debt[]
+  ledgers        AccountsLedger[] @relation("CustomerLedger")
   interactions   CustomerInteraction[]
   customerNotes  CustomerNote[]
   communications CommunicationLog[]
@@ -192,6 +243,7 @@ model Booking {
   tickets       Ticket[]
   payments      Payment[]
   statusHistory BookingStatusLog[]
+  ledgers       AccountsLedger[]
 
   @@index([customerId])
   @@index([staffId])
@@ -414,4 +466,169 @@ model CommunicationLog {
 
   @@index([customerId])
   @@map("communication_logs")
+}
+
+// ========== ACCOUNTS LEDGER SYSTEM (Phase A) ==========
+
+// H\u1ed3 s\u01a0 nh\u00e0 cung c\u1ea5p / \u0111\u1ed1i t\u00e1c
+model SupplierProfile {
+  id            String          @id @default(uuid())
+  code          String          @unique  // VN, VJ, QH, AMADEUS, SCCM, TB_VTC...
+  name          String                   // Vietnam Airlines, Amadeus GDS...
+  type          LedgerPartyType
+  contactName   String?         @map("contact_name")   // Mr L\u01b0u, Mr S\u01a1n, Mr Hoan...
+  contactPhone  String?         @map("contact_phone")
+  contactEmail  String?         @map("contact_email")
+  taxId         String?         @map("tax_id")
+  bankAccount   String?         @map("bank_account")
+  bankName      String?         @map("bank_name")
+  creditLimit   Decimal?        @map("credit_limit")
+  paymentTerms  Int?            @map("payment_terms") // S\u1ed1 ng\u00e0y cho ph\u00e9p n\u1ee3
+  feedbackRate  Decimal?        @map("feedback_rate") // T\u1ec9 l\u1ec7 % hoa h\u1ed3ng
+  notes         String?
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  ledgers       AccountsLedger[]
+
+  @@map("supplier_profiles")
+}
+
+// S\u1ed5 c\u00e1i c\u00f4ng n\u1ee3 2 chi\u1ec1u (Ph\u1ea3i thu AR + Ph\u1ea3i tr\u1ea3 AP)
+model AccountsLedger {
+  id              String          @id @default(uuid())
+  code            String          @unique // M\u00e3 t\u1ef1 sinh: AR-YYMMDD-XXX ho\u1eb7c AP-YYMMDD-XXX
+  direction       LedgerDirection
+  partyType       LedgerPartyType @map("party_type")
+
+  // Li\u00ean k\u1ebft \u0111\u1ed1i t\u01b0\u1ee3ng (polymorphic)
+  customerId      String?         @map("customer_id")
+  supplierId      String?         @map("supplier_id")
+  customerCode    String?         @map("customer_code") // M\u00e3 KH n\u1ed9i b\u1ed9: SCCM01, TB01...
+
+  // Li\u00ean k\u1ebft ngu\u1ed3n g\u1ed1c
+  bookingId       String?         @map("booking_id")
+  bookingCode     String?         @map("booking_code") // PNR ho\u1eb7c m\u00e3 booking
+
+  // S\u1ed1 ti\u1ec1n
+  totalAmount     Decimal         @map("total_amount")
+  paidAmount      Decimal         @default(0) @map("paid_amount")
+  remaining       Decimal         @default(0)
+
+  // Th\u1eddi h\u1ea1n
+  issueDate       DateTime        @default(now()) @map("issue_date")
+  dueDate         DateTime        @map("due_date")
+  status          DebtStatus      @default(ACTIVE)
+
+  // Th\u00f4ng tin b\u1ed5 sung
+  description     String?
+  invoiceNumber   String?         @map("invoice_number")
+  pic             String?         // Ng\u01b0\u1eddi ph\u1ee5 tr\u00e1ch: Ms Thanh, Mr \u0110\u1ee9c Anh...
+  notes           String?
+  createdBy       String?         @map("created_by")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  customer        Customer?       @relation("CustomerLedger", fields: [customerId], references: [id])
+  supplier        SupplierProfile? @relation(fields: [supplierId], references: [id])
+  booking         Booking?        @relation(fields: [bookingId], references: [id])
+  payments        LedgerPayment[]
+
+  @@index([direction, status])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([customerCode])
+  @@index([dueDate])
+  @@index([partyType])
+  @@map("accounts_ledger")
+}
+
+// L\u1ecbch s\u1eed thanh to\u00e1n c\u00f4ng n\u1ee3
+model LedgerPayment {
+  id            String         @id @default(uuid())
+  ledgerId      String         @map("ledger_id")
+  amount        Decimal
+  method        PaymentMethod
+  reference     String?        // M\u00e3 giao d\u1ecbch / UNC / bi\u00ean lai
+  paidAt        DateTime       @default(now()) @map("paid_at")
+  paidBy        String?        @map("paid_by") // User ID
+  notes         String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  ledger        AccountsLedger @relation(fields: [ledgerId], references: [id])
+
+  @@index([ledgerId])
+  @@map("ledger_payments")
+}
+
+// ========== PHASE B: QUẢN LÝ DÒNG TIỀN ==========
+
+// Giao dịch dòng tiền (từ Google Sheet "Dòng tiền KHÁCH LẺ")
+model CashFlowEntry {
+  id            String            @id @default(uuid())
+  direction     CashFlowDirection
+  category      CashFlowCategory
+  amount        Decimal
+  pic           String            // Người thực hiện: Ms Thanh, Mr Đức Anh, Mr Phong...
+  description   String
+  reference     String?           // PNR code, mã booking, mã giao dịch
+  date          DateTime
+  status        String            @default("DONE") // DONE, PENDING
+  notes         String?
+  createdBy     String?           @map("created_by")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@index([direction])
+  @@index([category])
+  @@index([date])
+  @@index([pic])
+  @@map("cash_flow_entries")
+}
+
+// Chi phí vận hành (từ Google Sheet "Chi phí vận hành" - 209 khoản)
+model OperatingExpense {
+  id            String           @id @default(uuid())
+  category      CashFlowCategory
+  description   String           // Nội dung chi phí
+  amount        Decimal
+  date          DateTime
+  status        String           @default("DONE") // DONE, PENDING
+  notes         String?
+  createdBy     String?          @map("created_by")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([date])
+  @@map("operating_expenses")
+}
+
+// ========== PHASE D: CRM NÂNG CAO + SALES PIPELINE ==========
+
+// Pipeline bán hàng (nguồn: Google Sheet "Công tác sales" - 17 leads)
+model SalesLead {
+  id              String      @id @default(uuid())
+  salesPerson     String      @map("sales_person") // Phong, Giang, Đức Anh
+  companyName     String      @map("company_name") // Nguồn khách: Du học Úc, XKLD, Tàu biển...
+  contactName     String?     @map("contact_name") // Ms Tú, Mr Tuấn...
+  contactPhone    String?     @map("contact_phone")
+  contactEmail    String?     @map("contact_email")
+  customerCode    String?     @map("customer_code") // APG1, APG2... APG7
+  source          String?     // Kênh dẫn nguồn: Zalo, Referral, Cold call...
+  description     String?     // Mô tả nhu cầu / tiềm năng
+  status          LeadStatus  @default(NEW)
+  notes           String?
+  nextAction      String?     @map("next_action")   // Hành động tiếp theo
+  nextActionDate  DateTime?   @map("next_action_date")
+  estimatedValue  Decimal?    @map("estimated_value") // Doanh số ước tính/tháng
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@index([salesPerson])
+  @@index([status])
+  @@index([customerCode])
+  @@map("sales_leads")
 }

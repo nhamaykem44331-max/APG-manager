@@ -45,12 +45,12 @@ export function Header() {
 
   if (!mounted) {
     return (
-      <header className="h-14 border-b border-border bg-card flex items-center px-4 gap-4 flex-shrink-0" />
+      <header className="h-12 border-b border-border bg-background flex items-center px-4 gap-4 flex-shrink-0" />
     );
   }
 
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center px-4 gap-4 flex-shrink-0">
+    <header className="h-12 border-b border-border bg-background flex items-center px-4 gap-4 flex-shrink-0">
       {/* Mobile: hamburger menu */}
       <button
         onClick={() => setMobileSidebarOpen(true)}
@@ -61,20 +61,20 @@ export function Header() {
       </button>
 
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 flex-1 min-w-0">
+      <nav className="flex items-center gap-2 flex-1 min-w-0">
         {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.href} className="flex items-center gap-1.5 min-w-0">
+          <span key={crumb.href} className="flex items-center gap-2 min-w-0 pointer-events-none">
             {i > 0 && (
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-muted-foreground/30 font-light select-none">/</span>
             )}
             {crumb.isLast ? (
-              <span className="text-sm truncate text-foreground font-medium">
+              <span className="text-[13px] truncate text-foreground font-medium pointer-events-auto">
                 {crumb.label}
               </span>
             ) : (
               <Link
                 href={crumb.href}
-                className="text-sm truncate text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[13px] truncate text-muted-foreground hover:text-foreground transition-colors pointer-events-auto"
               >
                 {crumb.label}
               </Link>
@@ -109,16 +109,12 @@ export function Header() {
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className={cn(
-              'flex items-center gap-2 px-2 py-1.5 rounded-md',
-              'hover:bg-accent transition-colors',
+              'flex items-center justify-center w-8 h-8 rounded-full',
+              'hover:bg-accent transition-colors border border-border',
             )}
+            aria-label="User Menu"
           >
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
-              <User className="w-3.5 h-3.5 text-primary" />
-            </div>
-            <span className="text-sm font-medium text-foreground hidden sm:block max-w-28 truncate">
-              {session?.user?.name ?? '...'}
-            </span>
+            <User className="w-4 h-4 text-muted-foreground" />
           </button>
 
           {/* Dropdown menu */}

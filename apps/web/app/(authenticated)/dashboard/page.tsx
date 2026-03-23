@@ -10,7 +10,8 @@ import Link from 'next/link';
 import { KpiCard } from '@/components/charts/kpi-card';
 import { RevenueChart } from '@/components/charts/revenue-chart';
 import { AirlineChart } from '@/components/charts/airline-chart';
-import { cn, formatVND, formatDateTime, BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { cn, formatVND, BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES } from '@/lib/utils';
 import { dashboardApi, bookingsApi, financeApi } from '@/lib/api';
 
 // Dữ liệu mẫu khi chưa có API
@@ -54,16 +55,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-[1400px]">
-      {/* Page title */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Tổng quan hoạt động hôm nay
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
+      <PageHeader
+        title="Dashboard"
+        description="Tổng quan hoạt động hôm nay"
+        actions={
+          <span className="text-xs text-muted-foreground bg-accent/50 px-3 py-1.5 rounded-md border border-border">
             {new Date().toLocaleDateString('vi-VN', {
               weekday: 'long',
               day: 'numeric',
@@ -71,8 +67,8 @@ export default function DashboardPage() {
               year: 'numeric',
             })}
           </span>
-        </div>
-      </div>
+        }
+      />
 
       {/* Row 1: KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -80,28 +76,20 @@ export default function DashboardPage() {
           label="Vé xuất hôm nay"
           value="23"
           change={15}
-          icon={Plane}
-          iconColor="text-blue-500"
         />
         <KpiCard
           label="Doanh thu ngày"
           value="45.2M"
           change={8}
-          icon={DollarSign}
-          iconColor="text-emerald-500"
         />
         <KpiCard
           label="Lợi nhuận ngày"
           value="4.8M"
           change={12}
-          icon={TrendingUp}
-          iconColor="text-purple-500"
         />
         <KpiCard
           label="Booking chờ xử lý"
           value="7"
-          icon={Clock}
-          iconColor="text-orange-500"
         />
       </div>
 
@@ -118,15 +106,10 @@ export default function DashboardPage() {
       {/* Row 3: Recent bookings + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Booking gần nhất */}
-        <div className="lg:col-span-2 card">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-            <h3 className="text-sm font-semibold text-foreground">
-              Booking gần nhất
-            </h3>
-            <Link
-              href="/bookings"
-              className="text-xs text-primary hover:underline"
-            >
+        <div className="lg:col-span-2 card flex flex-col">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h3 className="text-[13px] font-medium text-foreground">Booking gần nhất</h3>
+            <Link href="/bookings" className="text-xs text-muted-foreground hover:text-foreground">
               Xem tất cả →
             </Link>
           </div>
@@ -135,11 +118,11 @@ export default function DashboardPage() {
             {bookingsLoading ? (
               // Skeleton loading
               Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="px-5 py-3 flex items-center gap-3 animate-pulse">
-                  <div className="w-24 h-3 bg-muted rounded" />
-                  <div className="flex-1 h-3 bg-muted rounded" />
-                  <div className="w-16 h-3 bg-muted rounded" />
-                  <div className="w-16 h-5 bg-muted rounded-full" />
+                <div key={i} className="px-5 py-3 flex items-center gap-4 animate-pulse">
+                  <div className="w-20 h-4 bg-muted rounded" />
+                  <div className="flex-1 h-4 bg-muted rounded" />
+                  <div className="w-16 h-4 bg-muted rounded" />
+                  <div className="w-12 h-5 bg-muted rounded-full" />
                 </div>
               ))
             ) : recentBookings.length === 0 ? (
@@ -156,11 +139,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Panel cảnh báo */}
-        <div className="card">
-          <div className="px-5 py-3.5 border-b border-border">
-            <h3 className="text-sm font-semibold text-foreground">
-              ⚠️ Cảnh báo
-            </h3>
+        <div className="card flex flex-col">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="text-[13px] font-medium text-foreground">Cảnh báo hệ thống</h3>
           </div>
           <div className="p-4 space-y-2.5">
             {/* Deposit thấp */}
@@ -201,13 +182,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Row 4: Quick actions */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2">
         <Link
           href="/bookings/new"
           className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium',
-            'bg-primary text-white hover:bg-primary/90',
-            'transition-all duration-150 active:scale-95',
+            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
+            'bg-foreground text-background hover:opacity-90',
+            'transition-all duration-150 active:scale-[0.98] border border-transparent',
           )}
         >
           <Plus className="w-4 h-4" />
@@ -215,25 +196,27 @@ export default function DashboardPage() {
         </Link>
 
         <Link
-          href="/flights"
+          href="https://book.tanphuapg.com"
+          target="_blank"
+          rel="noopener noreferrer"
           className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium',
+            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
             'bg-card border border-border text-foreground',
-            'hover:bg-accent transition-all duration-150 active:scale-95',
+            'hover:bg-accent transition-all duration-150 active:scale-[0.98]',
           )}
         >
-          <Search className="w-4 h-4" />
+          <Search className="w-4 h-4 text-muted-foreground" />
           Tra cứu giá vé
         </Link>
 
         <button
           className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium',
+            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
             'bg-card border border-border text-foreground',
-            'hover:bg-accent transition-all duration-150 active:scale-95',
+            'hover:bg-accent transition-all duration-150 active:scale-[0.98]',
           )}
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-4 h-4 text-muted-foreground" />
           Đối soát hôm nay
         </button>
       </div>
@@ -253,43 +236,41 @@ interface SampleBooking {
   createdAt: string;
 }
 
-// Component row booking
 function BookingRow({ booking }: { booking: SampleBooking }) {
   return (
     <Link
       href={`/bookings/${booking.id}`}
-      className="flex items-center gap-3 px-5 py-3 hover:bg-accent/50 transition-colors"
+      className="flex items-center justify-between gap-4 px-5 py-3 hover:bg-accent/50 transition-colors group"
     >
-      <div className="w-24 flex-shrink-0">
-        <p className="text-xs font-mono font-medium text-primary">
+      <div className="flex flex-col gap-0.5 w-24 flex-shrink-0">
+        <p className="text-[13px] font-medium text-foreground group-hover:underline">
           {booking.bookingCode}
         </p>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-foreground truncate">{booking.contactName}</p>
-        <p className="text-xs text-muted-foreground">{booking.route}</p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className="text-sm font-medium text-foreground">
-          {formatVND(booking.totalSellPrice)}
-        </p>
-        <p className="text-xs text-emerald-500">
-          +{formatVND(booking.profit)}
-        </p>
-      </div>
-      <div className="flex-shrink-0">
         <span className={cn(
-          'inline-block px-2 py-0.5 rounded-full text-[10px] font-medium',
-          BOOKING_STATUS_CLASSES[booking.status] ?? 'status-new',
+          'inline-flex items-center w-fit mt-0.5',
+          BOOKING_STATUS_CLASSES[booking.status] ?? 'badge-default',
         )}>
           {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
         </span>
+      </div>
+      
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <p className="text-[13px] text-foreground truncate">{booking.contactName}</p>
+        <p className="text-[11px] text-muted-foreground">{booking.route}</p>
+      </div>
+
+      <div className="text-right flex flex-col gap-0.5 flex-shrink-0">
+        <p className="text-[13px] font-medium font-tabular text-foreground">
+          {formatVND(booking.totalSellPrice)}
+        </p>
+        <p className="text-[11px] font-tabular text-muted-foreground">
+          Lãi: <span className="text-emerald-500 dark:text-emerald-400">+{formatVND(booking.profit)}</span>
+        </p>
       </div>
     </Link>
   );
 }
 
-// Component alert item
 function AlertItem({
   type,
   text,
@@ -299,16 +280,18 @@ function AlertItem({
   text: string;
   time: string;
 }) {
-  const styles = {
-    warning: 'bg-yellow-500/10 border-yellow-500/20 text-yellow-600 dark:text-yellow-400',
-    error:   'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400',
-    info:    'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400',
-  };
-
+  const isError = type === 'error';
+  const isWarning = type === 'warning';
+  
   return (
-    <div className={cn('px-3 py-2.5 rounded-lg border text-xs', styles[type])}>
-      <p className="font-medium leading-snug">{text}</p>
-      <p className="opacity-60 mt-0.5">{time}</p>
+    <div className={cn(
+      'px-3 py-2.5 rounded-md border text-[13px] flex items-center justify-between gap-3',
+      isError ? 'bg-destructive/10 border-destructive/20 text-destructive' :
+      isWarning ? 'bg-warning/10 border-warning/20 text-warning' :
+      'bg-accent border-border text-foreground'
+    )}>
+      <p className="font-medium leading-snug truncate">{text}</p>
+      <p className="opacity-60 text-[11px] whitespace-nowrap flex-shrink-0">{time}</p>
     </div>
   );
 }

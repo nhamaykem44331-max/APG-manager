@@ -1,24 +1,37 @@
-// APG Manager RMS - Tài chính (Tab-based: Tổng quan, Đối soát, Công nợ, Deposit)
+// APG Manager RMS - Tài chính (Phase A: AR/AP/NCC + Phase B: Dòng tiền/Chi phí)
 'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Wallet, TrendingUp, AlertCircle, RefreshCw,
-  ArrowUpCircle, Clock, CheckCircle2, Loader2,
-  BarChart3, CreditCard,
+  Wallet, TrendingUp, TrendingDown, AlertCircle, RefreshCw,
+  ArrowUpCircle, ArrowDownCircle, CheckCircle2, Loader2,
+  BarChart3, CreditCard, Building2,
 } from 'lucide-react';
-import { financeApi } from '@/lib/api';
+import { financeApi, ledgerApi } from '@/lib/api';
 import {
   cn, formatVND, formatVNDFull, formatDate, AIRLINE_NAMES, AIRLINE_COLORS,
 } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataTable } from '@/components/ui/data-table';
 import { RevenueChart } from '@/components/charts/revenue-chart';
+import { ReceivableTab } from '@/components/finance/receivable-tab';
+import { PayableTab } from '@/components/finance/payable-tab';
+import { SuppliersTab } from '@/components/finance/suppliers-tab';
+import { CashFlowTab } from '@/components/finance/cashflow-tab';
+import { ExpenseTab } from '@/components/finance/expense-tab';
+import type { LedgerSummary } from '@/types';
 
 const TABS = [
   { key: 'overview', label: 'Tổng quan', icon: BarChart3 },
-  { key: 'deposits', label: 'Deposit hãng bay', icon: CreditCard },
-  { key: 'debts', label: 'Công nợ', icon: AlertCircle },
+  { key: 'receivable', label: '📥 Phải thu (AR)', icon: ArrowDownCircle },
+  { key: 'payable', label: '📤 Phải trả (AP)', icon: ArrowUpCircle },
+  { key: 'cashflow', label: '💵 Dòng tiền', icon: TrendingUp },
+  { key: 'expenses', label: '📉 Chi phí VP', icon: TrendingDown },
+  { key: 'deposits', label: 'Deposit', icon: CreditCard },
+  { key: 'debts', label: 'Công nợ cũ', icon: AlertCircle },
   { key: 'reconcile', label: 'Đối soát', icon: CheckCircle2 },
+  { key: 'suppliers', label: 'NCC & Đối tác', icon: Building2 },
 ];
 
 // Revenue chart data mẫu
@@ -36,27 +49,24 @@ export default function FinancePage() {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="space-y-5 max-w-[1400px]">
+    <div className="space-y-6 max-w-[1400px]">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Tài chính</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Quản lý doanh thu, lợi nhuận, công nợ và đối soát
-        </p>
-      </div>
+      <PageHeader
+        title="Tài chính"
+        description="Quản lý doanh thu, lợi nhuận, công nợ và đối soát"
+      />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
+      <div className="flex gap-1 border-b border-border overflow-x-auto scroller">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium',
-              'border-b-2 -mb-px transition-colors',
+              'flex items-center gap-1.5 px-4 h-10 min-w-max text-[13px] font-medium transition-colors border-b-2 -mb-px',
               activeTab === tab.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
             <tab.icon className="w-3.5 h-3.5" />
@@ -67,9 +77,14 @@ export default function FinancePage() {
 
       {/* Tab content */}
       {activeTab === 'overview' && <OverviewTab />}
+      {activeTab === 'receivable' && <ReceivableTab />}
+      {activeTab === 'payable' && <PayableTab />}
+      {activeTab === 'cashflow' && <CashFlowTab />}
+      {activeTab === 'expenses' && <ExpenseTab />}
       {activeTab === 'deposits' && <DepositsTab />}
       {activeTab === 'debts' && <DebtsTab />}
       {activeTab === 'reconcile' && <ReconcileTab />}
+      {activeTab === 'suppliers' && <SuppliersTab />}
     </div>
   );
 }
@@ -82,6 +97,12 @@ function OverviewTab() {
     select: (r) => r.data,
   });
 
+  // Lấy tổng hợp AR/AP từ ledger
+  const { data: ledgerSummary } = useQuery({
+    queryKey: ['ledger', 'summary'],
+    queryFn: () => ledgerApi.getSummary().then((r) => r.data as LedgerSummary),
+  });
+
   const stats = data ?? {
     month: { revenue: 1_200_000_000, profit: 120_000_000, bookings: 380 },
     today: { revenue: 45_200_000, profit: 4_800_000, bookings: 23 },
@@ -91,7 +112,7 @@ function OverviewTab() {
 
   return (
     <div className="space-y-5">
-      {/* KPI 4 ô */}
+      {/* KPI 4 ô cũ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
@@ -112,28 +133,53 @@ function OverviewTab() {
             sub: `LN: ${formatVND(stats.today.profit)}`, icon: ArrowUpCircle, color: 'text-purple-500',
           },
         ].map((card) => (
-          <div key={card.label} className={cn('card p-4', isLoading && 'animate-pulse')}>
+          <div key={card.label} className={cn('card p-4 flex flex-col justify-between min-h-[100px]', isLoading && 'animate-pulse')}>
             <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">{card.label}</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{card.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
+              <p className="text-[13px] font-medium text-muted-foreground">{card.label}</p>
+              <div className="w-6 h-6 rounded flex items-center justify-center bg-accent/50">
+                <card.icon className={cn('w-3.5 h-3.5', card.color)} />
               </div>
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                <card.icon className={cn('w-4.5 h-4.5', card.color)} />
-              </div>
+            </div>
+            <div className="mt-2">
+              <p className="text-2xl font-bold font-tabular tracking-tight text-foreground">{card.value}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{card.sub}</p>
             </div>
           </div>
         ))}
       </div>
+
+      {/* KPI AR/AP từ AccountsLedger */}
+      {ledgerSummary && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="card p-4 border-l-4 border-l-blue-500">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">📥 Tổng phải thu (AR)</p>
+            <p className="text-xl font-bold font-tabular text-blue-500 mt-1">{formatVND(ledgerSummary.totalReceivable)}</p>
+            <p className="text-[11px] text-red-500 mt-1">Quá hạn: {formatVND(ledgerSummary.overdueReceivable)}</p>
+          </div>
+          <div className="card p-4 border-l-4 border-l-orange-500">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">📤 Tổng phải trả (AP)</p>
+            <p className="text-xl font-bold font-tabular text-orange-500 mt-1">{formatVND(ledgerSummary.totalPayable)}</p>
+            <p className="text-[11px] text-red-500 mt-1">Quá hạn: {formatVND(ledgerSummary.overduePayable)}</p>
+          </div>
+          <div className={cn('card p-4 border-l-4', ledgerSummary.netPosition >= 0 ? 'border-l-emerald-500' : 'border-l-red-500')}>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">⚖️ Vị thế ròng (AR - AP)</p>
+            <p className={cn('text-xl font-bold font-tabular mt-1', ledgerSummary.netPosition >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+              {ledgerSummary.netPosition >= 0 ? '+' : ''}{formatVND(ledgerSummary.netPosition)}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {ledgerSummary.receivableCount} khoản thu · {ledgerSummary.payableCount} khoản chi
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Chart */}
       <RevenueChart data={SAMPLE_CHART} />
 
       {/* Lợi nhuận theo hãng - bar list */}
       <div className="card p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Doanh thu theo hãng bay (tháng này)</h3>
-        <div className="space-y-3">
+        <h3 className="text-[13px] font-semibold text-foreground mb-4">Doanh thu theo hãng bay (tháng này)</h3>
+        <div className="space-y-4">
           {[
             { airline: 'VN', revenue: 580_000_000, pct: 48 },
             { airline: 'VJ', revenue: 360_000_000, pct: 30 },
@@ -141,12 +187,12 @@ function OverviewTab() {
             { airline: 'BL', revenue: 72_000_000, pct: 6 },
             { airline: 'VU', revenue: 24_000_000, pct: 2 },
           ].map((row) => (
-            <div key={row.airline} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
+            <div key={row.airline} className="space-y-1.5">
+              <div className="flex items-center justify-between text-[13px]">
                 <span className="font-medium text-foreground">
                   {AIRLINE_NAMES[row.airline]}
                 </span>
-                <span className="text-muted-foreground">{formatVND(row.revenue)} · {row.pct}%</span>
+                <span className="text-muted-foreground font-tabular">{formatVND(row.revenue)} · {row.pct}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5">
                 <div
@@ -199,7 +245,7 @@ function DepositsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-[13px] text-muted-foreground">
         Theo dõi số dư tài khoản đặt cọc tại các hãng hàng không. Cảnh báo khi số dư thấp hơn ngưỡng.
       </p>
 
@@ -217,23 +263,23 @@ function DepositsTab() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-primary-foreground text-xs font-bold"
                     style={{ backgroundColor: AIRLINE_COLORS[d.airline] }}
                   >
                     {d.airline}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{AIRLINE_NAMES[d.airline]}</p>
+                    <p className="text-[13px] font-semibold text-foreground">{AIRLINE_NAMES[d.airline]}</p>
                     {isLow && (
-                      <p className="text-[10px] text-red-500 font-medium">⚠ Sắp hết</p>
+                      <p className="text-[11px] text-red-500 font-medium">⚠ Sắp hết</p>
                     )}
                   </div>
                 </div>
               </div>
 
               {/* Balance */}
-              <p className="text-2xl font-bold text-foreground">{formatVND(d.balance)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-2xl font-bold font-tabular tracking-tight text-foreground">{formatVND(d.balance)}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
                 Ngưỡng cảnh báo: {formatVND(d.alertThreshold)}
               </p>
 
@@ -250,24 +296,24 @@ function DepositsTab() {
 
               {/* Top-up form */}
               {topupAirline === d.id ? (
-                <div className="mt-3 flex gap-2">
+                <div className="mt-4 flex gap-2">
                   <input
                     type="number"
-                    placeholder="Số tiền nạp (VND)"
+                    placeholder="Số tiền (VND)"
                     value={topupAmount}
                     onChange={(e) => setTopupAmount(e.target.value)}
-                    className="flex-1 px-2 py-1.5 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="flex-1 px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   <button
                     onClick={() => topupMutation.mutate({ id: d.id, amount: Number(topupAmount) })}
                     disabled={topupMutation.isPending || !topupAmount}
-                    className="px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary/90 disabled:opacity-50"
+                    className="px-3 h-9 text-[13px] font-medium bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50 flex items-center justify-center transition-all"
                   >
-                    {topupMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Nạp'}
+                    {topupMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Nạp'}
                   </button>
                   <button
                     onClick={() => setTopupAirline(null)}
-                    className="px-2 py-1.5 text-xs border border-border rounded hover:bg-accent text-muted-foreground"
+                    className="px-3 h-9 text-[13px] font-medium border border-border rounded-md hover:bg-accent text-muted-foreground transition-all"
                   >
                     Hủy
                   </button>
@@ -275,7 +321,7 @@ function DepositsTab() {
               ) : (
                 <button
                   onClick={() => setTopupAirline(d.id)}
-                  className="mt-3 w-full py-1.5 text-xs border border-border rounded hover:bg-accent text-muted-foreground transition-colors"
+                  className="mt-4 w-full h-9 text-[13px] font-medium border border-border border-dashed rounded-md hover:border-foreground/50 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   + Nạp tiền
                 </button>
@@ -314,25 +360,25 @@ function DebtsTab() {
     <div className="space-y-5">
       {/* Aging chart */}
       <div className="card p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Phân tích tuổi nợ</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <h3 className="text-[13px] font-semibold text-foreground mb-4">Phân tích tuổi nợ</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {Object.entries(aging).map(([bucket, amount]) => (
-            <div key={bucket} className="text-center p-3 rounded-lg bg-muted/40">
+            <div key={bucket} className="text-center p-4 rounded-lg bg-accent/30 border border-border">
               <div
-                className="text-lg font-bold"
+                className="text-xl font-bold font-tabular"
                 style={{ color: DEBT_COLORS[bucket as keyof typeof DEBT_COLORS] }}
               >
                 {formatVND(amount)}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{bucket} ngày</p>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[13px] text-muted-foreground mt-1">{bucket} ngày</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
                 {Math.round((amount / totalDebt) * 100)}%
               </p>
             </div>
           ))}
         </div>
         {/* Total bar */}
-        <div className="mt-4 flex rounded-full overflow-hidden h-2">
+        <div className="mt-5 flex rounded-full overflow-hidden h-2">
           {Object.entries(aging).map(([bucket, amount]) => (
             <div
               key={bucket}
@@ -343,49 +389,63 @@ function DebtsTab() {
             />
           ))}
         </div>
-        <p className="text-xs text-muted-foreground mt-2 text-right">
+        <p className="text-[13px] text-foreground font-medium mt-3 text-right">
           Tổng: {formatVNDFull(totalDebt)}
         </p>
       </div>
 
       {/* Debt table */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Danh sách công nợ</h3>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 className="text-[13px] font-semibold text-foreground">Danh sách công nợ</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {['Khách hàng', 'Tổng nợ', 'Đã trả', 'Còn lại', 'Hạn TT', 'Trạng thái', ''].map(h => (
-                  <th key={h} className="text-left text-xs font-medium text-muted-foreground px-4 py-2.5">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {SAMPLE_DEBTS.map((debt) => (
-                <tr key={debt.id} className="hover:bg-accent/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground text-sm">{debt.customerName}</p>
-                    <p className="text-xs text-muted-foreground">{debt.phone}</p>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-foreground">{formatVND(debt.total)}</td>
-                  <td className="px-4 py-3 text-emerald-500">{formatVND(debt.paid)}</td>
-                  <td className="px-4 py-3 font-semibold text-orange-500">{formatVND(debt.remaining)}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(debt.dueDate)}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-medium', DEBT_STATUS[debt.status] ?? '')}>
-                      {DEBT_STATUS_LABEL[debt.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button className="text-xs text-primary hover:underline">Nhắc nợ</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={SAMPLE_DEBTS}
+          columns={[
+            {
+              header: 'Khách hàng',
+              cell: (d) => (
+                <div>
+                  <p className="font-medium text-foreground text-[13px]">{d.customerName}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{d.phone}</p>
+                </div>
+              ),
+            },
+            {
+              header: 'Tổng nợ',
+              cell: (d) => <span className="font-medium inline-block font-tabular text-foreground">{formatVND(d.total)}</span>,
+              className: 'text-right',
+            },
+            {
+              header: 'Đã trả',
+              cell: (d) => <span className="text-emerald-500 font-medium inline-block font-tabular">{formatVND(d.paid)}</span>,
+              className: 'text-right',
+            },
+            {
+              header: 'Còn lại',
+              cell: (d) => <span className="font-bold text-orange-500 inline-block font-tabular">{formatVND(d.remaining)}</span>,
+              className: 'text-right',
+            },
+            {
+              header: 'Hạn TT',
+              cell: (d) => <span className="text-muted-foreground font-tabular">{formatDate(d.dueDate)}</span>,
+              className: 'text-right',
+            },
+            {
+              header: 'Trạng thái',
+              cell: (d) => (
+                <span className={cn('inline-block px-1.5 py-0.5 rounded text-[11px] font-medium', DEBT_STATUS[d.status] ?? '')}>
+                  {DEBT_STATUS_LABEL[d.status]}
+                </span>
+              ),
+            },
+            {
+              header: '',
+              cell: () => <button className="text-[13px] font-medium text-foreground underline hover:no-underline hover:text-primary transition-colors">Nhắc nợ</button>,
+              className: 'text-right',
+            },
+          ]}
+        />
       </div>
     </div>
   );
@@ -417,10 +477,10 @@ function ReconcileTab() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="card p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-1">Chạy đối soát</h3>
-        <p className="text-xs text-muted-foreground mb-4">
+        <h3 className="text-[13px] font-semibold text-foreground mb-1">Chạy đối soát</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">
           So sánh giá net thực tế với bảng giá hãng bay. Tự động chạy lúc 06:00 hàng ngày qua n8n.
         </p>
 
@@ -430,16 +490,16 @@ function ReconcileTab() {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             className={cn(
-              'px-3 py-2 text-sm rounded-lg border border-border bg-background',
-              'text-foreground focus:outline-none focus:ring-1 focus:ring-primary',
+              'px-3 h-9 text-[13px] rounded-md border border-border bg-background',
+              'text-foreground focus:outline-none focus:ring-1 focus:ring-primary inline-flex',
             )}
           />
           <button
             onClick={handleRun}
             disabled={isRunning}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
-              'bg-primary text-white hover:bg-primary/90 transition-colors',
+              'flex items-center gap-1.5 px-4 h-9 rounded-md text-[13px] font-medium',
+              'bg-foreground text-background hover:opacity-90 transition-all active:scale-[0.98]',
               'disabled:opacity-50',
             )}
           >
@@ -453,10 +513,10 @@ function ReconcileTab() {
 
         {/* Kết quả đối soát */}
         {result && (
-          <div className="mt-5 p-4 rounded-lg bg-muted/40 border border-border">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="mt-5 p-5 rounded-md bg-accent/40 border border-border/50">
+            <div className="flex items-center gap-2 mb-4">
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              <span className="text-sm font-medium text-foreground">
+              <span className="text-[13px] font-semibold text-foreground">
                 Đối soát ngày {formatDate(selectedDate)} hoàn tất
               </span>
             </div>
@@ -466,59 +526,77 @@ function ReconcileTab() {
                 { label: 'Doanh thu', value: formatVND(result.totalRevenue) },
                 { label: 'Lợi nhuận', value: formatVND(result.totalProfit) },
               ].map((item) => (
-                <div key={item.label} className="text-center">
-                  <p className="text-lg font-bold text-foreground">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
+                <div key={item.label}>
+                  <p className="text-xl font-bold font-tabular tracking-tight text-foreground">{item.value}</p>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide mt-0.5">{item.label}</p>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-emerald-500 mt-3 text-center">
-              ✅ Không phát hiện chênh lệch. Báo cáo đã gửi Telegram.
-            </p>
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <p className="text-[13px] text-emerald-600 dark:text-emerald-500 font-medium flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Không phát hiện chênh lệch. Báo cáo đã gửi vào nhóm Telegram kế toán.
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Lịch sử đối soát */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">Lịch sử đối soát gần đây</h3>
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="text-[13px] font-semibold text-foreground">Lịch sử đối soát gần đây</h3>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              {['Ngày', 'Vé', 'Doanh thu', 'Lợi nhuận', 'Chênh lệch', 'Trạng thái'].map(h => (
-                <th key={h} className="text-left text-xs font-medium text-muted-foreground px-4 py-2.5">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {[
-              { date: '20/03/2026', tickets: 21, revenue: 41_500_000, profit: 4_100_000, diff: 0, ok: true },
-              { date: '19/03/2026', tickets: 18, revenue: 35_200_000, profit: 3_500_000, diff: -150_000, ok: false },
-              { date: '18/03/2026', tickets: 25, revenue: 52_300_000, profit: 5_200_000, diff: 0, ok: true },
-            ].map((row) => (
-              <tr key={row.date} className="hover:bg-accent/30 transition-colors">
-                <td className="px-4 py-3 text-sm text-foreground">{row.date}</td>
-                <td className="px-4 py-3 text-sm text-foreground">{row.tickets}</td>
-                <td className="px-4 py-3 text-sm text-foreground">{formatVND(row.revenue)}</td>
-                <td className="px-4 py-3 text-sm text-emerald-500">{formatVND(row.profit)}</td>
-                <td className={cn('px-4 py-3 text-xs font-medium', row.diff < 0 ? 'text-red-500' : 'text-muted-foreground')}>
-                  {row.diff < 0 ? formatVND(row.diff) : '—'}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={cn(
-                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-                    row.ok ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                           : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                  )}>
-                    {row.ok ? '✅ Khớp' : '⚠ Chênh lệch'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable
+          data={[
+            { date: '20/03/2026', tickets: 21, revenue: 41_500_000, profit: 4_100_000, diff: 0, ok: true },
+            { date: '19/03/2026', tickets: 18, revenue: 35_200_000, profit: 3_500_000, diff: -150_000, ok: false },
+            { date: '18/03/2026', tickets: 25, revenue: 52_300_000, profit: 5_200_000, diff: 0, ok: true },
+          ]}
+          columns={[
+            {
+              header: 'Ngày',
+              accessorKey: 'date',
+              className: 'text-foreground font-medium text-[13px]',
+            },
+            {
+              header: 'Vé',
+              accessorKey: 'tickets',
+              className: 'text-[13px] font-tabular text-muted-foreground',
+            },
+            {
+              header: 'Doanh thu',
+              cell: (r) => <span className="font-tabular inline-block">{formatVND(r.revenue)}</span>,
+              className: 'text-right text-[13px]',
+            },
+            {
+              header: 'Lợi nhuận',
+              cell: (r) => <span className="text-emerald-500 font-medium font-tabular inline-block">{formatVND(r.profit)}</span>,
+              className: 'text-right text-[13px]',
+            },
+            {
+              header: 'Chênh lệch',
+              cell: (r) => (
+                <span className={cn('font-tabular inline-block', r.diff < 0 ? 'text-red-500 font-medium' : 'text-muted-foreground')}>
+                  {r.diff < 0 ? formatVND(r.diff) : '—'}
+                </span>
+              ),
+              className: 'text-right text-[13px]',
+            },
+            {
+              header: 'Trạng thái',
+              cell: (r) => (
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium',
+                  r.ok ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                       : 'bg-red-500/10 text-red-600 dark:text-red-400',
+                )}>
+                  {r.ok ? 'Khớp' : 'Chênh lệch'}
+                </span>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   );

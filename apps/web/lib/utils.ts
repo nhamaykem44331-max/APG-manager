@@ -136,3 +136,71 @@ export const VIP_TIER_LABELS: Record<string, string> = {
   GOLD: '⭐ Vàng',
   PLATINUM: '💎 Platinum',
 };
+
+// ===== ACCOUNTS LEDGER CONSTANTS =====
+
+export const LEDGER_DIRECTION_LABELS: Record<string, string> = {
+  RECEIVABLE: 'Phải thu (AR)',
+  PAYABLE: 'Phải trả (AP)',
+};
+
+export const LEDGER_PARTY_LABELS: Record<string, string> = {
+  CUSTOMER_INDIVIDUAL: '👤 Khách lẻ',
+  CUSTOMER_CORPORATE: '🏢 Khách DN',
+  AIRLINE: '✈️ Hãng bay',
+  GDS_PROVIDER: '🖥️ GDS',
+  PARTNER: '🤝 Đối tác',
+  OTHER_SUPPLIER: '🏭 NCC khác',
+};
+
+export const DEBT_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Đang nợ',
+  PARTIAL_PAID: 'Trả một phần',
+  PAID: 'Đã thanh toán',
+  OVERDUE: 'Quá hạn',
+  WRITTEN_OFF: 'Xóa nợ',
+};
+
+export const DEBT_STATUS_CLASSES: Record<string, string> = {
+  ACTIVE: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  PARTIAL_PAID: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  PAID: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  OVERDUE: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  WRITTEN_OFF: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+};
+
+// ===== PHASE B: DÒNG TIỀN + CHI PHÍ =====
+
+export const CASHFLOW_CATEGORY_LABELS: Record<string, string> = {
+  TICKET_PAYMENT: '🎫 Thu tiền vé',
+  TICKET_REFUND: '↩️ Hoàn vé',
+  PARTNER_FEEDBACK: '🤝 Hoa hồng đối tác',
+  AIRLINE_PAYMENT: '✈️ Nạp/TT hãng bay',
+  SALARY: '💰 Lương NV',
+  OFFICE_RENT: '🏢 Thuê VP',
+  OFFICE_SUPPLIES: '🖊️ Đồ dùng VP',
+  ENTERTAINMENT: '🍽️ Tiếp khách',
+  TRAVEL: '🚗 Công tác phí',
+  RITUAL: '🪷 Lễ / Phong thủy',
+  MARKETING: '📣 Marketing',
+  TECHNOLOGY: '💻 Công nghệ',
+  DISBURSEMENT: '🏦 Giải ngân',
+  OTHER: '📦 Khác',
+};
+
+export const CASHFLOW_CATEGORY_COLORS: Record<string, string> = {
+  TICKET_PAYMENT: '#3b82f6',
+  TICKET_REFUND: '#f59e0b',
+  PARTNER_FEEDBACK: '#8b5cf6',
+  AIRLINE_PAYMENT: '#0ea5e9',
+  SALARY: '#ec4899',
+  OFFICE_RENT: '#f97316',
+  OFFICE_SUPPLIES: '#84cc16',
+  ENTERTAINMENT: '#14b8a6',
+  TRAVEL: '#6366f1',
+  RITUAL: '#f43f5e',
+  MARKETING: '#a855f7',
+  TECHNOLOGY: '#06b6d4',
+  DISBURSEMENT: '#10b981',
+  OTHER: '#94a3b8',
+};

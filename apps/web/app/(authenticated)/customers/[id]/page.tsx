@@ -18,6 +18,8 @@ import {
   cn, formatVND, formatVNDFull, formatDate, formatDateTime,
   VIP_TIER_LABELS, BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
 } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataTable } from '@/components/ui/data-table';
 import type {
   Customer, Booking, CustomerInteraction, CustomerNote,
   RfmScore, CustomerStats, TimelineItem,
@@ -117,94 +119,101 @@ export default function CustomerDetailPage() {
   const cust: Customer = customer ?? SAMPLE_CUSTOMER;
 
   return (
-    <div className="max-w-[1400px] space-y-4">
+    <div className="max-w-[1400px] space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/customers" className="p-1.5 rounded-md hover:bg-accent transition-colors">
-          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
-        </Link>
-        <div className="flex items-center gap-3 flex-1">
-          {/* Avatar */}
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center flex-shrink-0 shadow-lg">
-            <span className="text-lg font-bold text-white">
-              {cust.fullName.split(' ').pop()?.charAt(0) ?? '?'}
-            </span>
-          </div>
-          <div>
+      <PageHeader
+        title={
+          <div className="flex items-center gap-3">
+            <Link href="/customers" className="p-1 rounded-md hover:bg-accent transition-colors -ml-1">
+              <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+            </Link>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-foreground">{cust.fullName}</h1>
-              <span className={cn(
-                'inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold',
-                VIP_BADGE[cust.vipTier] ?? VIP_BADGE.NORMAL,
-              )}>
-                {VIP_TIER_LABELS[cust.vipTier]}
-              </span>
-              {cust.type === 'CORPORATE' && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                  <Building2 className="w-3 h-3" /> Doanh nghiệp
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shadow-sm">
+                <span className="text-[13px] font-bold text-white">
+                  {cust.fullName.split(' ').pop()?.charAt(0) ?? '?'}
                 </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{cust.phone}</span>
-              {cust.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{cust.email}</span>}
+              </div>
+              <span>{cust.fullName}</span>
             </div>
           </div>
-        </div>
-
-        {/* RFM Summary */}
-        {rfm && (
-          <div className="hidden md:flex items-center gap-3">
-            <div className="text-center px-3 py-1.5 rounded-lg bg-card border border-border">
-              <p className="text-lg font-bold text-foreground">{rfm.totalScore}</p>
-              <p className="text-[10px] text-muted-foreground">RFM Score</p>
-            </div>
-            <div className="text-center px-3 py-1.5 rounded-lg bg-card border border-border">
-              <p className="text-sm font-semibold text-foreground">
-                {SEGMENT_LABELS[rfm.segment]?.emoji} {SEGMENT_LABELS[rfm.segment]?.label}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Phân khúc</p>
-            </div>
-            <div className="text-center px-3 py-1.5 rounded-lg bg-card border border-border">
-              <p className={cn('text-sm font-semibold', CHURN_COLORS[rfm.churnRisk])}>
-                {rfm.churnRisk === 'LOW' ? '🟢 Thấp' : rfm.churnRisk === 'MEDIUM' ? '🟡 TB' : '🔴 Cao'}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Rủi ro rời</p>
-            </div>
+        }
+        description={
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn(
+              'inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold',
+              VIP_BADGE[cust.vipTier] ?? VIP_BADGE.NORMAL,
+            )}>
+              {VIP_TIER_LABELS[cust.vipTier]}
+            </span>
+            {cust.type === 'CORPORATE' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                <Building2 className="w-3 h-3" /> Doanh nghiệp
+              </span>
+            )}
+            <span className="mx-1 text-border">•</span>
+            <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-muted-foreground" /> {cust.phone}</span>
+            {cust.email && (
+              <>
+                <span className="mx-1 text-border">•</span>
+                <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-muted-foreground" /> {cust.email}</span>
+              </>
+            )}
           </div>
-        )}
-      </div>
+        }
+        actions={
+          rfm ? (
+            <div className="hidden md:flex items-center gap-2">
+              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                <p className="text-sm font-bold text-foreground">{rfm.totalScore}</p>
+                <p className="text-[10px] text-muted-foreground">RFM Score</p>
+              </div>
+              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                <p className="text-[13px] font-semibold text-foreground">
+                  {SEGMENT_LABELS[rfm.segment]?.emoji} {SEGMENT_LABELS[rfm.segment]?.label}
+                </p>
+                <p className="text-[10px] text-muted-foreground">Phân khúc</p>
+              </div>
+              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                <p className={cn('text-[13px] font-semibold', CHURN_COLORS[rfm.churnRisk])}>
+                  {rfm.churnRisk === 'LOW' ? '🟢 Thấp' : rfm.churnRisk === 'MEDIUM' ? '🟡 TB' : '🔴 Cao'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">Rủi ro rời</p>
+              </div>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Tổng chi tiêu', value: formatVND(Number(cust.totalSpent)), icon: TrendingUp, color: 'text-emerald-500' },
           { label: 'Tổng booking', value: cust.totalBookings.toString(), icon: Plane, color: 'text-blue-500' },
           { label: 'Chi năm nay', value: formatVND(stats?.yearlySpend ?? 0), icon: Activity, color: 'text-purple-500' },
           { label: 'TB/vé', value: formatVND(stats?.averageTicketValue ?? 0), icon: CreditCard, color: 'text-orange-500' },
         ].map((s) => (
-          <div key={s.label} className="card px-4 py-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <div key={s.label} className="card p-4 flex flex-col justify-between min-h-[100px]">
+            <div className="flex items-start justify-between">
+              <p className="text-[13px] font-medium text-muted-foreground">{s.label}</p>
               <s.icon className={cn('w-4 h-4', s.color)} />
             </div>
             <div>
-              <p className="text-lg font-bold text-foreground">{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className="text-2xl font-bold font-tabular tracking-tight text-foreground">{s.value}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border pb-0">
+      <div className="flex gap-1 border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
+              'flex items-center gap-1.5 px-4 h-10 text-[13px] font-medium transition-colors border-b-2 -mb-px',
               activeTab === tab.key
-                ? 'border-primary text-primary'
+                ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
@@ -234,8 +243,8 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
       {/* Left: Info */}
       <div className="lg:col-span-2 space-y-4">
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Thông tin cá nhân</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <h3 className="text-[13px] font-semibold text-foreground mb-4">Thông tin cá nhân</h3>
+          <div className="grid grid-cols-2 gap-4 text-[13px]">
             {[
               { label: 'Họ tên', value: customer.fullName },
               { label: 'Điện thoại', value: customer.phone },
@@ -247,22 +256,22 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
               { label: 'Ngày tạo', value: formatDate(customer.createdAt) },
             ].map((row) => (
               <div key={row.label}>
-                <p className="text-xs text-muted-foreground mb-0.5">{row.label}</p>
+                <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">{row.label}</p>
                 <p className="font-medium text-foreground">{row.value}</p>
               </div>
             ))}
           </div>
 
           {customer.type === 'CORPORATE' && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <h4 className="text-xs font-semibold text-muted-foreground mb-3">Thông tin doanh nghiệp</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="mt-5 pt-5 border-t border-border">
+              <h4 className="text-[13px] font-semibold text-foreground mb-4">Thông tin doanh nghiệp</h4>
+              <div className="grid grid-cols-2 gap-4 text-[13px]">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Tên công ty</p>
+                  <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">Tên công ty</p>
                   <p className="font-medium text-foreground">{customer.companyName ?? '—'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Mã số thuế</p>
+                  <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">Mã số thuế</p>
                   <p className="font-medium text-foreground">{customer.companyTaxId ?? '—'}</p>
                 </div>
               </div>
@@ -270,11 +279,11 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
           )}
 
           {customer.tags && customer.tags.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <p className="text-xs text-muted-foreground mb-2">Tags</p>
+            <div className="mt-5 pt-5 border-t border-border">
+              <p className="text-[11px] text-muted-foreground mb-2 uppercase tracking-wide">Tags</p>
               <div className="flex flex-wrap gap-1.5">
                 {customer.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary font-medium">
+                  <span key={tag} className="px-2 py-0.5 rounded-full text-[11px] bg-accent text-foreground font-medium border border-border">
                     {tag}
                   </span>
                 ))}
@@ -289,28 +298,28 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
         {/* RFM Card */}
         {rfm && (
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h3 className="text-[13px] font-semibold text-foreground mb-4 flex items-center gap-2">
               <Shield className="w-4 h-4 text-muted-foreground" />
               Phân tích RFM
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {[
                 { label: 'Recency (gần đây)', score: rfm.recency, detail: `${rfm.lastBookingDays} ngày trước` },
                 { label: 'Frequency (tần suất)', score: rfm.frequency, detail: `${customer.totalBookings} booking` },
                 { label: 'Monetary (chi tiêu)', score: rfm.monetary, detail: formatVND(Number(customer.totalSpent)) },
               ].map((item) => (
                 <div key={item.label}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="text-foreground font-medium">{item.score}/5</span>
+                  <div className="flex justify-between text-[11px] uppercase tracking-wide mb-1.5">
+                    <span className="text-muted-foreground font-medium">{item.label}</span>
+                    <span className="text-foreground font-semibold">{item.score}/5</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary rounded-full transition-all"
+                      className="h-full bg-foreground rounded-full transition-all"
                       style={{ width: `${(item.score / 5) * 100}%` }}
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{item.detail}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">{item.detail}</p>
                 </div>
               ))}
             </div>
@@ -320,12 +329,12 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
         {/* Top Routes */}
         {stats && stats.topRoutes.length > 0 && (
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Tuyến bay hay đi</h3>
-            <div className="space-y-2">
+            <h3 className="text-[13px] font-semibold text-foreground mb-3">Tuyến bay hay đi</h3>
+            <div className="space-y-2.5">
               {stats.topRoutes.map((route) => (
-                <div key={route.route} className="flex items-center justify-between text-sm">
+                <div key={route.route} className="flex items-center justify-between text-[13px]">
                   <span className="font-mono font-medium text-foreground">{route.route}</span>
-                  <span className="text-xs text-muted-foreground">{route.count} lần</span>
+                  <span className="text-muted-foreground">{route.count} lần</span>
                 </div>
               ))}
             </div>
@@ -341,54 +350,58 @@ function BookingsTab({ customerId, bookings }: { customerId: string; bookings?: 
 
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              {['Mã booking', 'Trạng thái', 'Nguồn', 'Giá bán', 'Lợi nhuận', 'Thanh toán', 'Ngày tạo'].map((h) => (
-                <th key={h} className="text-left text-xs font-medium text-muted-foreground px-4 py-2.5">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {list.map((b) => (
-              <tr
-                key={b.id}
-                className="hover:bg-accent/40 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/bookings/${b.id}`}
-              >
-                <td className="px-4 py-3 font-mono font-medium text-primary">{b.bookingCode}</td>
-                <td className="px-4 py-3">
-                  <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-medium', BOOKING_STATUS_CLASSES[b.status])}>
-                    {BOOKING_STATUS_LABELS[b.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{b.source}</td>
-                <td className="px-4 py-3 font-medium text-foreground">{formatVND(b.totalSellPrice)}</td>
-                <td className="px-4 py-3 text-emerald-500 font-medium">+{formatVND(b.profit)}</td>
-                <td className="px-4 py-3">
-                  <span className={cn(
-                    'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                    b.paymentStatus === 'PAID' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                    b.paymentStatus === 'PARTIAL' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-                    b.paymentStatus === 'UNPAID' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                  )}>
-                    {b.paymentStatus === 'PAID' ? 'Đã TT' : b.paymentStatus === 'PARTIAL' ? 'Một phần' : 'Chưa TT'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(b.createdAt)}</td>
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                  Chưa có booking nào
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={list}
+        onRowClick={(b) => window.location.href = `/bookings/${b.id}`}
+        columns={[
+          {
+            header: 'Mã BKG',
+            accessorKey: 'bookingCode',
+            className: 'font-mono font-medium text-foreground',
+          },
+          {
+            header: 'Trạng thái',
+            cell: (b) => (
+              <span className={cn('inline-block px-1.5 py-0.5 rounded text-[11px] font-medium', BOOKING_STATUS_CLASSES[b.status])}>
+                {BOOKING_STATUS_LABELS[b.status]}
+              </span>
+            ),
+          },
+          {
+            header: 'Nguồn',
+            accessorKey: 'source',
+            className: 'text-muted-foreground',
+          },
+          {
+            header: 'Giá bán',
+            cell: (b) => <span className="font-medium inline-block font-tabular text-foreground">{formatVND(b.totalSellPrice)}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Lợi nhuận',
+            cell: (b) => <span className="text-emerald-500 font-medium inline-block font-tabular">+{formatVND(b.profit)}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Thanh toán',
+            cell: (b) => (
+              <span className={cn(
+                'px-1.5 py-0.5 rounded text-[11px] font-medium inline-block',
+                b.paymentStatus === 'PAID' && 'bg-green-500/10 text-green-600 dark:text-green-400',
+                b.paymentStatus === 'PARTIAL' && 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+                b.paymentStatus === 'UNPAID' && 'bg-red-500/10 text-red-600 dark:text-red-400',
+              )}>
+                {b.paymentStatus === 'PAID' ? 'Đã TT' : b.paymentStatus === 'PARTIAL' ? 'Một phần' : 'Chưa TT'}
+              </span>
+            ),
+          },
+          {
+            header: 'Ngày tạo',
+            cell: (b) => <span className="text-muted-foreground font-tabular">{formatDate(b.createdAt)}</span>,
+            className: 'text-right',
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -423,7 +436,7 @@ function InteractionsTab({ customerId }: { customerId: string }) {
       <div className="flex justify-end">
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium bg-foreground text-background hover:opacity-90 transition-all active:scale-[0.98]"
         >
           <Plus className="w-3.5 h-3.5" />
           Ghi nhận tương tác
@@ -433,14 +446,14 @@ function InteractionsTab({ customerId }: { customerId: string }) {
       {/* Form */}
       {showForm && (
         <div className="card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Tương tác mới</h3>
+          <h3 className="text-[13px] font-semibold text-foreground">Tương tác mới</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Loại tương tác</label>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block uppercase tracking-wide">Loại tương tác</label>
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {Object.entries(INTERACTION_TYPE_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -448,11 +461,11 @@ function InteractionsTab({ customerId }: { customerId: string }) {
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Kênh</label>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block uppercase tracking-wide">Kênh</label>
               <select
                 value={formData.channel}
                 onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {Object.entries(CHANNEL_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -461,34 +474,34 @@ function InteractionsTab({ customerId }: { customerId: string }) {
             </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Tiêu đề</label>
+            <label className="text-[11px] font-medium text-muted-foreground mb-1 block uppercase tracking-wide">Tiêu đề</label>
             <input
               type="text"
               placeholder="VD: Gọi báo giá HAN-SGN"
               value={formData.subject}
               onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Nội dung</label>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block uppercase tracking-wide">Nội dung</label>
               <textarea
                 placeholder="Chi tiết cuộc trao đổi..."
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                className="w-full px-3 py-2 text-[13px] rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Kết quả</label>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block uppercase tracking-wide">Kết quả</label>
               <textarea
                 placeholder="VD: Đã đặt vé, Hẹn gọi lại..."
                 value={formData.outcome}
                 onChange={(e) => setFormData({ ...formData, outcome: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                className="w-full px-3 py-2 text-[13px] rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
             </div>
           </div>
@@ -496,7 +509,7 @@ function InteractionsTab({ customerId }: { customerId: string }) {
             <button
               onClick={() => createMutation.mutate(formData)}
               disabled={!formData.subject || createMutation.isPending}
-              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+              className="px-4 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 transition-all"
             >
               {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <Send className="w-3.5 h-3.5" />
@@ -504,7 +517,7 @@ function InteractionsTab({ customerId }: { customerId: string }) {
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-accent"
+              className="px-4 h-9 border border-border bg-background rounded-md text-[13px] text-muted-foreground hover:bg-accent transition-all"
             >
               Hủy
             </button>
@@ -556,51 +569,55 @@ function DebtsTab({ debts }: { debts?: Record<string, unknown>[] }) {
 
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              {['Mô tả', 'Tổng nợ', 'Đã trả', 'Còn lại', 'Trạng thái', 'Hạn', 'Ngày tạo'].map((h) => (
-                <th key={h} className="text-left text-xs font-medium text-muted-foreground px-4 py-2.5">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {list.map((d, i) => (
-              <tr key={i} className="hover:bg-accent/40 transition-colors">
-                <td className="px-4 py-3 text-foreground">{(d.description as string) ?? '—'}</td>
-                <td className="px-4 py-3 font-medium text-foreground">{formatVND(Number(d.totalAmount ?? 0))}</td>
-                <td className="px-4 py-3 text-emerald-500">{formatVND(Number(d.paidAmount ?? 0))}</td>
-                <td className="px-4 py-3 font-bold text-red-500">{formatVND(Number(d.remaining ?? 0))}</td>
-                <td className="px-4 py-3">
-                  <span className={cn(
-                    'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                    d.status === 'ACTIVE' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                    d.status === 'OVERDUE' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                    d.status === 'PAID' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                    d.status === 'PARTIAL_PAID' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-                  )}>
-                    {d.status as string}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {d.dueDate ? formatDate(d.dueDate as string) : '—'}
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {d.createdAt ? formatDate(d.createdAt as string) : '—'}
-                </td>
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                  Không có công nợ
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={list}
+        columns={[
+          {
+            header: 'Mô tả',
+            accessorKey: 'description',
+            className: 'text-foreground',
+          },
+          {
+            header: 'Tổng nợ',
+            cell: (d) => <span className="font-medium inline-block font-tabular text-foreground">{formatVND(Number(d.totalAmount ?? 0))}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Đã trả',
+            cell: (d) => <span className="text-emerald-500 font-medium inline-block font-tabular">{formatVND(Number(d.paidAmount ?? 0))}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Còn lại',
+            cell: (d) => <span className="font-bold text-red-500 inline-block font-tabular">{formatVND(Number(d.remaining ?? 0))}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Trạng thái',
+            cell: (d) => (
+              <span className={cn(
+                'px-1.5 py-0.5 rounded text-[11px] font-medium inline-block',
+                d.status === 'ACTIVE' && 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+                d.status === 'OVERDUE' && 'bg-red-500/10 text-red-600 dark:text-red-400',
+                d.status === 'PAID' && 'bg-green-500/10 text-green-600 dark:text-green-400',
+                d.status === 'PARTIAL_PAID' && 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+              )}>
+                {d.status as string}
+              </span>
+            ),
+          },
+          {
+            header: 'Hạn',
+            cell: (d) => <span className="text-muted-foreground font-tabular">{d.dueDate ? formatDate(d.dueDate as string) : '—'}</span>,
+            className: 'text-right',
+          },
+          {
+            header: 'Ngày tạo',
+            cell: (d) => <span className="text-muted-foreground font-tabular">{d.createdAt ? formatDate(d.createdAt as string) : '—'}</span>,
+            className: 'text-right',
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -648,12 +665,12 @@ function NotesTab({ customerId }: { customerId: string }) {
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             rows={2}
-            className="flex-1 px-3 py-2 text-sm rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            className="flex-1 px-3 py-2 text-[13px] rounded-md bg-transparent border-none focus:outline-none resize-none placeholder:text-muted-foreground min-h-[40px] leading-relaxed"
           />
           <button
             onClick={() => createMutation.mutate(newNote)}
             disabled={!newNote.trim() || createMutation.isPending}
-            className="self-end px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+            className="self-end px-4 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 transition-all"
           >
             {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             <Plus className="w-3.5 h-3.5" />

@@ -71,4 +71,25 @@ export class N8nService {
   }): Promise<void> {
     await this.triggerWebhook('/debt-alert', data);
   }
+
+  // Thông báo ghi nhận thanh toán công nợ (AR/AP)
+  async sendLedgerPaymentNotification(data: {
+    ledgerCode: string;
+    amount: number;
+    direction: string;
+    partyName: string;
+  }): Promise<void> {
+    await this.triggerWebhook('/ledger-payment', data);
+  }
+
+  // Cảnh báo công nợ quá hạn (AR/AP)
+  async sendLedgerOverdueAlert(data: {
+    ledgerCode: string;
+    remaining: number;
+    direction: string;
+    partyName: string;
+    daysPastDue: number;
+  }): Promise<void> {
+    await this.triggerWebhook('/ledger-overdue', data);
+  }
 }

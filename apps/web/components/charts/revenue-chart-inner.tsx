@@ -53,8 +53,8 @@ export function RevenueChartInner({ data }: RevenueChartProps) {
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Doanh thu & Lợi nhuận</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">7 ngày gần nhất</p>
+          <h3 className="text-[13px] font-semibold text-foreground">Doanh thu & Lợi nhuận</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">7 ngày gần nhất</p>
         </div>
       </div>
 

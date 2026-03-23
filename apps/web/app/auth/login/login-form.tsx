@@ -66,10 +66,10 @@ export function LoginForm() {
           autoComplete="email"
           disabled={isLoading}
           className={cn(
-            'w-full px-3 py-2.5 rounded-lg text-sm',
+            'w-full px-3 h-9 rounded-md text-[13px]',
             'bg-background border border-border',
             'text-foreground placeholder:text-muted-foreground',
-            'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary',
+            'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
             'transition-all duration-150',
             'disabled:opacity-50 disabled:cursor-not-allowed',
           )}
@@ -93,10 +93,10 @@ export function LoginForm() {
             autoComplete="current-password"
             disabled={isLoading}
             className={cn(
-              'w-full px-3 py-2.5 pr-10 rounded-lg text-sm',
+              'w-full px-3 h-9 pr-10 rounded-md text-[13px]',
               'bg-background border border-border',
               'text-foreground placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary',
+              'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
               'transition-all duration-150',
               'disabled:opacity-50 disabled:cursor-not-allowed',
             )}
@@ -126,9 +126,9 @@ export function LoginForm() {
         type="submit"
         disabled={isLoading}
         className={cn(
-          'w-full px-4 py-2.5 rounded-lg text-sm font-medium',
-          'bg-primary text-white',
-          'hover:bg-primary/90 active:scale-[0.98]',
+          'w-full h-9 rounded-md text-[13px] font-medium mt-2',
+          'bg-foreground text-background',
+          'hover:opacity-90 active:scale-[0.98]',
           'transition-all duration-150',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           'flex items-center justify-center gap-2',

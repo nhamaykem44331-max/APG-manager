@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { bookingsApi, customersApi } from '@/lib/api';
 import { cn, formatVNDFull } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
 
 // ===== CONSTANTS =====
 
@@ -163,9 +164,9 @@ export default function NewBookingPage() {
   const step2Valid = passengers.every(p => p.fullName.trim().length > 0);
 
   const inputClass = cn(
-    'w-full px-3 py-2.5 text-sm rounded-lg border border-border',
+    'w-full px-3 h-9 text-[13px] rounded-md border border-border',
     'bg-background text-foreground placeholder:text-muted-foreground',
-    'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
+    'focus:outline-none focus:ring-1 focus:ring-primary',
     'transition-all duration-150',
   );
 
@@ -173,16 +174,17 @@ export default function NewBookingPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/bookings" className="p-1.5 rounded-md hover:bg-accent transition-colors">
-          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Tạo Booking mới</h1>
-          <p className="text-sm text-muted-foreground">Điền thông tin để tạo booking</p>
-        </div>
-      </div>
+      <PageHeader
+        title={
+          <div className="flex items-center gap-3">
+            <Link href="/bookings" className="p-1 rounded-md hover:bg-accent transition-colors -ml-1">
+              <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            Xác nhận tạo Booking
+          </div>
+        }
+        description="Điền thông tin để tạo booking mới"
+      />
 
       {/* Step indicator */}
       <div className="flex items-center">
@@ -218,10 +220,10 @@ export default function NewBookingPage() {
 
       {/* ===== Step 1: Customer ===== */}
       {step === 1 && (
-        <div className="card p-6 space-y-4">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <User className="w-4 h-4 text-primary" /> Thông tin khách hàng
-          </h2>
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <h2 className="text-[13px] font-medium text-foreground">Thông tin khách hàng</h2>
+          </div>
 
           {/* Phone search */}
           <div>
@@ -238,7 +240,7 @@ export default function NewBookingPage() {
               <button
                 onClick={handlePhoneSearch}
                 disabled={searchLoading || !customerPhone}
-                className="px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
+                className="px-4 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5 transition-all"
               >
                 {searchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 Tìm
@@ -284,10 +286,10 @@ export default function NewBookingPage() {
                   key={s.value}
                   onClick={() => setSource(s.value)}
                   className={cn(
-                    'px-3 py-2 rounded-lg text-xs font-medium text-left transition-colors',
+                    'px-3 py-1.5 rounded-md text-[13px] font-medium text-left transition-colors border',
                     source === s.value
-                      ? 'bg-primary/15 border border-primary text-primary'
-                      : 'border border-border text-muted-foreground hover:bg-accent',
+                      ? 'bg-accent/50 border-border text-foreground shadow-sm'
+                      : 'border-transparent text-muted-foreground hover:bg-accent hover:border-border',
                   )}
                 >
                   {s.label}
@@ -296,11 +298,11 @@ export default function NewBookingPage() {
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end pt-3">
             <button
               onClick={() => setStep(2)}
               disabled={!contactName || !customerPhone}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all"
             >
               Tiếp theo <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -310,15 +312,13 @@ export default function NewBookingPage() {
 
       {/* ===== Step 2: Passengers (NEW) ===== */}
       {step === 2 && (
-        <div className="card p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary" /> Hành khách
-            </h2>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="px-2 py-1 rounded bg-blue-500/10 text-blue-500 font-medium">{adtCount} ADT</span>
-              {chdCount > 0 && <span className="px-2 py-1 rounded bg-orange-500/10 text-orange-500 font-medium">{chdCount} CHD</span>}
-              {infCount > 0 && <span className="px-2 py-1 rounded bg-pink-500/10 text-pink-500 font-medium">{infCount} INF</span>}
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <h2 className="text-[13px] font-medium text-foreground">Hành khách</h2>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">{adtCount} ADT</span>
+              {chdCount > 0 && <span className="px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500 font-medium">{chdCount} CHD</span>}
+              {infCount > 0 && <span className="px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-500 font-medium">{infCount} INF</span>}
             </div>
           </div>
 
@@ -328,7 +328,7 @@ export default function NewBookingPage() {
               <button
                 key={pt.value}
                 onClick={() => addPassenger(pt.value as 'ADT' | 'CHD' | 'INF')}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-dashed border-border text-muted-foreground hover:bg-accent hover:border-primary hover:text-primary transition-colors"
+                className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[13px] font-medium border border-dashed border-border text-muted-foreground hover:bg-accent hover:border-border hover:text-foreground transition-colors"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 {pt.label}
@@ -398,10 +398,10 @@ export default function NewBookingPage() {
                             key={g.value}
                             onClick={() => updatePassenger(pax.key, 'gender', g.value)}
                             className={cn(
-                              'flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors',
+                              'flex-1 px-3 h-9 rounded-md text-[13px] font-medium transition-colors border',
                               pax.gender === g.value
-                                ? 'bg-primary/15 border border-primary text-primary'
-                                : 'border border-border text-muted-foreground hover:bg-accent',
+                                ? 'bg-accent/50 border-border text-foreground shadow-sm'
+                                : 'border-transparent text-muted-foreground hover:bg-accent hover:border-border',
                             )}
                           >
                             {g.label}
@@ -451,17 +451,17 @@ export default function NewBookingPage() {
             />
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex justify-between pt-3">
             <button
               onClick={() => setStep(1)}
-              className="flex items-center gap-2 px-5 py-2.5 border border-border text-muted-foreground rounded-lg text-sm hover:bg-accent"
+              className="flex items-center gap-2 px-5 h-9 border border-border text-foreground bg-card rounded-md text-[13px] font-medium hover:bg-accent active:scale-[0.98] transition-all"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Quay lại
             </button>
             <button
               onClick={() => setStep(3)}
               disabled={!step2Valid}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all"
             >
               Xem báo giá <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -471,10 +471,10 @@ export default function NewBookingPage() {
 
       {/* ===== Step 3: Quote Preview (NEW) ===== */}
       {step === 3 && (
-        <div className="card p-6 space-y-5">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <Eye className="w-4 h-4 text-primary" /> Xem lại thông tin
-          </h2>
+        <div className="card p-5 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <h2 className="text-[13px] font-medium text-foreground">Xem lại thông tin</h2>
+          </div>
 
           {/* Customer info */}
           <div className="p-4 rounded-lg bg-muted/40 border border-border space-y-2">
@@ -552,16 +552,16 @@ export default function NewBookingPage() {
             </p>
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex justify-between pt-3">
             <button
               onClick={() => setStep(2)}
-              className="flex items-center gap-2 px-5 py-2.5 border border-border text-muted-foreground rounded-lg text-sm hover:bg-accent"
+              className="flex items-center gap-2 px-5 h-9 border border-border text-foreground bg-card rounded-md text-[13px] font-medium hover:bg-accent active:scale-[0.98] transition-all"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Quay lại
             </button>
             <button
               onClick={() => setStep(4)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+              className="flex items-center gap-2 px-5 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all"
             >
               Chọn thanh toán <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -571,10 +571,10 @@ export default function NewBookingPage() {
 
       {/* ===== Step 4: Payment & Confirm ===== */}
       {step === 4 && (
-        <div className="card p-6 space-y-4">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-primary" /> Phương thức thanh toán
-          </h2>
+        <div className="card p-5 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <h2 className="text-[13px] font-medium text-foreground">Phương thức thanh toán</h2>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {PAYMENT_METHODS.map((pm) => (
@@ -582,10 +582,10 @@ export default function NewBookingPage() {
                 key={pm.value}
                 onClick={() => setPaymentMethod(pm.value)}
                 className={cn(
-                  'px-3 py-3 rounded-lg text-sm font-medium text-left transition-colors',
+                  'px-3 py-3 rounded-md text-[13px] font-medium text-left transition-colors border',
                   paymentMethod === pm.value
-                    ? 'bg-primary/15 border border-primary text-primary'
-                    : 'border border-border text-muted-foreground hover:bg-accent',
+                    ? 'bg-accent/50 border-border text-foreground shadow-sm'
+                    : 'border-transparent text-muted-foreground hover:bg-accent hover:border-border',
                 )}
               >
                 {pm.label}
@@ -594,8 +594,8 @@ export default function NewBookingPage() {
           </div>
 
           {/* Final summary */}
-          <div className="mt-4 p-4 bg-muted/40 rounded-lg space-y-2 text-sm">
-            <h4 className="font-semibold text-foreground text-xs uppercase tracking-wide mb-3">
+          <div className="p-4 bg-muted/40 border border-border rounded-lg space-y-2 text-[13px]">
+            <h4 className="font-semibold text-foreground text-[11px] uppercase tracking-wide mb-3">
               Xác nhận booking
             </h4>
             {[
@@ -612,21 +612,21 @@ export default function NewBookingPage() {
             ))}
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex justify-between pt-3">
             <button
               onClick={() => setStep(3)}
-              className="flex items-center gap-2 px-5 py-2.5 border border-border text-muted-foreground rounded-lg text-sm hover:bg-accent"
+              className="flex items-center gap-2 px-5 h-9 border border-border text-foreground bg-card rounded-md text-[13px] font-medium hover:bg-accent active:scale-[0.98] transition-all"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Quay lại
             </button>
             <button
               onClick={() => createMutation.mutate()}
               disabled={createMutation.isPending}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              className="flex items-center gap-2 px-6 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all font-semibold"
             >
               {createMutation.isPending
                 ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</>
-                : <><Check className="w-3.5 h-3.5" /> Tạo Booking</>
+                : <><Check className="w-4 h-4" /> Tạo Booking</>
               }
             </button>
           </div>

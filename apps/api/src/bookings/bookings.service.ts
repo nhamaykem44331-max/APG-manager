@@ -215,6 +215,47 @@ export class BookingsService {
       }),
     ]);
 
+    // ── Bước 2i: Auto-tạo AR công nợ khi xuất vé chưa thanh toán ─────
+    // Tài liệu APG_Debt_Upgrade_Prompt_1.md - Bước 2i
+    if (targetStatus === 'ISSUED' && booking.paymentStatus === 'UNPAID') {
+      try {
+        const customer = await this.prisma.customer.findUnique({
+          where: { id: booking.customerId },
+          select: { id: true, type: true, fullName: true },
+        });
+
+        // Hạn thanh toán: 7 ngày (lẻ) hoặc 30 ngày (doanh nghiệp)
+        const dueDays = customer?.type === 'CORPORATE' ? 30 : 7;
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + dueDays);
+
+        const partyType = customer?.type === 'CORPORATE'
+          ? 'CUSTOMER_CORPORATE'
+          : 'CUSTOMER_INDIVIDUAL';
+
+        const code = await this.generateLedgerCode('RECEIVABLE');
+
+        await this.prisma.accountsLedger.create({
+          data: {
+            code,
+            direction:   'RECEIVABLE',
+            partyType:   partyType as never,
+            customerId:  booking.customerId,
+            bookingId:   booking.id,
+            totalAmount: booking.totalSellPrice,
+            paidAmount:  0,
+            remaining:   booking.totalSellPrice,
+            dueDate,
+            description: `Công nợ vé ${booking.bookingCode}`,
+            createdBy:   changedBy,
+          },
+        });
+      } catch (err) {
+        // Không throw — không để lỗi ledger chặn việc xuất vé
+        console.error(`[LedgerAutoCreate] Lỗi tạo AR cho booking ${booking.bookingCode}:`, err);
+      }
+    }
+
     // Gửi thông báo khi xuất vé hoặc hủy
     if (targetStatus === 'ISSUED' || targetStatus === 'CANCELLED') {
       await this.n8n.triggerWebhook('/booking-status', {
@@ -228,6 +269,21 @@ export class BookingsService {
 
     return updated;
   }
+
+  // Helper: sinh mã AR-YYMMDD-XXX hoặc AP-YYMMDD-XXX (dùng cho Bước 2i + 2e)
+  private async generateLedgerCode(direction: string): Promise<string> {
+    const prefix = direction === 'RECEIVABLE' ? 'AR' : 'AP';
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+    const dd = now.getDate().toString().padStart(2, '0');
+    const datePrefix = `${prefix}-${yy}${mm}${dd}`;
+    const count = await this.prisma.accountsLedger.count({
+      where: { code: { startsWith: datePrefix } },
+    });
+    return `${datePrefix}-${(count + 1).toString().padStart(3, '0')}`;
+  }
+
 
   // Thêm vé vào booking và tính lại lợi nhuận
   async addTicket(bookingId: string, dto: AddTicketDto) {

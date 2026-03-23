@@ -2,10 +2,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  Plus, Download, Search, Filter, ChevronLeft, ChevronRight,
+  Plus, Download, Search, Filter, ChevronLeft, ChevronRight, FileText, Loader2
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
@@ -14,6 +14,11 @@ import {
   BOOKING_SOURCE_LABELS, AIRLINE_NAMES,
 } from '@/lib/utils';
 import type { Booking } from '@/types';
+import { PageHeader } from '@/components/ui/page-header';
+import { FilterBar } from '@/components/ui/filter-bar';
+import { DataTable, ColumnDef } from '@/components/ui/data-table';
+import { useRouter } from 'next/navigation';
+import { SheetSyncPanel } from '@/components/booking/sheet-sync-panel';
 
 // Tabs trạng thái
 const STATUS_TABS = [
@@ -27,10 +32,25 @@ const STATUS_TABS = [
 ];
 
 export default function BookingsPage() {
+  const router = useRouter();
   const [activeStatus, setActiveStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
+  const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
+
+  // Tạo booking nhanh → chuyển thẳng tới trang thêm vé
+  const quickCreateMutation = useMutation({
+    mutationFn: () => bookingsApi.create({
+      contactName: 'Khách hàng mới',
+      contactPhone: '',
+      source: 'PHONE',
+      paymentMethod: 'BANK_TRANSFER',
+    }),
+    onSuccess: (res: any) => {
+      router.push(`/bookings/${res.data.id}`);
+    },
+  });
 
   // Fetch danh sách booking
   const { data, isLoading } = useQuery({
@@ -48,191 +68,170 @@ export default function BookingsPage() {
   const total: number = data?.total ?? SAMPLE_BOOKINGS.length;
   const totalPages = Math.ceil(total / pageSize);
 
+  const columns: ColumnDef<Booking>[] = [
+    {
+      header: 'Mã booking',
+      cell: (b) => <span className="font-mono font-medium text-foreground">{b.bookingCode}</span>,
+    },
+    {
+      header: 'Khách hàng',
+      cell: (b) => (
+        <div className="flex flex-col gap-0.5">
+          <p className="font-medium text-foreground truncate max-w-[150px]">{b.contactName}</p>
+          <p className="text-[11px] text-muted-foreground">{b.contactPhone}</p>
+        </div>
+      ),
+    },
+    {
+      header: 'Chuyến bay',
+      cell: (b) => (
+        <div className="flex flex-col gap-0.5">
+          <p className="text-foreground">
+            {b.tickets?.[0]
+              ? `${b.tickets[0].departureCode} → ${b.tickets[0].arrivalCode}`
+              : '—'
+            }
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {b.tickets?.[0]
+              ? AIRLINE_NAMES[b.tickets[0].airline] ?? b.tickets[0].airline
+              : BOOKING_SOURCE_LABELS[b.source]
+            }
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: 'Giá bán',
+      cell: (b) => <span className="font-medium font-tabular text-foreground">{formatVND(b.totalSellPrice)}</span>,
+    },
+    {
+      header: 'Lãi/Lỗ',
+      cell: (b) => (
+        <span className="font-medium font-tabular text-emerald-500 text-xs">
+          +{formatVND(b.profit)}
+        </span>
+      ),
+    },
+    {
+      header: 'Trạng thái',
+      cell: (b) => (
+        <span className={cn(
+          'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium',
+          BOOKING_STATUS_CLASSES[b.status] ?? 'badge-default',
+        )}>
+          {BOOKING_STATUS_LABELS[b.status]}
+        </span>
+      ),
+    },
+    {
+      header: 'Nhân viên',
+      cell: (b) => <span className="text-muted-foreground">{b.staff?.fullName?.split(' ').pop() ?? '—'}</span>,
+    },
+    {
+      header: 'Ngày tạo',
+      cell: (b) => <span className="text-muted-foreground whitespace-nowrap">{formatDateTime(b.createdAt)}</span>,
+      className: 'text-right',
+    },
+  ];
+
   return (
     <div className="space-y-4 max-w-[1400px]">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Đặt vé & Booking</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Quản lý toàn bộ booking của đại lý
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className={cn(
-            'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm',
-            'border border-border text-muted-foreground hover:bg-accent transition-colors',
-          )}>
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Xuất Excel</span>
-          </button>
-          <Link
-            href="/bookings/new"
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium',
-              'bg-primary text-white hover:bg-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Tạo Booking
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Đặt vé & Booking"
+        description="Quản lý toàn bộ booking của đại lý"
+        actions={
+          <>
+            <button className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
+              'bg-card border border-border text-foreground hover:bg-accent hover:text-foreground transition-colors',
+            )}>
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Xuất Excel</span>
+            </button>
+            <button 
+              onClick={() => setIsSheetSyncOpen(true)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
+                'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 hover:text-emerald-700 transition-colors',
+                'dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-900/50'
+              )}>
+              <FileText className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Đồng bộ Sheets</span>
+            </button>
+            <button
+              onClick={() => quickCreateMutation.mutate()}
+              disabled={quickCreateMutation.isPending}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
+                'bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-50',
+              )}
+            >
+              {quickCreateMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Đang tạo...</>
+              ) : (
+                <><Plus className="w-4 h-4" /> Tạo Booking</>
+              )}
+            </button>
+          </>
+        }
+      />
 
-      {/* Filter bar */}
-      <div className="card p-3 flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Tìm mã booking, tên khách, SĐT..."
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-            className={cn(
-              'w-full pl-8 pr-3 py-2 text-sm rounded-md',
-              'bg-background border border-border',
-              'text-foreground placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-1 focus:ring-primary',
-            )}
+      {/* Main card */}
+      <div className="card w-full flex flex-col p-4 pb-0">
+        <FilterBar
+          searchPlaceholder="Tìm mã booking, tên khách, SĐT..."
+          searchValue={searchTerm}
+          onSearchChange={(v) => { setSearchTerm(v); setPage(1); }}
+          filters={
+            <>
+              <div className="flex bg-accent/50 p-1 rounded-md overflow-x-auto flex-1 border border-border">
+                {STATUS_TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setActiveStatus(tab.key); setPage(1); }}
+                    className={cn(
+                      'px-3 py-1 rounded-md text-[13px] font-medium whitespace-nowrap transition-all duration-200',
+                      activeStatus === tab.key
+                        ? 'bg-background shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <button className={cn(
+                'flex items-center gap-1.5 px-3 py-1 h-8 rounded-md text-[13px] font-medium',
+                'border border-border text-muted-foreground hover:bg-accent bg-background',
+              )}>
+                <Filter className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Lọc thêm</span>
+              </button>
+            </>
+          }
+        />
+
+        <div className="mx-[-16px]">
+          <DataTable
+            columns={columns}
+            data={bookings}
+            isLoading={isLoading}
+            onRowClick={(row) => router.push(`/bookings/${row.id}`)}
+            pageIndex={page - 1}
+            pageCount={totalPages}
+            canPreviousPage={page > 1}
+            canNextPage={page < totalPages}
+            previousPage={() => setPage(p => Math.max(1, p - 1))}
+            nextPage={() => setPage(p => Math.min(totalPages, p + 1))}
+            totalRecords={total}
+            emptyMessage="Không tìm thấy booking nào phù hợp"
           />
         </div>
-        <button className={cn(
-          'flex items-center gap-1.5 px-3 py-2 rounded-md text-sm',
-          'border border-border text-muted-foreground hover:bg-accent',
-        )}>
-          <Filter className="w-3.5 h-3.5" />
-          Bộ lọc
-        </button>
       </div>
 
-      {/* Status tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => { setActiveStatus(tab.key); setPage(1); }}
-            className={cn(
-              'px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors',
-              activeStatus === tab.key
-                ? 'bg-primary text-white'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {['Mã booking', 'Khách hàng', 'Chuyến bay', 'Giá bán', 'Lợi nhuận', 'Trạng thái', 'NV', 'Ngày tạo'].map((h) => (
-                  <th key={h} className="text-left text-xs font-medium text-muted-foreground px-4 py-2.5">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 8 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-3 bg-muted rounded w-full" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : (
-                bookings.map((booking) => (
-                  <tr
-                    key={booking.id}
-                    className="hover:bg-accent/40 transition-colors cursor-pointer"
-                    onClick={() => window.location.href = `/bookings/${booking.id}`}
-                  >
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs font-semibold text-primary">
-                        {booking.bookingCode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-foreground truncate max-w-32">{booking.contactName}</p>
-                      <p className="text-xs text-muted-foreground">{booking.contactPhone}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-foreground text-xs">
-                        {booking.tickets?.[0]
-                          ? `${booking.tickets[0].departureCode} → ${booking.tickets[0].arrivalCode}`
-                          : '—'
-                        }
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {booking.tickets?.[0]
-                          ? AIRLINE_NAMES[booking.tickets[0].airline] ?? booking.tickets[0].airline
-                          : BOOKING_SOURCE_LABELS[booking.source]
-                        }
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {formatVND(booking.totalSellPrice)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-emerald-500 font-medium text-xs">
-                        +{formatVND(booking.profit)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-block px-2 py-0.5 rounded-full text-[10px] font-medium',
-                        BOOKING_STATUS_CLASSES[booking.status] ?? 'status-new',
-                      )}>
-                        {BOOKING_STATUS_LABELS[booking.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {booking.staff?.fullName?.split(' ').pop() ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDateTime(booking.createdAt)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-          <p className="text-xs text-muted-foreground">
-            Hiển thị {bookings.length} / {total} booking
-          </p>
-          <div className="flex items-center gap-1">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
-            </button>
-            <span className="text-xs px-2 text-foreground">
-              {page} / {totalPages || 1}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <SheetSyncPanel isOpen={isSheetSyncOpen} onClose={() => setIsSheetSyncOpen(false)} />
     </div>
   );
 }
