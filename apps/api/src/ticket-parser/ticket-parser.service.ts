@@ -1,8 +1,9 @@
 // APG Manager RMS — Ticket Parser Service
 // Router: detect input type → dispatch tới engine phù hợp
+// Strategy: Regex first (fast, zero-cost) → fallback to Gemini AI
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-// Removed unused parsePNRText
+import { parsePNRText } from './engines/pnr-regex.engine';
 import { GeminiVisionEngine } from './engines/gemini-vision.engine';
 import { ParseResult } from './dto/parsed-ticket.dto';
 
@@ -14,13 +15,30 @@ export class TicketParserService {
     this.gemini = new GeminiVisionEngine(config);
   }
 
-  // Route 1: Parse PNR text (Chuyển sang dùng hoàn toàn Gemini AI theo yêu cầu)
+  // Route 1: Parse PNR text
+  // Strategy: Regex (fast, free, offline) → Gemini AI fallback
   async parseText(text: string): Promise<ParseResult> {
     if (!text || text.trim().length < 10) {
       throw new BadRequestException('PNR text quá ngắn');
     }
-    
-    // Sử dụng Gemini AI cho toàn bộ text input thay vì Regex để nhận diện thông minh hơn
+
+    // === Step 1: Try Regex engine first (offline, <100ms) ===
+    try {
+      const regexResult = parsePNRText(text);
+      // Consider regex successful if we found at least 1 passenger AND 1 segment
+      if (regexResult.success && regexResult.passengerCount > 0 && regexResult.segmentCount > 0) {
+        console.log(
+          `[TicketParser] Regex success: ${regexResult.passengerCount} pax, ${regexResult.segmentCount} segs, ${regexResult.totalTickets} tickets`
+        );
+        return regexResult;
+      }
+      console.log('[TicketParser] Regex returned incomplete result, falling back to Gemini...');
+    } catch (regexErr) {
+      console.warn('[TicketParser] Regex engine threw error, falling back to Gemini:', regexErr);
+    }
+
+    // === Step 2: Fallback to Gemini AI for complex/unrecognized formats ===
+    console.log('[TicketParser] Using Gemini AI for text parsing...');
     return this.parseWithGeminiText(text);
   }
 
@@ -38,10 +56,8 @@ export class TicketParserService {
     return this.gemini.parseImage(fileBuffer, mimeType);
   }
 
-  // Fallback: gửi text thô cho Gemini khi regex không parse được
+  // Fallback: send text to Gemini when regex can't parse it
   private async parseWithGeminiText(text: string): Promise<ParseResult> {
-    // Tạo buffer text giả dạng để gửi qua Gemini text mode
-    // Gemini 3 Flash cũng xử lý text rất tốt
     const textBuffer = Buffer.from(text, 'utf-8');
     return this.gemini.parseImage(textBuffer, 'text/plain');
   }
