@@ -77,10 +77,10 @@ export function parsePNRText(raw: string): ParseResult {
 
   // === 3. FLIGHT SEGMENTS ===
   const segPatterns = [
-    // "1 EK 395Q 27MAR 5 HANDXB HK1 0025 0455"
-    /(\d+)\s+([A-Z0-9]{2})\s+(\d{1,4})([A-Z])\s+(\d{1,2}[A-Z]{3})\s+\d\s+([A-Z]{3})([A-Z]{3})\s+HK(\d+)\s+(\d{4})\s+(\d{4})/g,
-    // "2  9G1215 O 24MAR 2 HANPQC HK1 13320 1525"
-    /(\d+)\s+([A-Z0-9]{2})(\d{1,4})\s+([A-Z])\s+(\d{1,2}[A-Z]{3})\s+\d\s+([A-Z]{3})([A-Z]{3})\s+HK(\d+)[\s\d]*?(\d{4})\s+(\d{4})/g,
+    // "1 EK 395Q 27MAR 5 HANDXB HK1 0025 0455 28MAR" — arrival date optional as group 11
+    /(\d+)\s+([A-Z0-9]{2})\s+(\d{1,4})([A-Z])\s+(\d{1,2}[A-Z]{3})\s+\d\s+([A-Z]{3})([A-Z]{3})\s+HK(\d+)\s+(\d{4})\s+(\d{4})(?:\s+(\d{1,2}[A-Z]{3}))?/g,
+    // "2  9G1215 O 24MAR 2 HANPQC HK1 1332 1525 25MAR"
+    /(\d+)\s+([A-Z0-9]{2})(\d{1,4})\s+([A-Z])\s+(\d{1,2}[A-Z]{3})\s+\d\s+([A-Z]{3})([A-Z]{3})\s+HK(\d+)[\s\d]*?(\d{4})\s+(\d{4})(?:\s+(\d{1,2}[A-Z]{3}))?/g,
   ];
   for (const regex of segPatterns) {
     let m: RegExpExecArray | null;
@@ -88,6 +88,9 @@ export function parsePNRText(raw: string): ParseResult {
       const segNum = parseInt(m[1]);
       if (segments.find(s => s.segNum === segNum)) continue;
       const depDate = parseAmadeusDate(m[5]);
+      // m[11] is the optional arrival date (e.g. "31MAR") for cross-day flights
+      const arrDateStr = m[11] ? parseAmadeusDate(m[11]) : null;
+      const arrDate = arrDateStr ?? depDate; // fall back to dep date if same day
       segments.push({
         segNum,
         airline: m[2],
@@ -99,8 +102,8 @@ export function parsePNRText(raw: string): ParseResult {
         departureTime: fmtTime(m[9]),
         arrivalTime: fmtTime(m[10]),
         date: m[5],
-        departureISO: depDate ? `${depDate}T${fmtTime(m[9])}:00:00+07:00` : null, // Added timezone
-        arrivalISO: depDate ? `${depDate}T${fmtTime(m[10])}:00:00+07:00` : null, // Added timezone
+        departureISO: depDate ? `${depDate}T${fmtTime(m[9])}:00+07:00` : null,
+        arrivalISO: arrDate ? `${arrDate}T${fmtTime(m[10])}:00+07:00` : null,
       });
     }
   }
@@ -205,11 +208,23 @@ export function parsePNRText(raw: string): ParseResult {
 function parseAmadeusDate(d: string): string | null {
   const M: Record<string, string> = { JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12' };
   const m = d.match(/(\d{1,2})([A-Z]{3})/);
-  return m && M[m[2]] ? `${new Date().getFullYear()}-${M[m[2]]}-${m[1].padStart(2, '0')}` : null;
+  if (!m || !M[m[2]]) return null;
+  // If departure in past month relative to now, use next year
+  const year = new Date().getFullYear();
+  const candidate = `${year}-${M[m[2]]}-${m[1].padStart(2, '0')}`;
+  // If date is more than 3 months in the past, assume next year
+  const dt = new Date(candidate);
+  const now = new Date();
+  if (dt < new Date(now.getTime() - 90 * 86400000)) {
+    return `${year + 1}-${M[m[2]]}-${m[1].padStart(2, '0')}`;
+  }
+  return candidate;
 }
+
 function fmtTime(t: string): string { return `${t.slice(0,2)}:${t.slice(2,4)}`; }
 function guessSeatClass(fc: string): string {
-  if ('FAP'.includes(fc)) return 'First';
-  if ('CDJZI'.includes(fc)) return 'Business';
+  const first = fc.split(' / ')[0].trim();
+  if ('FAP'.includes(first)) return 'First';
+  if ('CDJZI'.includes(first)) return 'Business';
   return 'Economy';
 }

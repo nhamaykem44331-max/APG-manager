@@ -12,6 +12,17 @@ import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AddTicketDto } from './dto/add-ticket.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 
+/** Chuyển chuỗi ISO thành Date; fallback về now nếu invalid để tránh lỗi DB */
+function safeDate(iso: string, isArrival = false): Date {
+  if (!iso || iso.trim() === '') {
+    return isArrival ? new Date(Date.now() + 3_600_000) : new Date();
+  }
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? (isArrival ? new Date(Date.now() + 3_600_000) : new Date())
+    : d;
+}
+
 // Máy trạng thái booking - quy định chuyển trạng thái hợp lệ
 const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   NEW:             ['PROCESSING', 'CANCELLED'],
@@ -317,8 +328,8 @@ export class BookingsService {
         flightNumber: dto.flightNumber,
         departureCode: dto.departureCode,
         arrivalCode: dto.arrivalCode,
-        departureTime: new Date(dto.departureTime),
-        arrivalTime: new Date(dto.arrivalTime),
+        departureTime: safeDate(dto.departureTime),
+        arrivalTime: safeDate(dto.arrivalTime, true),
         seatClass: dto.seatClass,
         fareClass: dto.fareClass,
         sellPrice: dto.sellPrice,
