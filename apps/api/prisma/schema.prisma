@@ -251,6 +251,7 @@ model Booking {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([paymentStatus])
+  @@index([source, createdAt])  // PERF 4: Reports - source analysis + monthly grouping
   @@map("bookings")
 }
 
@@ -284,6 +285,7 @@ model Ticket {
   @@index([bookingId])
   @@index([passengerId])
   @@index([airline])
+  @@index([departureCode, arrivalCode])  // PERF 4: Reports - route analysis queries
   @@map("tickets")
 }
 

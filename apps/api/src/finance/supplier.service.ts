@@ -8,24 +8,31 @@ import { CreateSupplierDto, UpdateSupplierDto } from './dto';
 export class SupplierService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Danh sách NCC kèm tổng công nợ
+  // Danh sách NCC kèm tổng công nợ — PERF: dùng aggregate thay vì include ledgers
   async findAll() {
     const suppliers = await this.prisma.supplierProfile.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
       include: {
-        ledgers: {
-          where: { status: { not: 'PAID' } },
-          select: { remaining: true },
-        },
+        _count: { select: { ledgers: true } },
       },
     });
 
-    return suppliers.map((s) => ({
+    // Lấy tổng nợ bằng 1 query riêng thay vì include toàn bộ ledger rows
+    const debtSums = await this.prisma.accountsLedger.groupBy({
+      by: ['supplierId'],
+      where: { status: { not: 'PAID' }, supplierId: { not: null } },
+      _sum: { remaining: true },
+    });
+    const debtMap = Object.fromEntries(
+      debtSums.map(d => [d.supplierId, Number(d._sum.remaining ?? 0)])
+    );
+
+    return suppliers.map(s => ({
       ...s,
-      totalDebt: s.ledgers.reduce((sum, l) => sum + Number(l.remaining), 0),
-      ledgerCount: s.ledgers.length,
-      ledgers: undefined,
+      totalDebt: debtMap[s.id] ?? 0,
+      ledgerCount: s._count.ledgers,
+      _count: undefined,
     }));
   }
 

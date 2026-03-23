@@ -172,8 +172,32 @@ export class SheetSyncService {
       const allRows = await this.sheetsClient.readSheet();
       const dataRows = allRows.slice(1); // bỏ header
 
+      // PERF: Pre-fetch default IDs once instead of per-row
+      const defaultStaff = await this.prisma.user.findFirst({ select: { id: true } });
+      const defaultCustomer = await this.prisma.customer.findFirst({ select: { id: true } });
+      const staffId = defaultStaff?.id ?? '';
+      const customerId = defaultCustomer?.id ?? '';
+
+      // PERF: Batch PNR lookup — find all existing bookings in one query
+      const selectedPnrs: string[] = [];
       for (const rowIdx of selectedRowIndices) {
-        const sheetRowIndex = rowIdx - 2; // convert from 1-based+header to 0-based array index
+        const sheetRowIndex = rowIdx - 2;
+        if (sheetRowIndex >= 0 && sheetRowIndex < dataRows.length) {
+          const pnr = (dataRows[sheetRowIndex][1] ?? '').toString().trim().toUpperCase();
+          if (pnr) selectedPnrs.push(pnr);
+        }
+      }
+      const existingBookings = await this.prisma.booking.findMany({
+        where: { pnr: { in: selectedPnrs } },
+        select: { id: true, pnr: true, contactName: true, notes: true },
+      });
+      const existingMap = new Map(existingBookings.map(b => [b.pnr ?? '', b]));
+
+      // Build transaction operations
+      const operations: Prisma.PrismaPromise<unknown>[] = [];
+
+      for (const rowIdx of selectedRowIndices) {
+        const sheetRowIndex = rowIdx - 2;
         if (sheetRowIndex < 0 || sheetRowIndex >= dataRows.length) {
           result.errors.push(`Dòng ${rowIdx}: ngoài phạm vi Sheet.`);
           result.skipped++;
@@ -189,72 +213,59 @@ export class SheetSyncService {
         }
 
         const contactName = (row[2] ?? '').toString().trim();
-        const route = (row[4] ?? '').toString().trim();
-        const airline = (row[7] ?? '').toString().trim().toUpperCase();
         const costPrice = parseFloat((row[10] ?? '0').toString().replace(/[^\d.-]/g, '')) || 0;
         const sellPrice = parseFloat((row[11] ?? '0').toString().replace(/[^\d.-]/g, '')) || 0;
         const profit = parseFloat((row[12] ?? '0').toString().replace(/[^\d.-]/g, '')) || 0;
         const note = (row[13] ?? '').toString().trim();
-        const paxCount = parseInt(row[6]) || 1;
+        const isDone = note.toLowerCase().startsWith('done');
 
-        // Parse route to departure/arrival
-        let departureCode = '';
-        let arrivalCode = '';
-        if (route.length >= 6) {
-          departureCode = route.substring(0, 3);
-          arrivalCode = route.substring(3, 6);
-        }
-
-        // Check existing
-        const existing = await this.prisma.booking.findFirst({ where: { pnr } });
-
-        try {
-          if (existing) {
-            // UPDATE existing booking
-            await this.prisma.booking.update({
-              where: { id: existing.id },
-              data: {
-                contactName: contactName || existing.contactName,
-                totalNetPrice: costPrice,
-                totalSellPrice: sellPrice,
-                profit,
-                notes: note || existing.notes,
-                paymentStatus: note.toLowerCase().startsWith('done') ? 'PAID' : 'UNPAID',
-              },
-            });
-            result.updated++;
-          } else {
-            // CREATE new booking
-            const bookingCode = `APG-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`;
-            await this.prisma.booking.create({
-              data: {
-                bookingCode,
-                pnr,
-                contactName: contactName || 'N/A',
-                contactPhone: '',
-                status: note.toLowerCase().startsWith('done') ? 'COMPLETED' : 'ISSUED',
-                source: 'WALK_IN',
-                paymentMethod: 'BANK_TRANSFER',
-                paymentStatus: note.toLowerCase().startsWith('done') ? 'PAID' : 'UNPAID',
-                totalNetPrice: costPrice,
-                totalSellPrice: sellPrice,
-                totalFees: 0,
-                profit,
-                notes: note || null,
-                staffId: (await this.prisma.user.findFirst({ select: { id: true } }))?.id ?? '',
-                customerId: (await this.prisma.customer.findFirst({ select: { id: true } }))?.id ?? '',
-              },
-            });
-            result.created++;
-          }
-        } catch (err: any) {
-          result.errors.push(`Dòng ${rowIdx} (PNR: ${pnr}): ${err.message}`);
-          result.skipped++;
+        const existing = existingMap.get(pnr);
+        if (existing) {
+          operations.push(this.prisma.booking.update({
+            where: { id: existing.id },
+            data: {
+              contactName: contactName || existing.contactName,
+              totalNetPrice: costPrice,
+              totalSellPrice: sellPrice,
+              profit,
+              notes: note || existing.notes,
+              paymentStatus: isDone ? 'PAID' : 'UNPAID',
+            },
+          }));
+          result.updated++;
+        } else {
+          const bookingCode = `APG-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`;
+          operations.push(this.prisma.booking.create({
+            data: {
+              bookingCode,
+              pnr,
+              contactName: contactName || 'N/A',
+              contactPhone: '',
+              status: isDone ? 'COMPLETED' : 'ISSUED',
+              source: 'WALK_IN',
+              paymentMethod: 'BANK_TRANSFER',
+              paymentStatus: isDone ? 'PAID' : 'UNPAID',
+              totalNetPrice: costPrice,
+              totalSellPrice: sellPrice,
+              totalFees: 0,
+              profit,
+              notes: note || null,
+              staffId,
+              customerId,
+            },
+          }));
+          result.created++;
         }
       }
-    } catch (error: any) {
+
+      // PERF: Execute all creates/updates in a single database transaction
+      if (operations.length > 0) {
+        await this.prisma.$transaction(operations as any[]);
+      }
+    } catch (error: unknown) {
       result.success = false;
-      result.errors.push(`Lỗi tổng thể: ${error.message}`);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      result.errors.push(`Lỗi tổng thể: ${message}`);
     }
 
     this.logger.log(`Import hoàn tất: ${result.created} tạo mới, ${result.updated} cập nhật, ${result.skipped} bỏ qua`);
