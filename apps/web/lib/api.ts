@@ -8,6 +8,15 @@ const apiClient = axios.create({
   },
 });
 
+// Gemini AI calls can take 30-60s for large multi-pax PNRs — needs longer timeout
+const parserClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? '/api/v1',
+  timeout: 90_000, // 90 seconds for Gemini processing
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 const TOKEN_CACHE_TTL_MS = 7.5 * 60 * 60 * 1000;
 
 let cachedToken: string | null = null;
@@ -71,6 +80,24 @@ apiClient.interceptors.response.use(
       }
     }
 
+    return Promise.reject(error);
+  },
+);
+
+// Attach same auth interceptors to parserClient
+parserClient.interceptors.request.use(async (config) => {
+  const token = cachedToken && Date.now() < tokenExpiry
+    ? cachedToken
+    : await getCachedSessionToken();
+  return withAuthHeader(config, token);
+});
+parserClient.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      setAuthToken(null);
+      if (typeof window !== 'undefined') window.location.href = '/auth/login';
+    }
     return Promise.reject(error);
   },
 );
@@ -244,11 +271,11 @@ export const salesApi = {
 // ==========================================
 export const ticketParserApi = {
   parseText: (text: string) =>
-    apiClient.post('/tickets/parse/text', { text }),
+    parserClient.post('/tickets/parse/text', { text }),
   parseFile: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.post('/tickets/parse/file', formData, {
+    return parserClient.post('/tickets/parse/file', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
