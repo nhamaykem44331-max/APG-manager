@@ -137,10 +137,17 @@ export function parsePNRText(raw: string): ParseResult {
     pax.eTicket = eTickets[pax.index] || null;
   }
 
-  // === 5. GENERATE TICKETS (pax × segment) ===
+  // === 5. GENERATE TICKETS — 1 ticket per passenger, all segments merged ===
+  // Quy tắc: 1 PNR = 1 vé/khách. Multi-segment gộp thành 1 vé.
+  // VD: EZE→DXB + DXB→HAN = flightNumber "EK248 / EK394", dep "EZE / DXB", arr "DXB / HAN"
   const tickets: ParsedTicketData[] = [];
+  
   for (const pax of passengers) {
-    for (const seg of segments) {
+    if (segments.length === 0) continue;
+    
+    if (segments.length === 1) {
+      // Single segment — đơn giản
+      const seg = segments[0];
       tickets.push({
         passengerName: pax.fullName,
         passengerType: pax.type,
@@ -153,6 +160,31 @@ export function parsePNRText(raw: string): ParseResult {
         arrivalTime: seg.arrivalISO ?? '',
         seatClass: guessSeatClass(seg.fareClass),
         eTicketNumber: pax.eTicket ?? undefined,
+        baggageAllowance: undefined,
+        pnr: pnr ?? undefined,
+      });
+    } else {
+      // Multi-segment — gộp tất cả thành 1 vé
+      const firstSeg = segments[0];
+      const lastSeg = segments[segments.length - 1];
+      
+      // Lấy unique airlines (VD: EK/EK → chỉ EK, EK/VN → EK/VN)
+      const uniqueAirlines = [...new Set(segments.map(s => s.airline))];
+      const mergedAirline = uniqueAirlines[0]; // Hãng đầu tiên làm chính
+      
+      tickets.push({
+        passengerName: pax.fullName,
+        passengerType: pax.type,
+        airline: mergedAirline,
+        flightNumber: segments.map(s => s.flightNumber).join(' / '),
+        fareClass: segments.map(s => s.fareClass).join(' / '),
+        departureCode: segments.map(s => s.departureCode).join(' / '),
+        arrivalCode: segments.map(s => s.arrivalCode).join(' / '),
+        departureTime: firstSeg.departureISO ?? '',
+        arrivalTime: lastSeg.arrivalISO ?? '',
+        seatClass: guessSeatClass(firstSeg.fareClass),
+        eTicketNumber: pax.eTicket ?? undefined,
+        baggageAllowance: undefined,
         pnr: pnr ?? undefined,
       });
     }
