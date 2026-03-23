@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { Timeout } from '@nestjs/common';
 import { TicketParserService } from './ticket-parser.service';
 
 @Controller('tickets/parse')
