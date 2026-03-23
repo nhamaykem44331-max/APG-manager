@@ -5,13 +5,18 @@ import {
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { SupplierService } from './supplier.service';
-import { CashFlowService, CreateCashFlowDto, ListCashFlowDto } from './cashflow.service';
-import { ExpenseService, CreateExpenseDto, ListExpenseDto } from './expense.service';
+import { CashFlowService } from './cashflow.service';
+import { ExpenseService } from './expense.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
-import { CreateLedgerDto, PayLedgerDto, ListLedgerDto } from './dto';
+import {
+  CreateLedgerDto, PayLedgerDto, ListLedgerDto,
+  CreateCashFlowDto, ListCashFlowDto,
+  CreateExpenseDto, ListExpenseDto,
+  CreateSupplierDto, UpdateSupplierDto,
+} from './dto';
 
 @Controller('finance')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -139,14 +144,14 @@ export class FinanceController {
 
   @Post('suppliers')
   @Roles(UserRole.ADMIN)
-  createSupplier(@Body() body: Record<string, unknown>) {
-    return this.supplier.create(body as never);
+  createSupplier(@Body() dto: CreateSupplierDto) {
+    return this.supplier.create(dto);
   }
 
   @Patch('suppliers/:id')
   @Roles(UserRole.ADMIN)
-  updateSupplier(@Param('id') id: string, @Body() body: Record<string, unknown>) {
-    return this.supplier.update(id, body);
+  updateSupplier(@Param('id') id: string, @Body() dto: UpdateSupplierDto) {
+    return this.supplier.update(id, dto);
   }
 
   // ─── Phase B: Dòng tiền (CashFlow) ────────────────────────────────

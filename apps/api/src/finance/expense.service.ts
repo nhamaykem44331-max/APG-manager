@@ -2,25 +2,7 @@
 // (nguồn: Google Sheet "Chi phí vận hành" - 209 khoản chi)
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
-
-export interface CreateExpenseDto {
-  category: string;
-  description: string;
-  amount: number;
-  date: string;
-  status?: string;
-  notes?: string;
-}
-
-export interface ListExpenseDto {
-  page?: number;
-  pageSize?: number;
-  category?: string;
-  search?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  status?: string;
-}
+import { CreateExpenseDto, ListExpenseDto } from './dto';
 
 @Injectable()
 export class ExpenseService {

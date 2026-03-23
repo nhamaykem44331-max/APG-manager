@@ -2,30 +2,7 @@
 // (nguồn: Google Sheet "Dòng tiền KHÁCH LẺ" - 217 giao dịch)
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
-
-export interface CreateCashFlowDto {
-  direction: string;
-  category: string;
-  amount: number;
-  pic: string;       // Ms Thanh, Mr Đức Anh, Mr Phong, Mr Giang, Mr Triết...
-  description: string;
-  reference?: string; // PNR code, mã booking
-  date: string;
-  status?: string;
-  notes?: string;
-}
-
-export interface ListCashFlowDto {
-  page?: number;
-  pageSize?: number;
-  direction?: string;
-  category?: string;
-  pic?: string;
-  search?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  status?: string;
-}
+import { CreateCashFlowDto, ListCashFlowDto } from './dto';
 
 @Injectable()
 export class CashFlowService {

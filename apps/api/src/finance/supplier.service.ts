@@ -1,6 +1,8 @@
 // APG Manager RMS - SupplierService: Quản lý hồ sơ nhà cung cấp / đối tác
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { Prisma } from '@prisma/client';
+import { CreateSupplierDto, UpdateSupplierDto } from './dto';
 
 @Injectable()
 export class SupplierService {
@@ -41,18 +43,13 @@ export class SupplierService {
   }
 
   // Tạo NCC mới
-  async create(data: {
-    code: string; name: string; type: string;
-    contactName?: string; contactPhone?: string; contactEmail?: string;
-    taxId?: string; bankAccount?: string; bankName?: string;
-    creditLimit?: number; paymentTerms?: number; feedbackRate?: number; notes?: string;
-  }) {
-    return this.prisma.supplierProfile.create({ data: data as never });
+  async create(dto: CreateSupplierDto) {
+    return this.prisma.supplierProfile.create({ data: dto as Prisma.SupplierProfileCreateInput });
   }
 
   // Cập nhật NCC
-  async update(id: string, data: Record<string, unknown>) {
-    return this.prisma.supplierProfile.update({ where: { id }, data });
+  async update(id: string, dto: UpdateSupplierDto) {
+    return this.prisma.supplierProfile.update({ where: { id }, data: dto as Prisma.SupplierProfileUpdateInput });
   }
 
   // Danh sách công nợ của 1 NCC cụ thể
