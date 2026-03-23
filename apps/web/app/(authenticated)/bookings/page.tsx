@@ -84,8 +84,15 @@ export default function BookingsPage() {
 
   const columns: ColumnDef<Booking>[] = [
     {
-      header: 'Mã booking',
-      cell: (b) => <span className="font-mono font-medium text-foreground">{b.bookingCode}</span>,
+      header: 'PNR',
+      cell: (b) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono font-bold text-foreground tracking-widest text-[13px]">
+            {b.pnr || <span className="text-muted-foreground font-normal text-[11px]">Chưa có PNR</span>}
+          </span>
+          <span className="text-[10px] text-muted-foreground font-mono">{b.bookingCode}</span>
+        </div>
+      ),
     },
     {
       header: 'Khách hàng',

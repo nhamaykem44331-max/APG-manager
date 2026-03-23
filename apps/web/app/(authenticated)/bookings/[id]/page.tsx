@@ -535,7 +535,14 @@ export default function BookingDetailPage() {
             <Link href="/bookings" className="p-1 rounded-md hover:bg-accent transition-colors -ml-1">
               <ArrowLeft className="w-4 h-4 text-muted-foreground" />
             </Link>
-            <span className="font-mono">{bk.bookingCode}</span>
+            <div className="flex flex-col gap-0">
+              <span className="font-mono font-bold tracking-widest text-[15px]">
+                {bk.pnr || bk.bookingCode}
+              </span>
+              {bk.pnr && (
+                <span className="text-[10px] text-muted-foreground font-mono">{bk.bookingCode}</span>
+              )}
+            </div>
             <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium', BOOKING_STATUS_CLASSES[bk.status])}>
               {BOOKING_STATUS_LABELS[bk.status]}
             </span>

@@ -57,8 +57,15 @@ export default function DashboardPage() {
   const columns: ColumnDef<SampleBooking>[] = [
     {
       header: 'Mã vé',
-      accessorKey: 'bookingCode',
-      cell: (b) => <span className="font-mono text-[12px]">{b.bookingCode}</span>,
+      accessorKey: 'pnr',
+      cell: (b) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono font-bold text-foreground tracking-widest text-[13px]">
+            {b.pnr || <span className="text-muted-foreground font-normal text-[11px]">Chưa có PNR</span>}
+          </span>
+          <span className="text-[10px] text-muted-foreground font-mono">{b.bookingCode}</span>
+        </div>
+      ),
     },
     {
       header: 'Khách hàng',
@@ -239,6 +246,7 @@ export default function DashboardPage() {
 interface SampleBooking {
   id: string;
   bookingCode: string;
+  pnr?: string;
   contactName: string;
   route: string;
   totalSellPrice: number;
