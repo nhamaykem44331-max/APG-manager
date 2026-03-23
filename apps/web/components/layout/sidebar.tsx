@@ -1,4 +1,3 @@
-// APG Manager RMS - Vercel-style Sidebar
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -76,8 +75,12 @@ export function Sidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
 
-  const userName = session?.user?.name || 'Tân Phú APG';
-  const roleName = session?.user?.role || 'Hobby';
+  // Xử lý đổi tên admin -> Đức Anh theo yêu cầu
+  let userName = session?.user?.name || 'Đức Anh';
+  if (userName.toLowerCase() === 'admin' || userName === 'Administrator') {
+    userName = 'Đức Anh';
+  }
+  const roleName = session?.user?.role || 'ADMIN';
   const initial = userName.charAt(0).toUpperCase();
 
   if (!mounted) {
@@ -89,18 +92,23 @@ export function Sidebar() {
   return (
     <aside className="relative flex flex-col h-screen border-r bg-background border-border w-[240px] flex-shrink-0">
       
-      {/* Team Switcher Area */}
-      <div className="flex justify-between items-center h-14 pl-4 pr-3 mx-2 mt-2 border border-transparent rounded-lg hover:bg-accent/50 transition-colors cursor-pointer select-none">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] flex items-center justify-center flex-shrink-0 text-white font-semibold text-[11px] shadow-sm">
-            {initial}
+      {/* Logo Area (Top Left) */}
+      <div className="flex items-center h-14 pl-4 pr-3 mx-2 mt-2 select-none">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="relative flex items-center justify-center w-[26px] h-[26px] bg-foreground rounded-lg flex-shrink-0 overflow-hidden">
+             {/* Fallback styling for monochrome logo */}
+            <Plane className="w-[14px] h-[14px] text-background rotate-45 transform" />
+            <img 
+              src="/logo-apg.png" 
+              alt="Logo" 
+              className="absolute inset-0 w-full h-full object-contain grayscale brightness-0 invert dark:brightness-100 dark:invert-0 opacity-0 bg-foreground" 
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
           </div>
-          <span className="text-[14px] font-medium text-foreground truncate max-w-[90px]">{userName}</span>
-          <div className="flex items-center justify-center px-1.5 h-4 rounded-full bg-accent text-[10px] text-muted-foreground font-medium flex-shrink-0 border border-border/50">
-            {roleName}
-          </div>
+          <span className="text-[14px] font-bold tracking-tight text-foreground truncate">
+            APG RMS Manager
+          </span>
         </div>
-        <ChevronDown className="w-[14px] h-[14px] text-muted-foreground flex-shrink-0 ml-1" />
       </div>
 
       {/* Search Bar */}
@@ -142,16 +150,22 @@ export function Sidebar() {
 
       {/* Bottom User Area */}
       <div className="p-3 border-t border-border mt-auto">
-        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer group">
-          <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-[10px] text-white font-medium">
-            {initial}
+        <div className="flex justify-between items-center h-10 px-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] flex items-center justify-center flex-shrink-0 text-white font-semibold text-[11px] shadow-sm">
+              {initial}
+            </div>
+            <span className="text-[13px] font-medium text-foreground truncate max-w-[100px]">{userName}</span>
+            <div className="flex items-center justify-center px-1.5 h-4 rounded-full bg-accent text-[9px] text-muted-foreground font-semibold flex-shrink-0 border border-border/50 uppercase">
+              {roleName}
+            </div>
           </div>
-          <span className="text-[13px] truncate flex-1 text-muted-foreground group-hover:text-foreground">{userName}</span>
-          <button onClick={() => signOut()} className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10" title="Đăng xuất">
-            <LogOut className="w-3.5 h-3.5 text-muted-foreground" />
+          <button onClick={(e) => { e.stopPropagation(); signOut(); }} className="flex p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors" title="Đăng xuất">
+            <LogOut className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 hover:text-red-500 transition-colors" />
           </button>
         </div>
       </div>
+
     </aside>
   );
 }

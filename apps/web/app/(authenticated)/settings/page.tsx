@@ -19,6 +19,11 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState('general');
 
+  let userName = session?.user?.name || 'Đức Anh';
+  if (userName.toLowerCase() === 'admin' || userName === 'Administrator') {
+    userName = 'Đức Anh';
+  }
+
   return (
     <div className="max-w-[1200px] space-y-6">
       <PageHeader
@@ -64,7 +69,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-foreground text-lg">{session?.user?.name ?? 'Người dùng'}</p>
+                        <p className="font-semibold text-foreground text-lg">{userName}</p>
                         <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent text-foreground border border-border">
                           {session?.user?.role ?? 'ADMIN'}
                         </span>
