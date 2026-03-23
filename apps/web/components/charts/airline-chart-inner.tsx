@@ -1,6 +1,6 @@
 'use client';
 
-import { AIRLINE_COLORS, AIRLINE_NAMES } from '@/lib/utils';
+import { AIRLINE_NAMES } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 interface AirlineChartProps {
@@ -20,7 +20,7 @@ export function AirlineChartInner({ data }: AirlineChartProps) {
       </div>
 
       <div className="space-y-4">
-        {data.map((row) => (
+        {data.map((row, index) => (
           <div key={row.airline} className="space-y-1.5">
             <div className="flex items-center justify-between text-[13px]">
               <span className="font-medium text-foreground">
@@ -32,11 +32,15 @@ export function AirlineChartInner({ data }: AirlineChartProps) {
             </div>
             <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${row.percent}%`,
-                  backgroundColor: AIRLINE_COLORS[row.airline] ?? '#6b7280',
-                }}
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  index === 0 ? "bg-foreground" :
+                  index === 1 ? "bg-foreground/80 dark:bg-foreground/80" :
+                  index === 2 ? "bg-foreground/60 dark:bg-foreground/60" :
+                  index === 3 ? "bg-foreground/40 dark:bg-foreground/40" : 
+                  "bg-foreground/20 dark:bg-foreground/20"
+                )}
+                style={{ width: `${row.percent}%` }}
               />
             </div>
           </div>

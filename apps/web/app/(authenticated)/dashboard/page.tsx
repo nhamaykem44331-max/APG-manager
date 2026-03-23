@@ -11,6 +11,7 @@ import { KpiCard } from '@/components/charts/kpi-card';
 import { RevenueChart } from '@/components/charts/revenue-chart';
 import { AirlineChart } from '@/components/charts/airline-chart';
 import { PageHeader } from '@/components/ui/page-header';
+import { DataTable, ColumnDef } from '@/components/ui/data-table';
 import { cn, formatVND, BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES } from '@/lib/utils';
 import { dashboardApi, bookingsApi, financeApi } from '@/lib/api';
 
@@ -48,10 +49,42 @@ export default function DashboardPage() {
     select: (res) => res.data,
   });
 
-  const recentBookings = bookingsData?.data ?? [];
+  const recentBookings = bookingsData?.data ?? SAMPLE_BOOKINGS;
   const lowDeposits = (depositsData ?? []).filter(
     (d: { balance: number; alertThreshold: number }) => d.balance < d.alertThreshold
   );
+
+  const columns: ColumnDef<SampleBooking>[] = [
+    {
+      header: 'Mã vé',
+      accessorKey: 'bookingCode',
+      cell: (b) => <span className="font-mono text-[12px]">{b.bookingCode}</span>,
+    },
+    {
+      header: 'Khách hàng',
+      accessorKey: 'contactName',
+      cell: (b) => <span className="font-medium text-foreground truncate max-w-[150px] inline-block align-bottom">{b.contactName}</span>,
+    },
+    {
+      header: 'Tuyến',
+      accessorKey: 'route',
+      cell: (b) => <span className="text-muted-foreground">{b.route}</span>,
+    },
+    {
+      header: 'Giá trị',
+      accessorKey: 'totalSellPrice',
+      cell: (b) => <span className="font-tabular font-medium">{formatVND(b.totalSellPrice)}</span>,
+    },
+    {
+      header: 'Trạng thái',
+      accessorKey: 'status',
+      cell: (b) => (
+        <span className={cn('inline-flex items-center', BOOKING_STATUS_CLASSES[b.status] ?? 'badge-default')}>
+          {BOOKING_STATUS_LABELS[b.status] ?? b.status}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6 max-w-[1400px]">
@@ -59,11 +92,11 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Tổng quan hoạt động hôm nay"
         actions={
-          <span className="text-xs text-muted-foreground bg-accent/50 px-3 py-1.5 rounded-md border border-border">
+          <span className="text-[13px] text-muted-foreground px-3 py-1.5 rounded-md border border-border bg-card">
             {new Date().toLocaleDateString('vi-VN', {
-              weekday: 'long',
+              weekday: 'short',
               day: 'numeric',
-              month: 'long',
+              month: 'short',
               year: 'numeric',
             })}
           </span>
@@ -71,7 +104,7 @@ export default function DashboardPage() {
       />
 
       {/* Row 1: KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
           label="Vé xuất hôm nay"
           value="23"
@@ -106,36 +139,14 @@ export default function DashboardPage() {
       {/* Row 3: Recent bookings + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Booking gần nhất */}
-        <div className="lg:col-span-2 card flex flex-col">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <h3 className="text-[13px] font-medium text-foreground">Booking gần nhất</h3>
-            <Link href="/bookings" className="text-xs text-muted-foreground hover:text-foreground">
-              Xem tất cả →
-            </Link>
-          </div>
-
-          <div className="divide-y divide-border">
-            {bookingsLoading ? (
-              // Skeleton loading
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="px-5 py-3 flex items-center gap-4 animate-pulse">
-                  <div className="w-20 h-4 bg-muted rounded" />
-                  <div className="flex-1 h-4 bg-muted rounded" />
-                  <div className="w-16 h-4 bg-muted rounded" />
-                  <div className="w-12 h-5 bg-muted rounded-full" />
-                </div>
-              ))
-            ) : recentBookings.length === 0 ? (
-              // Dữ liệu mẫu hiển thị khi chưa có API
-              SAMPLE_BOOKINGS.map((booking) => (
-                <BookingRow key={booking.id} booking={booking} />
-              ))
-            ) : (
-              recentBookings.map((booking: SampleBooking) => (
-                <BookingRow key={booking.id} booking={booking} />
-              ))
-            )}
-          </div>
+        <div className="lg:col-span-2 flex flex-col gap-3">
+          <h3 className="text-[14px] font-medium text-foreground">Recent Bookings</h3>
+          <DataTable
+            columns={columns as any}
+            data={recentBookings}
+            isLoading={bookingsLoading}
+            emptyMessage="Không có booking nào gần đây."
+          />
         </div>
 
         {/* Panel cảnh báo */}
@@ -234,41 +245,6 @@ interface SampleBooking {
   profit: number;
   status: string;
   createdAt: string;
-}
-
-function BookingRow({ booking }: { booking: SampleBooking }) {
-  return (
-    <Link
-      href={`/bookings/${booking.id}`}
-      className="flex items-center justify-between gap-4 px-5 py-3 hover:bg-accent/50 transition-colors group"
-    >
-      <div className="flex flex-col gap-0.5 w-24 flex-shrink-0">
-        <p className="text-[13px] font-medium text-foreground group-hover:underline">
-          {booking.bookingCode}
-        </p>
-        <span className={cn(
-          'inline-flex items-center w-fit mt-0.5',
-          BOOKING_STATUS_CLASSES[booking.status] ?? 'badge-default',
-        )}>
-          {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
-        </span>
-      </div>
-      
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-        <p className="text-[13px] text-foreground truncate">{booking.contactName}</p>
-        <p className="text-[11px] text-muted-foreground">{booking.route}</p>
-      </div>
-
-      <div className="text-right flex flex-col gap-0.5 flex-shrink-0">
-        <p className="text-[13px] font-medium font-tabular text-foreground">
-          {formatVND(booking.totalSellPrice)}
-        </p>
-        <p className="text-[11px] font-tabular text-muted-foreground">
-          Lãi: <span className="text-emerald-500 dark:text-emerald-400">+{formatVND(booking.profit)}</span>
-        </p>
-      </div>
-    </Link>
-  );
 }
 
 function AlertItem({

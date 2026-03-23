@@ -150,25 +150,34 @@ function OverviewTab() {
 
       {/* KPI AR/AP từ AccountsLedger */}
       {ledgerSummary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="card p-4 border-l-4 border-l-blue-500">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">📥 Tổng phải thu (AR)</p>
-            <p className="text-xl font-bold font-tabular text-blue-500 mt-1">{formatVND(ledgerSummary.totalReceivable)}</p>
-            <p className="text-[11px] text-red-500 mt-1">Quá hạn: {formatVND(ledgerSummary.overdueReceivable)}</p>
+        <div className="card p-5">
+          <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+            <h3 className="text-[13px] font-medium text-foreground">Trạng thái công nợ (AR / AP)</h3>
           </div>
-          <div className="card p-4 border-l-4 border-l-orange-500">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">📤 Tổng phải trả (AP)</p>
-            <p className="text-xl font-bold font-tabular text-orange-500 mt-1">{formatVND(ledgerSummary.totalPayable)}</p>
-            <p className="text-[11px] text-red-500 mt-1">Quá hạn: {formatVND(ledgerSummary.overduePayable)}</p>
-          </div>
-          <div className={cn('card p-4 border-l-4', ledgerSummary.netPosition >= 0 ? 'border-l-emerald-500' : 'border-l-red-500')}>
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">⚖️ Vị thế ròng (AR - AP)</p>
-            <p className={cn('text-xl font-bold font-tabular mt-1', ledgerSummary.netPosition >= 0 ? 'text-emerald-500' : 'text-red-500')}>
-              {ledgerSummary.netPosition >= 0 ? '+' : ''}{formatVND(ledgerSummary.netPosition)}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {ledgerSummary.receivableCount} khoản thu · {ledgerSummary.payableCount} khoản chi
-            </p>
+          <div className="flex flex-col text-[13px]">
+            <div className="flex items-center justify-between py-3 border-b border-border/50">
+              <span className="text-muted-foreground flex items-center gap-2"><ArrowDownCircle className="w-4 h-4 text-blue-500" /> Tổng phải thu (AR)</span>
+              <div className="text-right">
+                <span className="font-medium font-tabular text-foreground block">{formatVND(ledgerSummary.totalReceivable)}</span>
+                <span className="text-[11px] text-red-500">Quá hạn: {formatVND(ledgerSummary.overdueReceivable)}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-3 border-b border-border/50">
+              <span className="text-muted-foreground flex items-center gap-2"><ArrowUpCircle className="w-4 h-4 text-orange-500" /> Tổng phải trả (AP)</span>
+              <div className="text-right">
+                <span className="font-medium font-tabular text-foreground block">{formatVND(ledgerSummary.totalPayable)}</span>
+                <span className="text-[11px] text-red-500">Quá hạn: {formatVND(ledgerSummary.overduePayable)}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-3">
+              <span className="text-muted-foreground flex items-center gap-2">⚖️ Vị thế ròng</span>
+              <div className="text-right">
+                <span className={cn('font-medium font-tabular block', ledgerSummary.netPosition >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                  {ledgerSummary.netPosition >= 0 ? '+' : ''}{formatVND(ledgerSummary.netPosition)}
+                </span>
+                <span className="text-[11px] text-muted-foreground">{ledgerSummary.receivableCount} khoản thu · {ledgerSummary.payableCount} khoản chi</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -186,7 +195,7 @@ function OverviewTab() {
             { airline: 'QH', revenue: 168_000_000, pct: 14 },
             { airline: 'BL', revenue: 72_000_000, pct: 6 },
             { airline: 'VU', revenue: 24_000_000, pct: 2 },
-          ].map((row) => (
+          ].map((row, index) => (
             <div key={row.airline} className="space-y-1.5">
               <div className="flex items-center justify-between text-[13px]">
                 <span className="font-medium text-foreground">
@@ -194,13 +203,17 @@ function OverviewTab() {
                 </span>
                 <span className="text-muted-foreground font-tabular">{formatVND(row.revenue)} · {row.pct}%</span>
               </div>
-              <div className="w-full bg-muted rounded-full h-1.5">
+              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                 <div
-                  className="h-1.5 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${row.pct}%`,
-                    backgroundColor: AIRLINE_COLORS[row.airline],
-                  }}
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    index === 0 ? "bg-foreground" :
+                    index === 1 ? "bg-foreground/80 dark:bg-foreground/80" :
+                    index === 2 ? "bg-foreground/60 dark:bg-foreground/60" :
+                    index === 3 ? "bg-foreground/40 dark:bg-foreground/40" : 
+                    "bg-foreground/20 dark:bg-foreground/20"
+                  )}
+                  style={{ width: `${row.pct}%` }}
                 />
               </div>
             </div>

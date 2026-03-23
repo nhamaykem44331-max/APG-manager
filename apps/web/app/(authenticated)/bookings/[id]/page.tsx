@@ -594,36 +594,36 @@ export default function BookingDetailPage() {
         <div className="lg:col-span-2 space-y-4">
           {/* Contact info */}
           <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
-              <h3 className="text-[13px] font-medium text-foreground">Thông tin liên hệ</h3>
+            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+              <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-[13px]">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Tên liên hệ</p>
-                <p className="font-medium text-foreground">{bk.contactName}</p>
+            <div className="flex flex-col text-[13px]">
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <span className="text-muted-foreground">Tên liên hệ</span>
+                <span className="font-medium text-foreground">{bk.contactName}</span>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Số điện thoại</p>
-                <p className="font-medium text-foreground flex items-center gap-1">
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <span className="text-muted-foreground">Số điện thoại</span>
+                <span className="font-medium text-foreground flex items-center gap-1">
                   <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                   {bk.contactPhone}
-                </p>
+                </span>
               </div>
               {bk.pnr && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Mã PNR (GDS)</p>
-                  <p className="font-mono font-bold text-primary">{bk.pnr}</p>
+                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                  <span className="text-muted-foreground">Mã PNR (GDS)</span>
+                  <span className="font-mono font-bold text-primary">{bk.pnr}</span>
                 </div>
               )}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Nguồn</p>
-                <p className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source]}</p>
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+                <span className="text-muted-foreground">Nguồn</span>
+                <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source]}</span>
               </div>
             </div>
             {bk.notes && (
-              <div className="mt-4 p-3 bg-muted/40 rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">Ghi chú</p>
-                <p className="text-sm text-foreground">{bk.notes}</p>
+              <div className="mt-4 pt-3 border-t border-border">
+                <p className="text-[13px] text-muted-foreground mb-1">Ghi chú</p>
+                <p className="text-[13px] text-foreground">{bk.notes}</p>
               </div>
             )}
           </div>
@@ -720,17 +720,17 @@ export default function BookingDetailPage() {
 
           {/* Financial summary */}
           <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
               <h3 className="text-[13px] font-medium text-foreground">Tài chính</h3>
             </div>
-            <div className="space-y-2.5 text-[13px]">
+            <div className="flex flex-col text-[13px]">
               {[
                 { label: 'Giá bán (khách)',    value: formatVND(bk.totalSellPrice),  bold: false },
                 { label: 'Giá net (hãng bay)', value: formatVND(bk.totalNetPrice),   bold: false },
                 { label: 'Phí dịch vụ',        value: formatVND(bk.totalFees),       bold: false },
                 { label: 'Lợi nhuận',           value: `+${formatVND(bk.profit)}`,   bold: true,  green: true },
-              ].map((row) => (
-                <div key={row.label} className={cn('flex justify-between', row.bold && 'pt-2 border-t border-border')}>
+              ].map((row, idx, arr) => (
+                <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>
                   <span className="text-muted-foreground">{row.label}</span>
                   <span className={cn('font-medium', row.green ? 'text-emerald-500' : 'text-foreground')}>
                     {row.value}
@@ -742,12 +742,12 @@ export default function BookingDetailPage() {
             {/* Payment status */}
             <div className="mt-4 pt-4 border-t border-border space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Trạng thái thanh toán</span>
+                <span className="text-[13px] text-muted-foreground">Trạng thái thanh toán</span>
                 <span className={cn(
-                  'px-2.5 py-0.5 rounded-full text-xs font-medium',
-                  bk.paymentStatus === 'PAID'    && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                  bk.paymentStatus === 'PARTIAL' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-                  bk.paymentStatus === 'UNPAID'  && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                  'px-2.5 py-0.5 rounded-full text-[11px] font-medium',
+                  bk.paymentStatus === 'PAID'    && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                  bk.paymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                  bk.paymentStatus === 'UNPAID'  && 'bg-red-500/10 text-red-600 dark:text-red-400',
                 )}>
                   {bk.paymentStatus === 'PAID'    ? '✅ Đã thanh toán đủ'
                    : bk.paymentStatus === 'PARTIAL' ? '⚠ Thanh toán một phần'
@@ -755,7 +755,7 @@ export default function BookingDetailPage() {
                 </span>
               </div>
               {Number(bk.totalSellPrice) > 0 && (
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-[13px]">
                   <span className="text-muted-foreground">Đã thu / Còn lại</span>
                   <span className="font-medium">
                     <span className="text-emerald-500">{formatVND(totalPaid)}</span>
@@ -767,7 +767,7 @@ export default function BookingDetailPage() {
 
             {/* Payments list */}
             {(bk.payments ?? []).length > 0 && (
-              <div className="mt-3">
+              <div className="mt-4 pt-3 border-t border-border">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Lịch sử nhận tiền</p>
                 {(bk.payments ?? []).map(p => <PaymentRow key={p.id} payment={p} />)}
               </div>
@@ -775,7 +775,7 @@ export default function BookingDetailPage() {
             {canAddPayment && (
               <button
                 onClick={() => setShowAddPayment(true)}
-                className="mt-3 w-full py-2 border border-dashed border-border rounded-lg text-xs text-muted-foreground hover:border-emerald-500 hover:text-emerald-500 transition-colors flex items-center justify-center gap-1.5"
+                className="mt-4 w-full py-2 border border-border bg-accent/50 rounded-lg text-xs font-medium text-foreground hover:bg-accent transition-colors flex items-center justify-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" /> Ghi nhận thanh toán mới
               </button>
@@ -807,7 +807,7 @@ export default function BookingDetailPage() {
                       {BOOKING_STATUS_LABELS[log.toStatus as BookingStatus] ?? log.toStatus}
                     </p>
                     {log.reason && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{log.reason}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{log.reason}</p>
                     )}
                     <p className="text-[10px] text-muted-foreground mt-0.5">{formatDateTime(log.createdAt)}</p>
                   </div>
@@ -821,32 +821,41 @@ export default function BookingDetailPage() {
             <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
               <h3 className="text-[13px] font-medium text-foreground">Nhân viên phụ trách</h3>
             </div>
-            <p className="text-[13px] font-medium text-foreground">{bk.staff?.fullName ?? 'Chưa phân công'}</p>
-            {bk.staff?.email && <p className="text-[11px] text-muted-foreground">{bk.staff.email}</p>}
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                {(bk.staff?.fullName?.[0] || 'U').toUpperCase()}
+              </div>
+              <div>
+                <p className="text-[13px] font-medium text-foreground">{bk.staff?.fullName ?? 'Chưa phân công'}</p>
+                {bk.staff?.email && <p className="text-[11px] text-muted-foreground">{bk.staff.email}</p>}
+              </div>
+            </div>
           </div>
 
           {/* Quick stats */}
-          <div className="card p-4 space-y-3 text-[13px]">
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
+          <div className="card p-4">
+            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
               <h3 className="text-[13px] font-medium text-foreground">Tóm tắt</h3>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Số vé</span>
-              <span className="font-medium text-foreground">{bk.tickets?.length ?? 0} vé</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tổng thu</span>
-              <span className="font-medium text-foreground">{formatVND(bk.totalSellPrice)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Lợi nhuận</span>
-              <span className="font-bold text-emerald-500">+{formatVND(bk.profit)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Đã thu</span>
-              <span className={cn('font-medium', totalPaid >= Number(bk.totalSellPrice) ? 'text-emerald-500' : 'text-orange-500')}>
-                {formatVND(totalPaid)}
-              </span>
+            <div className="flex flex-col text-[13px]">
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <span className="text-muted-foreground">Số vé</span>
+                <span className="font-medium text-foreground">{bk.tickets?.length ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <span className="text-muted-foreground">Tổng thu</span>
+                <span className="font-medium font-tabular text-foreground">{formatVND(bk.totalSellPrice)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <span className="text-muted-foreground">Lợi nhuận</span>
+                <span className="font-medium font-tabular text-emerald-500">+{formatVND(bk.profit)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <span className="text-muted-foreground">Đã thu</span>
+                <span className={cn('font-medium font-tabular', totalPaid >= Number(bk.totalSellPrice) ? 'text-emerald-500' : 'text-amber-500')}>
+                  {formatVND(totalPaid)}
+                </span>
+              </div>
             </div>
           </div>
         </div>

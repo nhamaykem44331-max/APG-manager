@@ -1,4 +1,4 @@
-// APG Manager RMS - Sidebar Navigation (collapsible, mobile-friendly)
+// APG Manager RMS - Vercel-style Sidebar
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,32 +7,68 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   LayoutDashboard, Plane, Users, Wallet,
-  Search, BarChart3, Settings, ChevronLeft,
-  ChevronRight, Building2, LogOut, Target,
+  Search as SearchIcon, BarChart3, Settings,
+  LogOut, Target, ChevronDown, ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/stores/ui.store';
 import { signOut } from 'next-auth/react';
 
 // Cấu hình menu sidebar
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/bookings', label: 'Đặt vé', icon: Plane },
-  { href: '/customers', label: 'Khách hàng', icon: Users },
-  { href: '/finance', label: 'Tài chính', icon: Wallet },
-  { href: '/sales', label: 'Sales Pipeline', icon: Target },
-  { href: 'https://book.tanphuapg.com', label: 'Tra cứu giá', icon: Search },
-  { href: '/reports', label: 'Báo cáo', icon: BarChart3 },
+const TOP_ITEMS = [
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/bookings', label: 'Bookings', icon: Plane },
+  { href: '/customers', label: 'Customers', icon: Users },
+  { href: '/finance', label: 'Finance', icon: Wallet },
 ];
 
-const BOTTOM_ITEMS = [
-  { href: '/settings', label: 'Cài đặt', icon: Settings },
+const ANALYTICS_ITEMS = [
+  { href: '/sales', label: 'Sales Pipeline', icon: Target },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
 ];
+
+const EXTERNAL_ITEMS = [
+  { href: 'https://book.tanphuapg.com', label: 'Tra cứu giá', icon: ExternalLink, external: true },
+];
+
+const SETTINGS_ITEMS = [
+  { href: '/settings', label: 'Settings', icon: Settings },
+];
+
+function NavItem({ item, isActive }: { item: any; isActive: boolean }) {
+  const Icon = item.icon;
+  const content = (
+    <div
+      className={cn(
+        'group flex items-center h-[32px] px-2.5 mx-3 rounded-md transition-colors duration-100',
+        isActive
+          ? 'bg-accent text-foreground font-medium'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+      )}
+    >
+      <Icon className={cn('w-4 h-4 mr-2.5 flex-shrink-0', isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} strokeWidth={isActive ? 2 : 1.5} />
+      <span className="text-[13px] flex-1 truncate">{item.label}</span>
+      {item.external && <ExternalLink className="w-3 h-3 text-muted-foreground/50 ml-1" />}
+    </div>
+  );
+
+  if (item.external) {
+    return (
+      <a href={item.href} target="_blank" rel="noreferrer" className="block focus:outline-none">
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={item.href} className="block focus:outline-none">
+      {content}
+    </Link>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -40,151 +76,82 @@ export function Sidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
 
-  // Tránh hydration mismatch - render skeleton khi chưa mount
+  const userName = session?.user?.name || 'Tân Phú APG';
+  const roleName = session?.user?.role || 'Hobby';
+  const initial = userName.charAt(0).toUpperCase();
+
   if (!mounted) {
     return (
-      <aside className="relative flex flex-col h-screen border-r bg-card border-border w-[260px]">
-        <div className="flex items-center h-16 border-b border-border px-4 gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary" />
-        </div>
-      </aside>
+      <aside className="relative flex flex-col h-screen border-r bg-background border-border w-[240px] flex-shrink-0" />
     );
   }
 
   return (
-    <aside
-      className={cn(
-        'relative flex flex-col h-screen border-r transition-all duration-300 ease-in-out',
-        'bg-background border-border',
-        sidebarCollapsed ? 'w-12' : 'w-56',
-      )}
-    >
-      {/* Logo & Brand */}
-      <div className={cn(
-        'flex items-center h-12 border-b border-border px-3 flex-shrink-0',
-        sidebarCollapsed ? 'justify-center' : 'gap-2.5',
-      )}>
-        <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center flex-shrink-0">
-          <Plane className="w-3.5 h-3.5 text-background" strokeWidth={2.5} />
-        </div>
-        {!sidebarCollapsed && (
-          <div className="overflow-hidden">
-            <p className="text-sm font-bold text-foreground leading-tight">APG Manager</p>
-            <p className="text-[10px] text-muted-foreground leading-tight">Tân Phú APG</p>
+    <aside className="relative flex flex-col h-screen border-r bg-background border-border w-[240px] flex-shrink-0">
+      
+      {/* Team Switcher Area */}
+      <div className="flex justify-between items-center h-14 pl-4 pr-3 mx-2 mt-2 border border-transparent rounded-lg hover:bg-accent/50 transition-colors cursor-pointer select-none">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] flex items-center justify-center flex-shrink-0 text-white font-semibold text-[11px] shadow-sm">
+            {initial}
           </div>
-        )}
+          <span className="text-[14px] font-medium text-foreground truncate max-w-[90px]">{userName}</span>
+          <div className="flex items-center justify-center px-1.5 h-4 rounded-full bg-accent text-[10px] text-muted-foreground font-medium flex-shrink-0 border border-border/50">
+            {roleName}
+          </div>
+        </div>
+        <ChevronDown className="w-[14px] h-[14px] text-muted-foreground flex-shrink-0 ml-1" />
       </div>
 
-      {/* Navigation chính */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <NavItem
-            key={item.href}
-            item={item}
-            isActive={isActive(item.href)}
-            collapsed={sidebarCollapsed}
+      {/* Search Bar */}
+      <div className="px-3 py-2">
+        <div className="relative group flex items-center">
+          <SearchIcon className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
+          <input 
+            type="text" 
+            placeholder="Find..." 
+            className="w-full h-[32px] pl-8 pr-6 rounded-md bg-transparent border border-border text-[13px] focus:outline-none focus:border-muted-foreground/30 focus:ring-1 focus:ring-muted-foreground/30 transition-all placeholder:text-muted-foreground/70 text-foreground"
           />
-        ))}
+          <div className="absolute right-2 flex items-center justify-center w-4 h-4 rounded-[4px] bg-accent/50 border border-border text-[10px] text-muted-foreground font-medium pointer-events-none">
+            F
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto pb-4 pt-1 custom-scrollbar">
+        <div className="space-y-0.5">
+          {TOP_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+        </div>
+
+        <div className="mt-6 mb-2 px-5">
+          <p className="text-[11px] font-medium text-muted-foreground tracking-wide select-none">ANALYTICS</p>
+        </div>
+        <div className="space-y-0.5">
+          {ANALYTICS_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+        </div>
+
+        <div className="mt-6 mb-2 px-5">
+          <p className="text-[11px] font-medium text-muted-foreground tracking-wide select-none">WORKSPACE</p>
+        </div>
+        <div className="space-y-0.5">
+          {EXTERNAL_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+          {SETTINGS_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+        </div>
       </nav>
 
-      {/* Bottom items */}
-      <div className="px-2 py-2 border-t border-border space-y-0.5">
-        {BOTTOM_ITEMS.map((item) => (
-          <NavItem
-            key={item.href}
-            item={item}
-            isActive={isActive(item.href)}
-            collapsed={sidebarCollapsed}
-          />
-        ))}
-
-        {/* User info & logout */}
-        <div className={cn(
-          'flex items-center mt-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors',
-          sidebarCollapsed ? 'justify-center' : 'gap-2',
-        )}
-          onClick={() => signOut({ callbackUrl: '/auth/login' })}
-        >
-          {/* Avatar */}
-          <div className="w-6 h-6 rounded-full bg-border flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-3 h-3 text-muted-foreground" />
+      {/* Bottom User Area */}
+      <div className="p-3 border-t border-border mt-auto">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer group">
+          <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-[10px] text-white font-medium">
+            {initial}
           </div>
-          {!sidebarCollapsed && (
-            <>
-              <div className="flex-1 overflow-hidden">
-                <p className="text-xs font-medium truncate text-foreground">
-                  {session?.user?.name ?? 'Loading...'}
-                </p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {session?.user?.role ?? ''}
-                </p>
-              </div>
-              <LogOut className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            </>
-          )}
+          <span className="text-[13px] truncate flex-1 text-muted-foreground group-hover:text-foreground">{userName}</span>
+          <button onClick={() => signOut()} className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10" title="Đăng xuất">
+            <LogOut className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
         </div>
       </div>
-
-      {/* Toggle collapse button */}
-      <button
-        onClick={toggleSidebar}
-        className={cn(
-          'absolute -right-3 top-20 z-10',
-          'w-6 h-6 rounded-full border border-border bg-card',
-          'flex items-center justify-center',
-          'hover:bg-accent transition-colors shadow-sm',
-        )}
-        aria-label={sidebarCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-      >
-        {sidebarCollapsed
-          ? <ChevronRight className="w-3 h-3 text-muted-foreground" />
-          : <ChevronLeft className="w-3 h-3 text-muted-foreground" />
-        }
-      </button>
     </aside>
-  );
-}
-
-// Component từng item menu
-function NavItem({
-  item,
-  isActive,
-  collapsed,
-}: {
-  item: { href: string; label: string; icon: React.ElementType };
-  isActive: boolean;
-  collapsed: boolean;
-}) {
-  const Icon = item.icon;
-
-  const isExternal = item.href.startsWith('http');
-
-  return (
-    <Link
-      href={item.href}
-      title={collapsed ? item.label : undefined}
-      target={isExternal ? "_blank" : undefined}
-      rel={isExternal ? "noopener noreferrer" : undefined}
-      className={cn(
-        'flex items-center rounded-md px-2 py-1.5 text-[13px] transition-all duration-150 h-8',
-        'hover:bg-accent hover:text-foreground',
-        collapsed ? 'justify-center' : 'gap-2.5',
-        isActive
-          ? 'bg-accent text-foreground font-medium'
-          : 'text-muted-foreground',
-      )}
-    >
-      <Icon className={cn(
-        'w-4 h-4 flex-shrink-0',
-        isActive ? 'text-foreground' : 'text-muted-foreground',
-      )} />
-      {!collapsed && (
-        <span className="truncate leading-none pt-0.5">{item.label}</span>
-      )}
-      {/* Active indicator */}
-      {isActive && !collapsed && (
-        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
-      )}
-    </Link>
   );
 }

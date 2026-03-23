@@ -56,11 +56,11 @@ export function PayableTab() {
 
       {/* Sub-tabs + Search */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1 bg-muted/50 rounded-lg p-1 flex-wrap">
+        <div className="flex gap-4 border-b border-border w-full sm:w-auto">
           {SUB_TABS.map((t) => (
             <button key={t.key} onClick={() => setSubTab(t.key)}
-              className={cn('px-3 py-1.5 text-xs rounded-md font-medium transition-colors',
-                subTab === t.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              className={cn('pb-2 text-[13px] font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
+                subTab === t.key ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               )}
             >{t.label}</button>
           ))}

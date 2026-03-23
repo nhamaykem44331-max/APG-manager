@@ -31,12 +31,12 @@ const TYPE_FILTERS = [
   { key: 'CORPORATE', label: '🏢 Doanh nghiệp' },
 ];
 
-// Màu VIP tier
-const VIP_BADGE: Record<string, string> = {
-  PLATINUM: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  GOLD:     'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  SILVER:   'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  NORMAL:   'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+// Màu VIP tier dạng chấm tròn (Vercel style)
+const VIP_DOT: Record<string, string> = {
+  PLATINUM: 'bg-purple-500',
+  GOLD:     'bg-amber-500',
+  SILVER:   'bg-slate-400',
+  NORMAL:   'bg-muted-foreground/40',
 };
 
 export default function CustomersPage() {
@@ -202,25 +202,26 @@ export default function CustomersPage() {
           {
             header: 'Loại',
             cell: (c) => (
-              <span className={cn(
-                'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium',
-                c.type === 'CORPORATE'
-                  ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-                  : 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-              )}>
-                {c.type === 'CORPORATE' ? '🏢 DN' : '👤 Cá nhân'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <div className={cn(
+                  'w-1.5 h-1.5 rounded-full',
+                  c.type === 'CORPORATE' ? 'bg-orange-500' : 'bg-blue-500',
+                )} />
+                <span className="text-[13px] text-muted-foreground">
+                  {c.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}
+                </span>
+              </div>
             ),
           },
           {
             header: 'VIP',
             cell: (c) => (
-              <span className={cn(
-                'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium',
-                VIP_BADGE[c.vipTier] ?? VIP_BADGE.NORMAL,
-              )}>
-                {VIP_TIER_LABELS[c.vipTier]}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <div className={cn('w-1.5 h-1.5 rounded-full', VIP_DOT[c.vipTier] ?? VIP_DOT.NORMAL)} />
+                <span className="text-[13px] text-muted-foreground">
+                  {VIP_TIER_LABELS[c.vipTier]}
+                </span>
+              </div>
             ),
           },
           {

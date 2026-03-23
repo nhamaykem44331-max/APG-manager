@@ -243,36 +243,42 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
       {/* Left: Info */}
       <div className="lg:col-span-2 space-y-4">
         <div className="card p-5">
-          <h3 className="text-[13px] font-semibold text-foreground mb-4">Thông tin cá nhân</h3>
-          <div className="grid grid-cols-2 gap-4 text-[13px]">
+          <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+            <h3 className="text-[13px] font-medium text-foreground">Thông tin cá nhân</h3>
+          </div>
+          <div className="flex flex-col text-[13px]">
             {[
               { label: 'Họ tên', value: customer.fullName },
               { label: 'Điện thoại', value: customer.phone },
               { label: 'Email', value: customer.email ?? '—' },
-              { label: 'CCCD/CMND', value: customer.idNumber ?? '—' },
-              { label: 'Hộ chiếu', value: customer.passport ?? '—' },
+              { label: 'CCCD/CMND', value: customer.idNumber ?? '—', mono: true },
+              { label: 'Hộ chiếu', value: customer.passport ?? '—', mono: true },
               { label: 'Ngày sinh', value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—' },
               { label: 'Ghế ưa thích', value: customer.preferredSeat ?? '—' },
               { label: 'Ngày tạo', value: formatDate(customer.createdAt) },
-            ].map((row) => (
-              <div key={row.label}>
-                <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">{row.label}</p>
-                <p className="font-medium text-foreground">{row.value}</p>
+            ].map((row, idx, arr) => (
+              <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className={cn('font-medium text-foreground', row.mono && 'font-mono text-primary')}>
+                  {row.value}
+                </span>
               </div>
             ))}
           </div>
 
           {customer.type === 'CORPORATE' && (
             <div className="mt-5 pt-5 border-t border-border">
-              <h4 className="text-[13px] font-semibold text-foreground mb-4">Thông tin doanh nghiệp</h4>
-              <div className="grid grid-cols-2 gap-4 text-[13px]">
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">Tên công ty</p>
-                  <p className="font-medium text-foreground">{customer.companyName ?? '—'}</p>
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+                <h4 className="text-[13px] font-medium text-foreground">Thông tin doanh nghiệp</h4>
+              </div>
+              <div className="flex flex-col text-[13px]">
+                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                  <span className="text-muted-foreground">Tên công ty</span>
+                  <span className="font-medium text-foreground">{customer.companyName ?? '—'}</span>
                 </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-wide">Mã số thuế</p>
-                  <p className="font-medium text-foreground">{customer.companyTaxId ?? '—'}</p>
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="text-muted-foreground">Mã số thuế</span>
+                  <span className="font-medium font-mono text-primary">{customer.companyTaxId ?? '—'}</span>
                 </div>
               </div>
             </div>
@@ -349,7 +355,7 @@ function BookingsTab({ customerId, bookings }: { customerId: string; bookings?: 
   const list = bookings ?? SAMPLE_BOOKINGS;
 
   return (
-    <div className="card overflow-hidden">
+    <div className="mx-[-16px] sm:mx-0">
       <DataTable
         data={list}
         onRowClick={(b) => window.location.href = `/bookings/${b.id}`}
@@ -568,7 +574,7 @@ function DebtsTab({ debts }: { debts?: Record<string, unknown>[] }) {
   const list = debts ?? [];
 
   return (
-    <div className="card overflow-hidden">
+    <div className="mx-[-16px] sm:mx-0">
       <DataTable
         data={list}
         columns={[

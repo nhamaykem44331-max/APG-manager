@@ -1,8 +1,8 @@
 'use client';
 
 import {
-  Area,
-  AreaChart,
+  Line,
+  LineChart,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
@@ -30,20 +30,24 @@ function CustomTooltip({
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="bg-card border border-border rounded-lg shadow-lg p-3 text-xs">
-      <p className="text-muted-foreground mb-2 font-medium">{label}</p>
-      {payload.map((entry) => (
-        <div key={entry.name} className="flex items-center gap-2 py-0.5">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="text-foreground font-semibold">
-            {formatVND(entry.value)}
-          </span>
-        </div>
-      ))}
+    <div className="bg-card border border-border rounded-md shadow-sm p-3 text-[13px] min-w-[150px]">
+      <p className="text-muted-foreground mb-3 font-medium">{label}</p>
+      <div className="space-y-2">
+        {payload.map((entry) => (
+          <div key={entry.name} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: entry.color }}
+              />
+              <span className="text-muted-foreground capitalize">{entry.name === 'revenue' ? 'Doanh thu' : 'Lợi nhuận'}</span>
+            </div>
+            <span className="text-foreground font-medium font-tabular">
+              {formatVND(entry.value)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -51,74 +55,68 @@ function CustomTooltip({
 export function RevenueChartInner({ data }: RevenueChartProps) {
   return (
     <div className="card p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-[13px] font-semibold text-foreground">Doanh thu & Lợi nhuận</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">7 ngày gần nhất</p>
+          <h3 className="text-[14px] font-medium text-foreground">Doanh thu & Lợi nhuận</h3>
+        </div>
+        <div className="flex items-center gap-4 text-[12px]">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-0.5 rounded-full bg-foreground" />
+            <span className="text-muted-foreground">Doanh thu</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-0.5 rounded-full bg-muted-foreground" />
+            <span className="text-muted-foreground">Lợi nhuận</span>
+          </div>
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
-              <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+      <ResponsiveContainer width="100%" height={240}>
+        <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
 
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             axisLine={false}
             tickLine={false}
+            dy={10}
           />
 
           <YAxis
             tickFormatter={(value) => formatVND(value)}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             axisLine={false}
             tickLine={false}
-            width={55}
+            width={70}
+            dx={-10}
           />
 
-          <Tooltip content={<CustomTooltip />} />
-
-          <Legend
-            formatter={(value) => (
-              value === 'revenue' ? 'Doanh thu' : 'Lợi nhuận'
-            )}
-            wrapperStyle={{ fontSize: '11px' }}
+          <Tooltip 
+            content={<CustomTooltip />} 
+            cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '4 4' }} 
           />
 
-          <Area
+          <Line
             type="monotone"
             dataKey="revenue"
             name="revenue"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            fill="url(#colorRevenue)"
-            dot={{ r: 3, fill: '#3b82f6' }}
-            activeDot={{ r: 5 }}
+            stroke="hsl(var(--foreground))"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={{ r: 4, fill: 'hsl(var(--background))', stroke: 'hsl(var(--foreground))', strokeWidth: 2 }}
           />
 
-          <Area
+          <Line
             type="monotone"
             dataKey="profit"
             name="profit"
-            stroke="#10b981"
-            strokeWidth={2}
-            fill="url(#colorProfit)"
-            dot={{ r: 3, fill: '#10b981' }}
-            activeDot={{ r: 5 }}
+            stroke="hsl(var(--muted-foreground))"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={{ r: 4, fill: 'hsl(var(--background))', stroke: 'hsl(var(--muted-foreground))', strokeWidth: 2 }}
           />
-        </AreaChart>
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );

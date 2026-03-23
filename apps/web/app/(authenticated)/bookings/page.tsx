@@ -150,84 +150,84 @@ export default function BookingsPage() {
   ];
 
   return (
-    <div className="space-y-4 max-w-[1400px]">
+    <div className="space-y-6 max-w-[1400px]">
       {/* Header */}
       <PageHeader
         title="Đặt vé & Booking"
         description="Quản lý toàn bộ booking của đại lý"
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <button className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
-              'bg-card border border-border text-foreground hover:bg-accent hover:text-foreground transition-colors',
-            )}>
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Xuất Excel</span>
+              'flex items-center justify-center w-8 h-8 rounded-md',
+              'bg-card border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+            )} title="Xuất Excel">
+              <Download className="w-4 h-4" />
             </button>
             <button 
               onClick={() => setIsSheetSyncOpen(true)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
-                'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 hover:text-emerald-700 transition-colors',
-                'dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-900/50'
-              )}>
-              <FileText className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Đồng bộ Sheets</span>
+                'flex items-center justify-center w-8 h-8 rounded-md',
+                'bg-card border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+              )} title="Đồng bộ Sheets">
+              <FileText className="w-4 h-4" />
             </button>
             <button
               onClick={() => quickCreateMutation.mutate()}
               disabled={quickCreateMutation.isPending}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium',
-                'bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-50',
+                'flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium',
+                'bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-50 ml-1',
               )}
             >
               {quickCreateMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Đang tạo...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</>
               ) : (
-                <><Plus className="w-4 h-4" /> Tạo Booking</>
+                <><Plus className="w-4 h-4" /> Create Booking</>
               )}
             </button>
-          </>
+          </div>
         }
       />
 
-      {/* Main card */}
-      <div className="card w-full flex flex-col p-4 pb-0">
+      {/* Main Content */}
+      <div className="flex flex-col gap-4">
+        {/* Vercel-style underline tabs */}
+        <div className="flex items-center gap-6 border-b border-border px-1 overflow-x-auto custom-scrollbar">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveStatus(tab.key); setPage(1); }}
+              className={cn(
+                'pb-2.5 text-[14px] font-medium whitespace-nowrap transition-colors relative',
+                activeStatus === tab.key
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tab.label}
+              {activeStatus === tab.key && (
+                <div className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-foreground rounded-t-full" />
+              )}
+            </button>
+          ))}
+        </div>
+
         <FilterBar
-          searchPlaceholder="Tìm mã booking, tên khách, SĐT..."
+          searchPlaceholder="Search by booking code, name, phone..."
           searchValue={searchTerm}
           onSearchChange={(v) => { setSearchTerm(v); setPage(1); }}
           filters={
-            <>
-              <div className="flex bg-accent/50 p-1 rounded-md overflow-x-auto flex-1 border border-border">
-                {STATUS_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => { setActiveStatus(tab.key); setPage(1); }}
-                    className={cn(
-                      'px-3 py-1 rounded-md text-[13px] font-medium whitespace-nowrap transition-all duration-200',
-                      activeStatus === tab.key
-                        ? 'bg-background shadow-sm text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <button className={cn(
-                'flex items-center gap-1.5 px-3 py-1 h-8 rounded-md text-[13px] font-medium',
-                'border border-border text-muted-foreground hover:bg-accent bg-background',
-              )}>
-                <Filter className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Lọc thêm</span>
-              </button>
-            </>
+            <button className={cn(
+              'flex items-center gap-1.5 px-3 h-[32px] rounded-md text-[13px] font-medium',
+              'border border-border text-muted-foreground hover:bg-accent bg-background',
+            )}>
+              <Filter className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Filters</span>
+            </button>
           }
         />
 
-        <div className="mx-[-16px]">
+        <div>
           <DataTable
             columns={columns}
             data={bookings}

@@ -187,31 +187,30 @@ export default function NewBookingPage() {
       />
 
       {/* Step indicator */}
-      <div className="flex items-center">
+      <div className="flex items-center mb-8 px-2">
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center flex-1 last:flex-initial">
             <div className={cn(
               'flex items-center gap-2',
-              'cursor-pointer',
-              step >= s.id ? 'text-primary' : 'text-muted-foreground',
+              'transition-all duration-200 cursor-pointer',
+              step >= s.id ? 'text-foreground font-medium' : 'text-muted-foreground',
             )}
               onClick={() => step > s.id && setStep(s.id)}
             >
               <div className={cn(
-                'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold',
-                'border-2 transition-all duration-200',
-                step > s.id  && 'bg-primary border-primary text-white',
-                step === s.id && 'border-primary text-primary bg-primary/10',
-                step < s.id  && 'border-border text-muted-foreground',
+                'w-[22px] h-[22px] rounded-full flex items-center justify-center text-[11px] font-mono transition-colors',
+                step > s.id  && 'bg-foreground text-background',
+                step === s.id && 'bg-foreground text-background shadow-sm',
+                step < s.id  && 'bg-accent text-muted-foreground border border-border',
               )}>
-                {step > s.id ? <Check className="w-3.5 h-3.5" /> : <s.icon className="w-3.5 h-3.5" />}
+                {step > s.id ? <Check className="w-3 h-3" /> : s.id}
               </div>
-              <span className="text-xs font-medium hidden sm:inline">{s.label}</span>
+              <span className="text-[13px] hidden sm:inline">{s.label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className={cn(
-                'flex-1 h-px mx-3',
-                step > s.id ? 'bg-primary' : 'bg-border',
+                'flex-1 h-[1px] mx-4 transition-colors',
+                step > s.id ? 'bg-foreground' : 'bg-border',
               )} />
             )}
           </div>
