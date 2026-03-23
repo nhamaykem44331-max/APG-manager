@@ -216,7 +216,9 @@ export class BookingsService {
     ]);
 
     // ── Bước 2i: Auto-tạo AR công nợ khi xuất vé chưa thanh toán ─────
-    // Tài liệu APG_Debt_Upgrade_Prompt_1.md - Bước 2i
+    // Business rule: Tạo công nợ phải thu (AR) cho MỌI booking chưa thanh toán khi xuất vé
+    // Không giới hạn chỉ paymentMethod === 'DEBT' — vì khách có thể thanh toán sau dù chọn bất kỳ method nào
+    // Khi khách thanh toán xong, payLedger() sẽ tự động chuyển status → PAID
     if (targetStatus === 'ISSUED' && booking.paymentStatus === 'UNPAID') {
       try {
         const customer = await this.prisma.customer.findUnique({

@@ -2,6 +2,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PrismaService } from '../common/prisma.service';
+import { MonthlySummaryAccumulator, RouteAccumulator } from './reports.types';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard)
@@ -165,9 +166,9 @@ export class ReportsController {
       acc[monthKey].bookingCount += 1;
       acc[monthKey].ticketCount += b._count.tickets || 0;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, MonthlySummaryAccumulator>);
 
-    return Object.values(grouped).sort((a: any, b: any) => a.dateValue.getTime() - b.dateValue.getTime()).map((item: any) => ({
+    return Object.values(grouped).sort((a, b) => a.dateValue.getTime() - b.dateValue.getTime()).map((item) => ({
       month: item.month,
       revenue: item.revenue,
       cost: item.cost,
@@ -237,10 +238,10 @@ export class ReportsController {
       acc[rKey].profit += Number(t.profit || 0);
       acc[rKey].airlines[t.airline || 'OTHER'] = (acc[rKey].airlines[t.airline || 'OTHER'] || 0) + 1;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, RouteAccumulator>);
 
-    const arr = Object.values(routeMap).map((r: any) => {
-      const topAirline = Object.entries(r.airlines).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A';
+    const arr = Object.values(routeMap).map((r) => {
+      const topAirline = Object.entries(r.airlines).sort(([, a], [, b]) => (b as number) - (a as number))[0]?.[0] || 'N/A';
       return {
         route: r.route,
         departureCode: r.departureCode,
@@ -251,7 +252,7 @@ export class ReportsController {
         avgPrice: r.ticketCount > 0 ? r.revenue / r.ticketCount : 0,
         topAirline
       };
-    }).sort((a: any, b: any) => b.ticketCount - a.ticketCount);
+    }).sort((a, b) => b.ticketCount - a.ticketCount);
 
     return arr.slice(0, parseInt(limit, 10) || 20);
   }
@@ -319,6 +320,7 @@ export class ReportsController {
       }
     });
 
+    type StaffEntry = { successCount: number; ticketCount: number; revenue: number; profit: number; airlines: Record<string, number>; routes: Record<string, number> };
     const staffMap = successBookings.reduce((acc, b) => {
       if (!acc[b.staffId]) {
         acc[b.staffId] = {
@@ -341,7 +343,7 @@ export class ReportsController {
         }
       });
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, StaffEntry>);
 
     const staffIds = [
       ...new Set([...allBookingsCount.map(s => s.staffId), ...Object.keys(staffMap)])
@@ -358,8 +360,8 @@ export class ReportsController {
       const st = staffMap[u.id] || { successCount: 0, ticketCount: 0, revenue: 0, profit: 0, airlines: {}, routes: {} };
       const totalBookings = totalCountMap[u.id] || 0;
       
-      const topAirline = Object.entries(st.airlines).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A';
-      const topRoute = Object.entries(st.routes).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A';
+      const topAirline = Object.entries(st.airlines ?? {}).sort(([, a], [, b]) => (b as number) - (a as number))[0]?.[0] || 'N/A';
+      const topRoute = Object.entries(st.routes ?? {}).sort(([, a], [, b]) => (b as number) - (a as number))[0]?.[0] || 'N/A';
 
       return {
         staffId: u.id,

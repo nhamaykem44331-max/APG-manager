@@ -53,7 +53,7 @@ export default function BookingsPage() {
   });
 
   // Fetch danh sách booking
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['bookings', activeStatus, searchTerm, page],
     queryFn: () => bookingsApi.list({
       status: activeStatus || undefined,
@@ -67,6 +67,20 @@ export default function BookingsPage() {
   const bookings: Booking[] = data?.data ?? SAMPLE_BOOKINGS;
   const total: number = data?.total ?? SAMPLE_BOOKINGS.length;
   const totalPages = Math.ceil(total / pageSize);
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <p className="text-sm text-destructive">Không thể tải danh sách booking. Vui lòng thử lại.</p>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-2 text-xs rounded-md border border-border hover:bg-accent"
+        >
+          Thử lại
+        </button>
+      </div>
+    );
+  }
 
   const columns: ColumnDef<Booking>[] = [
     {

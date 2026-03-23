@@ -3,6 +3,7 @@ import { PrismaService } from '../common/prisma.service';
 import { GoogleSheetsClient } from './google-sheets.client';
 import { SheetRow, SyncResult, ImportPreviewRow, ImportResult } from './dto/sheet-row.dto';
 import { convertBookingToSheetRow } from './booking-to-row.util';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class SheetSyncService {
@@ -21,8 +22,8 @@ export class SheetSyncService {
     to?: Date;
     status?: string[];
   }): Promise<SheetRow[]> {
-    const where: any = {};
-    if (filter?.status) where.status = { in: filter.status };
+    const where: Prisma.BookingWhereInput = { deletedAt: null };
+    if (filter?.status) where.status = { in: filter.status as any };
     if (filter?.from || filter?.to) {
       where.createdAt = {};
       if (filter.from) where.createdAt.gte = filter.from;
@@ -95,14 +96,15 @@ export class SheetSyncService {
         rowsWritten: written,
         sheetUrl: this.sheetsClient.spreadsheetUrl,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Push to Sheets failed', error);
+      const message = error instanceof Error ? error.message : 'Unknown error occurred while syncing.';
       return {
         success: false,
         rowsProcessed: 0,
         rowsWritten: 0,
         sheetUrl: '',
-        error: error.message || 'Unknown error occurred while syncing.',
+        error: message,
       };
     }
   }
