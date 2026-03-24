@@ -5,14 +5,16 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  Plus, Download, Search, Filter, ChevronLeft, ChevronRight, FileText, Loader2
+  Plus, Download, Search, Filter, ChevronLeft, ChevronRight, FileText, Loader2, Plane
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
   cn, formatVND, formatDateTime,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
-  BOOKING_SOURCE_LABELS, AIRLINE_NAMES,
+  BOOKING_SOURCE_LABELS,
 } from '@/lib/utils';
+import { getAirlineName } from '@/lib/airline-utils';
+import { AirlineBadge } from '@/components/ui/airline-badge';
 import type { Booking } from '@/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterBar } from '@/components/ui/filter-bar';
@@ -40,10 +42,11 @@ export default function BookingsPage() {
   const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
 
   // Tạo booking nhanh -> vào thẳng trang chi tiết và mở modal nhập nhanh
+  // FIX 2 frontend: quick-create không gửi contactPhone rỗng
   const quickCreateMutation = useMutation({
     mutationFn: () => bookingsApi.create({
       contactName: 'Khách hàng mới',
-      contactPhone: '',
+      contactPhone: `QUICK-${Date.now()}`,
       source: 'PHONE',
       paymentMethod: 'BANK_TRANSFER',
     }),
@@ -65,8 +68,10 @@ export default function BookingsPage() {
     select: (res) => res.data,
   });
 
-  const bookings: Booking[] = data?.data ?? SAMPLE_BOOKINGS;
-  const total: number = data?.total ?? SAMPLE_BOOKINGS.length;
+  // FIX 9: Bỏ SAMPLE_BOOKINGS, dùng empty array + empty state
+  const bookings: Booking[] = data?.data ?? [];
+  const total: number = data?.total ?? 0;
+  const showEmptyState = !isLoading && bookings.length === 0;
   const totalPages = Math.ceil(total / pageSize);
 
   if (isError) {
@@ -111,7 +116,7 @@ export default function BookingsPage() {
           </p>
           <p className="text-[11px] text-muted-foreground">
             {b.tickets?.[0]
-              ? AIRLINE_NAMES[b.tickets[0].airline] ?? b.tickets[0].airline
+              ? <AirlineBadge code={b.tickets[0].airline} size="sm" />
               : BOOKING_SOURCE_LABELS[b.source]
             }
           </p>
@@ -231,20 +236,34 @@ export default function BookingsPage() {
         />
 
         <div>
-          <DataTable
-            columns={columns}
-            data={bookings}
-            isLoading={isLoading}
-            onRowClick={(row) => router.push(`/bookings/${row.id}`)}
-            pageIndex={page - 1}
-            pageCount={totalPages}
-            canPreviousPage={page > 1}
-            canNextPage={page < totalPages}
-            previousPage={() => setPage(p => Math.max(1, p - 1))}
-            nextPage={() => setPage(p => Math.min(totalPages, p + 1))}
-            totalRecords={total}
-            emptyMessage="Không tìm thấy booking nào phù hợp"
-          />
+          {/* FIX 9: Empty state */}
+          {showEmptyState ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <Plane className="w-10 h-10 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Chưa có booking nào</p>
+              <button
+                onClick={() => quickCreateMutation.mutate()}
+                className="px-4 py-2 text-xs rounded-md bg-foreground text-background hover:opacity-90 font-medium"
+              >
+                + Tạo booking đầu tiên
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={bookings}
+              isLoading={isLoading}
+              onRowClick={(row) => router.push(`/bookings/${row.id}`)}
+              pageIndex={page - 1}
+              pageCount={totalPages}
+              canPreviousPage={page > 1}
+              canNextPage={page < totalPages}
+              previousPage={() => setPage(p => Math.max(1, p - 1))}
+              nextPage={() => setPage(p => Math.min(totalPages, p + 1))}
+              totalRecords={total}
+              emptyMessage="Không tìm thấy booking nào phù hợp"
+            />
+          )}
         </div>
       </div>
 
@@ -252,35 +271,3 @@ export default function BookingsPage() {
     </div>
   );
 }
-
-// Dữ liệu mẫu
-const SAMPLE_BOOKINGS: Booking[] = [
-  {
-    id: '1', bookingCode: 'APG-260321-023', customerId: 'c1', staffId: 's1',
-    status: 'ISSUED', source: 'PHONE', contactPhone: '0901234567',
-    contactName: 'Nguyễn Văn Minh', totalSellPrice: 2_850_000, totalNetPrice: 2_500_000,
-    totalFees: 50_000, profit: 300_000, paymentMethod: 'BANK_TRANSFER',
-    paymentStatus: 'PAID', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    tickets: [{ id: 't1', bookingId: '1', passengerId: 'p1', airline: 'VN',
-      flightNumber: 'VN123', departureCode: 'HAN', arrivalCode: 'SGN',
-      departureTime: new Date().toISOString(), arrivalTime: new Date().toISOString(),
-      seatClass: 'Economy', sellPrice: 2_850_000, netPrice: 2_500_000,
-      tax: 0, serviceFee: 50_000, commission: 0, profit: 300_000, status: 'ACTIVE',
-      createdAt: new Date().toISOString()
-    }],
-  },
-  {
-    id: '2', bookingCode: 'APG-260321-022', customerId: 'c2', staffId: 's1',
-    status: 'PENDING_PAYMENT', source: 'ZALO', contactPhone: '0912345678',
-    contactName: 'Trần Thị Hoa', totalSellPrice: 1_450_000, totalNetPrice: 1_300_000,
-    totalFees: 30_000, profit: 120_000, paymentMethod: 'MOMO',
-    paymentStatus: 'UNPAID', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '3', bookingCode: 'APG-260321-021', customerId: 'c3', staffId: 's1',
-    status: 'PROCESSING', source: 'WEBSITE', contactPhone: '0923456789',
-    contactName: 'Lê Quốc Hùng', totalSellPrice: 5_700_000, totalNetPrice: 5_100_000,
-    totalFees: 150_000, profit: 450_000, paymentMethod: 'CASH',
-    paymentStatus: 'PARTIAL', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  },
-];

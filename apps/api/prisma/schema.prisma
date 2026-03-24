@@ -280,7 +280,7 @@ model Ticket {
   id            String   @id @default(uuid())
   bookingId     String   @map("booking_id")
   passengerId   String   @map("passenger_id")
-  airline       Airline
+  airline       String   // IATA 2-letter code: VN, VJ, EK, SQ... (không giới hạn enum)
   flightNumber  String   @map("flight_number")
   departureCode String   @map("departure_code") // IATA: SGN
   arrivalCode   String   @map("arrival_code")

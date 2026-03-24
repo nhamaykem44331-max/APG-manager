@@ -92,7 +92,7 @@ export class BookingsController {
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id') id: string) {
-    return this.bookingsService.update(id, { notes: '[DELETED]' } as UpdateBookingDto);
+  async remove(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.bookingsService.remove(id, user.id);
   }
 }

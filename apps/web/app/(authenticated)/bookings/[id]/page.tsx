@@ -13,35 +13,59 @@ import { bookingsApi } from '@/lib/api';
 import {
   cn, formatVND, formatDateTime, formatTime,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
-  BOOKING_SOURCE_LABELS, AIRLINE_NAMES, AIRLINE_COLORS,
+  BOOKING_SOURCE_LABELS,
 } from '@/lib/utils';
 import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
+import { AirlineBadge } from '@/components/ui/airline-badge';
+import { getAirportName } from '@/hooks/use-airport-search';
 import type { Booking, BookingStatus } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 
 // ────────────────────────────────────────────────────
 // Status state machine
 // ────────────────────────────────────────────────────
+// FIX 3: Bổ sung transitions thiếu
 const NEXT_ACTIONS: Record<string, { status: BookingStatus; label: string; variant: string }[]> = {
-  NEW:             [{ status: 'PROCESSING',      label: 'Bắt đầu xử lý',   variant: 'primary' }, { status: 'CANCELLED', label: 'Hủy', variant: 'danger' }],
-  PROCESSING:      [{ status: 'QUOTED',           label: 'Đã báo giá',      variant: 'primary' }, { status: 'CANCELLED', label: 'Hủy', variant: 'danger' }],
-  QUOTED:          [{ status: 'PENDING_PAYMENT',  label: 'Chờ thanh toán',  variant: 'primary' }, { status: 'CANCELLED', label: 'Hủy', variant: 'danger' }],
-  PENDING_PAYMENT: [{ status: 'ISSUED',           label: '✈ Xuất vé',       variant: 'success' }, { status: 'CANCELLED', label: 'Hủy', variant: 'danger' }],
-  ISSUED:          [{ status: 'COMPLETED',        label: 'Hoàn thành',      variant: 'success' }, { status: 'REFUNDED',  label: 'Hoàn vé', variant: 'warning' }],
+  NEW:             [
+    { status: 'PROCESSING',      label: 'Bắt đầu xử lý',   variant: 'primary' },
+    { status: 'CANCELLED',       label: 'Hủy',              variant: 'danger' },
+  ],
+  PROCESSING:      [
+    { status: 'QUOTED',           label: 'Đã báo giá',      variant: 'primary' },
+    { status: 'CANCELLED',        label: 'Hủy',              variant: 'danger' },
+  ],
+  QUOTED:          [
+    { status: 'PENDING_PAYMENT',  label: 'Chờ thanh toán',  variant: 'primary' },
+    { status: 'PROCESSING',       label: 'Quay lại xử lý',  variant: 'secondary' },
+    { status: 'CANCELLED',        label: 'Hủy',              variant: 'danger' },
+  ],
+  PENDING_PAYMENT: [
+    { status: 'ISSUED',           label: '✈ Xuất vé',       variant: 'success' },
+    { status: 'CANCELLED',        label: 'Hủy',              variant: 'danger' },
+  ],
+  ISSUED:          [
+    { status: 'COMPLETED',        label: 'Hoàn thành',      variant: 'success' },
+    { status: 'CHANGED',          label: 'Đổi vé',           variant: 'warning' },
+    { status: 'REFUNDED',         label: 'Hoàn vé',          variant: 'warning' },
+  ],
   COMPLETED:       [],
-  CHANGED:         [{ status: 'ISSUED',           label: 'Xuất vé mới',     variant: 'primary' }],
+  CHANGED:         [
+    { status: 'ISSUED',           label: 'Xuất vé mới',     variant: 'primary' },
+    { status: 'REFUNDED',         label: 'Hoàn vé',          variant: 'warning' },
+  ],
   REFUNDED:        [],
   CANCELLED:       [],
 };
 
-const AIRLINES = ['VN', 'QH', 'VJ', 'BL', 'VU', '0V', 'VH'] as const;
+// FIX 5: Đồng bộ PAYMENT_METHODS với backend enum
 const PAYMENT_METHODS = [
   { value: 'CASH',          label: 'Tiền mặt' },
   { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
-  { value: 'CARD',          label: 'Thẻ ngân hàng' },
+  { value: 'CREDIT_CARD',   label: 'Thẻ ngân hàng' },
   { value: 'MOMO',          label: 'MoMo' },
-  { value: 'ZALOPAY',       label: 'ZaloPay' },
+  { value: 'VNPAY',         label: 'VNPay' },
+  { value: 'DEBT',          label: 'Công nợ' },
 ];
 
 const SEAT_CLASSES = ['Economy', 'Business', 'First Class', 'Premium Economy'];
@@ -96,10 +120,11 @@ function FormSelect({ label, required, children, className, ...props }: React.Se
 // ────────────────────────────────────────────────────
 function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string; customerId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  // FIX 7a: Bỏ tax, serviceFee, commission — chỉ giữ sellPrice + netPrice
   const [form, setForm] = useState({
     passengerName: '',
     passengerType: 'ADT',
-    airline: 'VN',
+    airline: '',             // FIX 4g: String tự do, không enum
     flightNumber: '',
     departureCode: '',
     arrivalCode: '',
@@ -107,28 +132,22 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
     arrivalTime: '',
     seatClass: 'Economy',
     fareClass: '',
-    airlineBookingCode: '',  // Mã đặt chỗ hãng bay: 64NTWM
+    airlineBookingCode: '',
     sellPrice: '',
     netPrice: '',
-    tax: '0',
-    serviceFee: '0',
-    commission: '0',
     eTicketNumber: '',
     baggageAllowance: '',
   });
   const [error, setError] = useState('');
 
-  const profit = (Number(form.sellPrice) || 0)
-    - (Number(form.netPrice) || 0)
-    - (Number(form.tax) || 0)
-    - (Number(form.serviceFee) || 0)
-    + (Number(form.commission) || 0);
+  // FIX 7a: Profit = sell - net (đơn giản)
+  const profit = (Number(form.sellPrice) || 0) - (Number(form.netPrice) || 0);
 
   const mutation = useMutation({
     mutationFn: () => bookingsApi.addTicket(bookingId, {
       passengerName: form.passengerName,
       passengerType: form.passengerType,
-      airline: form.airline,
+      airline: form.airline.toUpperCase(),
       flightNumber: form.flightNumber.toUpperCase(),
       departureCode: form.departureCode.toUpperCase(),
       arrivalCode: form.arrivalCode.toUpperCase(),
@@ -139,9 +158,9 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
       airlineBookingCode: form.airlineBookingCode.toUpperCase() || undefined,
       sellPrice: Number(form.sellPrice),
       netPrice: Number(form.netPrice),
-      tax: Number(form.tax),
-      serviceFee: Number(form.serviceFee),
-      commission: Number(form.commission),
+      tax: 0,
+      serviceFee: 0,
+      commission: 0,
       eTicketNumber: form.eTicketNumber || undefined,
       baggageAllowance: form.baggageAllowance || undefined,
     }),
@@ -159,6 +178,7 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
     e.preventDefault();
     setError('');
     if (!form.passengerName) { setError('Vui lòng nhập tên hành khách'); return; }
+    if (!form.airline || form.airline.length < 2) { setError('Vui lòng nhập mã hãng bay (2 ký tự IATA)'); return; }
     if (!form.flightNumber)  { setError('Vui lòng nhập số hiệu chuyến bay'); return; }
     if (!form.departureCode || !form.arrivalCode) { setError('Vui lòng nhập sân bay đi/đến'); return; }
     if (!form.departureTime || !form.arrivalTime) { setError('Vui lòng nhập giờ khởi hành/đến'); return; }
@@ -213,11 +233,26 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
               Thông tin chuyến bay
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <FormSelect label="Hãng bay" required value={form.airline} onChange={set('airline')}>
-                {AIRLINES.map(a => (
-                  <option key={a} value={a}>{AIRLINE_NAMES?.[a] ?? a}</option>
-                ))}
-              </FormSelect>
+              {/* FIX 4g: Input text tự do cho airline IATA code + preview badge */}
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-foreground mb-1.5">
+                  Hãng bay <span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    placeholder="VN, EK, SQ..."
+                    maxLength={3}
+                    value={form.airline}
+                    onChange={(e) => setForm(prev => ({ ...prev, airline: e.target.value.toUpperCase() }))}
+                    className={cn(
+                      'w-20 px-3 h-9 text-[13px] rounded-md border border-border bg-background',
+                      'text-foreground placeholder:text-muted-foreground font-mono font-bold uppercase',
+                      'focus:outline-none focus:ring-1 focus:ring-primary',
+                    )}
+                  />
+                  {form.airline.length >= 2 && <AirlineBadge code={form.airline} size="md" />}
+                </div>
+              </div>
               <FormInput label="Số hiệu" required placeholder="VN123" value={form.flightNumber} onChange={set('flightNumber')} />
               <FormInput label="Từ (IATA)" required placeholder="SGN" maxLength={3} value={form.departureCode} onChange={set('departureCode')} />
               <FormInput label="Đến (IATA)" required placeholder="HAN" maxLength={3} value={form.arrivalCode} onChange={set('arrivalCode')} />
@@ -245,21 +280,18 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
             </div>
           </div>
 
-          {/* Pricing */}
+          {/* FIX 7a: Pricing — chỉ giữ sellPrice + netPrice */}
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Giá vé (VND)
+              Giá vé (VNĐ)
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <MoneyInput label="Giá bán (khách)" required value={form.sellPrice} onChange={v => setForm(p => ({...p, sellPrice: v}))} placeholder="2.500.000" />
               <MoneyInput label="Giá net (hãng)" required value={form.netPrice} onChange={v => setForm(p => ({...p, netPrice: v}))} placeholder="2.200.000" />
-              <MoneyInput label="Thuế & phí (TAX)" value={form.tax} onChange={v => setForm(p => ({...p, tax: v}))} placeholder="0" />
-              <MoneyInput label="Phí dịch vụ" value={form.serviceFee} onChange={v => setForm(p => ({...p, serviceFee: v}))} placeholder="0" />
-              <MoneyInput label="Hoa hồng (Commission)" value={form.commission} onChange={v => setForm(p => ({...p, commission: v}))} placeholder="0" />
 
               {/* Profit preview */}
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-foreground mb-1.5">Lợi nhuận (tính ngay)</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">Lợi nhuận (auto)</label>
                 <div className={cn(
                   'w-full px-3 h-9 text-[13px] flex items-center rounded-md border font-semibold',
                   profit >= 0 ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500' : 'border-red-500/50 bg-red-500/10 text-red-500',
@@ -464,9 +496,10 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
 // Payment list row
 // ────────────────────────────────────────────────────
 function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[number] }) {
+  // FIX 5: Sync labels với backend enum
   const methodLabel: Record<string, string> = {
-    CASH: 'Tiền mặt', BANK_TRANSFER: 'Chuyển khoản', CARD: 'Thẻ ngân hàng',
-    MOMO: 'MoMo', ZALOPAY: 'ZaloPay',
+    CASH: 'Tiền mặt', BANK_TRANSFER: 'Chuyển khoản', CREDIT_CARD: 'Thẻ ngân hàng',
+    MOMO: 'MoMo', VNPAY: 'VNPay', DEBT: 'Công nợ',
   };
   return (
     <div className="flex items-center justify-between py-2.5 px-1 border-b border-border/50 last:border-0">
@@ -698,12 +731,8 @@ export default function BookingDetailPage() {
                   <div key={ticket.id} className="p-5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <div
-                          className="px-2 py-0.5 rounded text-background text-[11px] font-bold"
-                          style={{ backgroundColor: AIRLINE_COLORS[ticket.airline] ?? '#64748b' }}
-                        >
-                          {ticket.airline}
-                        </div>
+                        {/* FIX 8: AirlineBadge với logo từ Kiwi CDN */}
+                        <AirlineBadge code={ticket.airline} showName={false} size="md" />
                         <span className="text-[13px] font-mono font-medium text-foreground mt-0.5">{ticket.flightNumber}</span>
                         <span className="text-[11px] text-muted-foreground mt-0.5 ml-1">{ticket.seatClass}</span>
                         {ticket.fareClass && (
@@ -716,10 +745,11 @@ export default function BookingDetailPage() {
                       </div>
                     </div>
 
-                    {/* Route */}
+                    {/* FIX 8: Route with airport names */}
                     <div className="flex items-center gap-3">
                       <div className="text-center">
                         <p className="text-xl font-bold text-foreground">{ticket.departureCode}</p>
+                        <p className="text-[10px] text-muted-foreground">{getAirportName(ticket.departureCode)}</p>
                         <p className="text-xs text-muted-foreground">{formatTime(ticket.departureTime)}</p>
                       </div>
                       <div className="flex-1 flex items-center gap-2">
@@ -729,6 +759,7 @@ export default function BookingDetailPage() {
                       </div>
                       <div className="text-center">
                         <p className="text-xl font-bold text-foreground">{ticket.arrivalCode}</p>
+                        <p className="text-[10px] text-muted-foreground">{getAirportName(ticket.arrivalCode)}</p>
                         <p className="text-xs text-muted-foreground">{formatTime(ticket.arrivalTime)}</p>
                       </div>
                     </div>

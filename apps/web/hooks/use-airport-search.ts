@@ -100,3 +100,17 @@ export function haversineKm(a: Airport, b: Airport): number {
     );
   return Math.round(R * c);
 }
+
+// Utility: lấy tên sân bay từ IATA code (synchronous lookup từ cache)
+export function getAirportName(iata: string): string {
+  if (!iata) return '';
+  const upper = iata.toUpperCase();
+  if (!airportCache) {
+    // Trigger load nếu chưa có cache
+    loadAirports();
+    return upper;
+  }
+  const airport = airportCache.find((a) => a.iata === upper);
+  return airport?.name?.replace(/International Airport|Airport/gi, '').trim() ?? upper;
+}
+

@@ -17,9 +17,6 @@ interface UiTicket extends ParsedTicketData {
   _ui_id: string; // random id
   sellPrice: number;
   netPrice: number;
-  tax: number;
-  serviceFee: number;
-  commission: number;
 }
 
 interface SmartImportModalProps {
@@ -117,15 +114,12 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
   };
 
   const initUiTickets = (parsedTickets: ParsedTicketData[]) => {
-    // Thêm các trường pricing vào mỗi vé để user nhập
+    // FIX 7b: Chỉ giữ sellPrice + netPrice, bỏ tax/serviceFee/commission
     const mapped: UiTicket[] = parsedTickets.map((t, idx) => ({
       ...t,
       _ui_id: Date.now().toString() + '_' + idx,
       sellPrice: 0,
       netPrice: 0,
-      tax: 0,
-      serviceFee: 0,
-      commission: 0,
     }));
     setTickets(mapped);
   };
@@ -150,29 +144,30 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
       ...t,
       sellPrice: base.sellPrice,
       netPrice: base.netPrice,
-      tax: base.tax,
-      serviceFee: base.serviceFee,
-      commission: base.commission
     }));
   };
 
-  // ─── 2. SUBMIT TICKET VÀO BOOKING ──────────────────────────────────────────
+  // FIX 10: Progress state
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+
+  // ─── 2. SUBMIT TICKET VÀO BOOKING ────────────────────────────────────────
   const submitMutation = useMutation({
     mutationFn: async () => {
+      setImportProgress({ current: 0, total: tickets.length });
       // Loop array adding each ticket sequentially
-      for (const t of tickets) {
+      for (let i = 0; i < tickets.length; i++) {
+        const t = tickets[i];
+        setImportProgress({ current: i + 1, total: tickets.length });
         // Validate required frontend
         if (!t.passengerName || !t.airline || !t.flightNumber || !t.departureCode || !t.arrivalCode || t.sellPrice <= 0 || t.netPrice <= 0) {
           throw new Error('Bạn cần nhập đủ Tên, Chặng bay và Giá tiền (bán, net) cho tất cả các vé.');
         }
 
-        const validAirlines = ['VN', 'VJ', 'QH', 'BL', 'VU'];
-        const apiAirline = validAirlines.includes(t.airline.toUpperCase()) ? t.airline.toUpperCase() : 'OTHER';
-
+        // FIX 4: Không giới hạn validAirlines, gửi trực tiếp airline code
         await bookingsApi.addTicket(bookingId, {
           passengerName: t.passengerName,
           passengerType: t.passengerType,
-          airline: apiAirline as any,
+          airline: t.airline.toUpperCase(),
           flightNumber: t.flightNumber,
           departureCode: t.departureCode,
           arrivalCode: t.arrivalCode,
@@ -184,9 +179,9 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
           eTicketNumber: t.eTicketNumber || undefined,
           sellPrice: t.sellPrice,
           netPrice: t.netPrice,
-          tax: t.tax,
-          serviceFee: t.serviceFee,
-          commission: t.commission,
+          tax: 0,
+          serviceFee: 0,
+          commission: 0,
         });
       }
 
@@ -411,6 +406,7 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
 
                           {/* Giá tiền (User input) */}
                           <div className="space-y-3 bg-orange-500/5 p-3 rounded-xl border border-orange-500/20">
+                            {/* FIX 7b: Chỉ giữ sellPrice + netPrice */}
                             <h4 className="text-xs font-bold text-orange-700 dark:text-orange-400 pb-1 border-b border-orange-500/20">
                               💸 Nhập thông tin giá vé
                             </h4>
@@ -438,43 +434,10 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
                               </div>
                             </div>
                             
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-muted-foreground">Thuế/Phí Hãng</label>
-                                <input
-                                  type="text"
-                                  value={t.tax ? formatVND(t.tax) : ''}
-                                  onChange={(e) => updateTicketPrice(t._ui_id, 'tax', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-background text-foreground outline-none focus:border-primary"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-muted-foreground">Phí DV APG</label>
-                                <input
-                                  type="text"
-                                  value={t.serviceFee ? formatVND(t.serviceFee) : ''}
-                                  onChange={(e) => updateTicketPrice(t._ui_id, 'serviceFee', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-background text-foreground outline-none focus:border-primary"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-muted-foreground">Hoa hồng</label>
-                                <input
-                                  type="text"
-                                  value={t.commission ? formatVND(t.commission) : ''}
-                                  onChange={(e) => updateTicketPrice(t._ui_id, 'commission', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-background text-foreground outline-none focus:border-primary"
-                                />
-                              </div>
-                            </div>
-                            
                             <div className="flex justify-between items-center text-xs bg-card p-2 rounded-lg border border-border mt-1">
                               <span className="text-muted-foreground">Lợi nhuận dự kiến:</span>
-                              <span className={cn("font-bold text-sm", (t.sellPrice - t.netPrice - t.tax - t.serviceFee + t.commission) >= 0 ? "text-emerald-600" : "text-red-500")}>
-                                {formatVND(t.sellPrice - t.netPrice - t.tax - t.serviceFee + t.commission)}
+                              <span className={cn("font-bold text-sm", (t.sellPrice - t.netPrice) >= 0 ? "text-emerald-600" : "text-red-500")}>
+                                {formatVND(t.sellPrice - t.netPrice)}
                               </span>
                             </div>
 
@@ -507,8 +470,11 @@ export function SmartImportModal({ bookingId, customerId, isOpen, onClose, onSuc
                       disabled={submitMutation.isPending || tickets.length === 0}
                       className="px-8 py-2.5 rounded-xl bg-primary text-white font-semibold flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm"
                     >
-                      {submitMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <PlusCircle className="w-5 h-5" />}
-                      Thêm {tickets.length} vé vào booking
+                      {submitMutation.isPending ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> Đang lưu {importProgress.current}/{importProgress.total} vé...</>
+                      ) : (
+                        <><PlusCircle className="w-5 h-5" /> Thêm {tickets.length} vé vào booking</>
+                      )}
                     </button>
                   </div>
 

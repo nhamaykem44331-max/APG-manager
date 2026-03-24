@@ -1,9 +1,8 @@
 // APG Manager RMS - DTO thêm vé vào booking (với validation)
 import {
-  IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min,
+  IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Length,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { Airline } from '@prisma/client';
 
 export class AddTicketDto {
   // Hành khách: chỉ cần 1 trong 2 (passengerId HOẶC passengerName)
@@ -16,8 +15,9 @@ export class AddTicketDto {
   @IsOptional() @IsEnum(['ADT', 'CHD', 'INF'])
   passengerType?: 'ADT' | 'CHD' | 'INF'; // Mặc định ADT
 
-  @IsEnum(Airline)
-  airline: Airline;
+  @IsString()
+  @Length(2, 3) // IATA 2-letter, cho phép 3 cho code đặc biệt
+  airline: string;
 
   @IsString()
   flightNumber: string;
