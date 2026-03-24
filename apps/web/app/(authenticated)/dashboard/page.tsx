@@ -197,7 +197,7 @@ export default function DashboardPage() {
       {/* Row 4: Quick actions */}
       <div className="flex flex-wrap gap-2">
         <Link
-          href="/bookings/new"
+          href="/bookings"
           className={cn(
             'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
             'bg-foreground text-background hover:opacity-90',

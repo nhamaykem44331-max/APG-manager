@@ -39,7 +39,7 @@ export default function BookingsPage() {
   const pageSize = 20;
   const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
 
-  // Tạo booking nhanh → chuyển thẳng tới trang thêm vé
+  // Tạo booking nhanh -> vào thẳng trang chi tiết và mở modal nhập nhanh
   const quickCreateMutation = useMutation({
     mutationFn: () => bookingsApi.create({
       contactName: 'Khách hàng mới',
@@ -48,6 +48,7 @@ export default function BookingsPage() {
       paymentMethod: 'BANK_TRANSFER',
     }),
     onSuccess: (res: any) => {
+      window.sessionStorage.setItem('booking:openQuickImport', res.data.id);
       router.push(`/bookings/${res.data.id}`);
     },
   });

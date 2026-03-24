@@ -123,6 +123,7 @@ export class BookingsService {
         contactName: dto.contactName,
         contactPhone: dto.contactPhone,
         paymentMethod: dto.paymentMethod,
+        pnr: dto.pnr?.trim().toUpperCase() || null,
         notes: dto.notes,
         internalNotes: dto.internalNotes,
       },

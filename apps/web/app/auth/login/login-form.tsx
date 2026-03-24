@@ -38,8 +38,7 @@ export function LoginForm() {
       } else {
         const session = await getSession();
         setAuthToken(session?.user?.accessToken ?? null);
-        router.push('/dashboard');
-        router.refresh();
+        router.replace('/dashboard');
       }
     } catch {
       setError('Có lỗi xảy ra, vui lòng thử lại');

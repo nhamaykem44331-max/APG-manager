@@ -1,7 +1,7 @@
 // APG Manager RMS - Booking Detail Page (Part 3: Add Ticket + Add Payment)
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -494,6 +494,7 @@ export default function BookingDetailPage() {
   const [showAddTicket, setShowAddTicket]   = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [quickImportInitialized, setQuickImportInitialized] = useState(false);
 
   const { data: booking, isLoading } = useQuery({
     queryKey: ['booking', id],
@@ -510,6 +511,28 @@ export default function BookingDetailPage() {
       setStatusReason('');
     },
   });
+
+  useEffect(() => {
+    if (quickImportInitialized || !booking || typeof window === 'undefined') return;
+
+    const pendingQuickImportId = window.sessionStorage.getItem('booking:openQuickImport');
+    const url = new URL(window.location.href);
+    const shouldOpenQuickImport = pendingQuickImportId === id || url.searchParams.get('quickImport') === '1';
+    if (!shouldOpenQuickImport) return;
+
+    if (pendingQuickImportId === id) {
+      window.sessionStorage.removeItem('booking:openQuickImport');
+    }
+
+    if (url.searchParams.get('quickImport') === '1') {
+      url.searchParams.delete('quickImport');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    const canOpenQuickImport = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(booking.status);
+    setQuickImportInitialized(true);
+    if (canOpenQuickImport) setShowSmartImport(true);
+  }, [quickImportInitialized, booking, id]);
 
   if (isLoading) {
     return (

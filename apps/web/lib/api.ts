@@ -22,10 +22,14 @@ const TOKEN_CACHE_TTL_MS = 7.5 * 60 * 60 * 1000;
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 let pendingTokenRequest: Promise<string | null> | null = null;
+let pendingUnauthorizedHandler: Promise<void> | null = null;
 
 export function setAuthToken(token: string | null) {
   cachedToken = token;
   tokenExpiry = token ? Date.now() + TOKEN_CACHE_TTL_MS : 0;
+  if (!token) {
+    pendingTokenRequest = null;
+  }
 }
 
 function withAuthHeader(
@@ -62,6 +66,34 @@ async function getCachedSessionToken() {
   return pendingTokenRequest;
 }
 
+async function handleUnauthorized() {
+  setAuthToken(null);
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (!pendingUnauthorizedHandler) {
+    pendingUnauthorizedHandler = import('next-auth/react')
+      .then(async ({ signOut }) => {
+        if (window.location.pathname.startsWith('/auth/login')) {
+          return;
+        }
+
+        await signOut({ redirect: false });
+        window.location.replace('/auth/login?reason=session-expired');
+      })
+      .catch(() => {
+        window.location.replace('/auth/login?reason=session-expired');
+      })
+      .finally(() => {
+        pendingUnauthorizedHandler = null;
+      });
+  }
+
+  return pendingUnauthorizedHandler;
+}
+
 apiClient.interceptors.request.use(async (config) => {
   const token = cachedToken && Date.now() < tokenExpiry
     ? cachedToken
@@ -74,10 +106,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
-      setAuthToken(null);
-      if (typeof window !== 'undefined') {
-        window.location.href = '/auth/login';
-      }
+      await handleUnauthorized();
     }
 
     return Promise.reject(error);
@@ -95,8 +124,7 @@ parserClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
-      setAuthToken(null);
-      if (typeof window !== 'undefined') window.location.href = '/auth/login';
+      await handleUnauthorized();
     }
     return Promise.reject(error);
   },

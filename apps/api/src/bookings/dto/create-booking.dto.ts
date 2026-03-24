@@ -21,9 +21,10 @@ export class CreateBookingDto {
   @IsEnum(PaymentMethod)
   paymentMethod: PaymentMethod;
 
-  // PNR từ GDS (Amadeus, Sabre...) — bắt buộc nhập
+  // PNR từ GDS (Amadeus, Sabre...) - tuỳ chọn ở luồng tạo nhanh
+  @IsOptional()
   @IsString()
-  pnr: string;
+  pnr?: string;
 
   @IsOptional()
   @IsString()
