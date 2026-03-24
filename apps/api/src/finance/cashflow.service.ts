@@ -167,11 +167,11 @@ export class CashFlowService {
     const balances = await Promise.all(funds.map(async (fund) => {
       const [inflow, outflow] = await Promise.all([
         this.prisma.cashFlowEntry.aggregate({
-          where: { direction: 'INFLOW', status: 'DONE', notes: { contains: fund } },
+          where: { direction: 'INFLOW', status: 'DONE', fundAccount: fund as any },
           _sum: { amount: true },
         }),
         this.prisma.cashFlowEntry.aggregate({
-          where: { direction: 'OUTFLOW', status: 'DONE', notes: { contains: fund } },
+          where: { direction: 'OUTFLOW', status: 'DONE', fundAccount: fund as any },
           _sum: { amount: true },
         }),
       ]);

@@ -15,6 +15,8 @@ import {
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterBar } from '@/components/ui/filter-bar';
 import { DataTable } from '@/components/ui/data-table';
+import { X, Loader2 } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Customer } from '@/types';
 
 const VIP_FILTERS = [
@@ -40,11 +42,35 @@ const VIP_DOT: Record<string, string> = {
 };
 
 export default function CustomersPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [vipFilter, setVipFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
+
+  // Add Customer Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    fullName: '', phone: '', email: '', type: 'INDIVIDUAL', vipTier: 'NORMAL',
+    companyName: '', companyTaxId: '', passport: '', idNumber: '',
+  });
+
+  const generateRandomKey = (length: number) => {
+    return Math.random().toString(36).substring(2, 2 + length);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => customersApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setShowAddModal(false);
+      setAddForm({
+        fullName: '', phone: '', email: '', type: 'INDIVIDUAL', vipTier: 'NORMAL',
+        companyName: '', companyTaxId: '', passport: '', idNumber: '',
+      });
+    },
+  });
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['customers', search, vipFilter, typeFilter, page],
@@ -82,13 +108,13 @@ export default function CustomersPage() {
         title="Khách hàng"
         description={`CRM · ${total.toLocaleString('vi-VN')} khách hàng`}
         actions={
-          <Link
-            href="/customers/new"
+          <button
+            onClick={() => setShowAddModal(true)}
             className="flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium bg-foreground text-background hover:opacity-90 active:scale-[0.98] transition-all"
           >
             <Plus className="w-4 h-4" />
             Thêm mới
-          </Link>
+          </button>
         }
       />
 
@@ -253,6 +279,116 @@ export default function CustomersPage() {
         totalRecords={total}
       />
       </div>
+
+      {/* TẠO MỚI KHÁCH HÀNG MODAL */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/30">
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" /> Thêm khách hàng mới
+              </h2>
+              <button onClick={() => setShowAddModal(false)} className="hover:bg-accent p-1 rounded-md transition-colors">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+              <div className="flex gap-2 p-1 bg-accent/50 rounded-lg w-max mb-2">
+                <button type="button" onClick={() => setAddForm(f => ({ ...f, type: 'INDIVIDUAL' }))}
+                  className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all", addForm.type === 'INDIVIDUAL' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                >👤 Cá nhân</button>
+                <button type="button" onClick={() => setAddForm(f => ({ ...f, type: 'CORPORATE' }))}
+                  className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all", addForm.type === 'CORPORATE' ? "bg-orange-500 text-white shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                >🏢 Doanh nghiệp</button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Họ và tên *</label>
+                  <input type="text" placeholder="Tên khách hàng" required value={addForm.fullName}
+                    onChange={(e) => setAddForm(f => ({ ...f, fullName: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Số điện thoại *</label>
+                  <input type="tel" placeholder="09..." required value={addForm.phone}
+                    onChange={(e) => setAddForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Hạng thành viên</label>
+                  <select value={addForm.vipTier} onChange={(e) => setAddForm(f => ({ ...f, vipTier: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  >
+                    <option value="NORMAL">Thường</option>
+                    <option value="SILVER">Bạc</option>
+                    <option value="GOLD">Vàng</option>
+                    <option value="PLATINUM">Platinum</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Email</label>
+                  <input type="email" placeholder="example@email.com" value={addForm.email}
+                    onChange={(e) => setAddForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">CCCD / CMND</label>
+                  <input type="text" placeholder="Căn cước công dân" value={addForm.idNumber}
+                    onChange={(e) => setAddForm(f => ({ ...f, idNumber: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Hộ chiếu (Passport)</label>
+                  <input type="text" placeholder="Số hộ chiếu" value={addForm.passport}
+                    onChange={(e) => setAddForm(f => ({ ...f, passport: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                  />
+                </div>
+
+                {addForm.type === 'CORPORATE' && (
+                  <>
+                    <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                      <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide line-clamp-1">Tên công ty xuất hóa đơn</label>
+                      <input type="text" placeholder="Tên công ty..." value={addForm.companyName}
+                        onChange={(e) => setAddForm(f => ({ ...f, companyName: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                      />
+                    </div>
+                    <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                      <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Mã số thuế</label>
+                      <input type="text" placeholder="Mã số thuế..." value={addForm.companyTaxId}
+                        onChange={(e) => setAddForm(f => ({ ...f, companyTaxId: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-border bg-muted/30 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-lg hover:bg-accent transition-colors"
+              >Hủy</button>
+              <button 
+                type="button" 
+                onClick={() => createMutation.mutate({ ...addForm, code: 'C' + generateRandomKey(6).toUpperCase() })}
+                disabled={!addForm.fullName || !addForm.phone || createMutation.isPending}
+                className="px-6 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Lưu khách hàng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

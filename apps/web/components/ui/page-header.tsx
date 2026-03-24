@@ -13,7 +13,7 @@ export function PageHeader({ title, description, actions, className, ...props }:
       <div>
         <h1 className="text-sm font-medium text-foreground">{title}</h1>
         {description && (
-          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
         )}
       </div>
       {actions && (

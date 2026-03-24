@@ -54,6 +54,10 @@ export default function BookingsPage() {
       window.sessionStorage.setItem('booking:openQuickImport', res.data.id);
       router.push(`/bookings/${res.data.id}`);
     },
+    onError: (error: any) => {
+      console.error('Create booking failed:', error);
+      alert(error?.response?.data?.message || error?.message || 'Không thể tạo booking. Vui lòng kiểm tra kết nối API.');
+    },
   });
 
   // Fetch danh sách booking
@@ -99,8 +103,10 @@ export default function BookingsPage() {
       header: 'Khách hàng',
       cell: (b) => (
         <div className="flex flex-col gap-0.5">
-          <p className="font-medium text-foreground truncate max-w-[150px]">{b.contactName}</p>
-          <p className="text-[11px] text-muted-foreground">{b.contactPhone}</p>
+          <span className="font-medium text-foreground truncate max-w-[150px]">{b.contactName}</span>
+          <span className="text-xs text-muted-foreground mt-0.5">
+            {b.contactPhone}
+          </span>
         </div>
       ),
     },
@@ -108,18 +114,18 @@ export default function BookingsPage() {
       header: 'Chuyến bay',
       cell: (b) => (
         <div className="flex flex-col gap-0.5">
-          <p className="text-foreground">
+          <span className="text-foreground">
             {b.tickets?.[0]
               ? `${b.tickets[0].departureCode} → ${b.tickets[0].arrivalCode}`
               : '—'
             }
-          </p>
-          <p className="text-[11px] text-muted-foreground">
+          </span>
+          <span className="text-[11px] text-muted-foreground">
             {b.tickets?.[0]
               ? <AirlineBadge code={b.tickets[0].airline} size="sm" />
               : BOOKING_SOURCE_LABELS[b.source]
             }
-          </p>
+          </span>
         </div>
       ),
     },

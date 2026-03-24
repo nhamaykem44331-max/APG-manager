@@ -57,7 +57,7 @@ export class BookingsService {
     const where: Prisma.BookingWhereInput = { deletedAt: null };
 
     if (status) where.status = status as BookingStatus;
-    if (source) where.source = source as Prisma.EnumBookingSourceFilter;
+    if (source) where.source = source as string;
     if (search) {
       where.OR = [
         { bookingCode: { contains: search, mode: 'insensitive' } },
@@ -123,51 +123,56 @@ export class BookingsService {
 
   // Tạo booking mới
   async create(dto: CreateBookingDto, staffId: string) {
-    // Sinh mã booking theo format APG-YYMMDD-XXX
-    const bookingCode = await this.generateBookingCode();
-    const customerId = await this.resolveCustomerId(dto);
+    try {
+      // Sinh mã booking theo format APG-YYMMDD-XXX
+      const bookingCode = await this.generateBookingCode();
+      const customerId = await this.resolveCustomerId(dto);
 
-    const booking = await this.prisma.booking.create({
-      data: {
-        bookingCode,
-        customerId,
-        staffId,
-        source: dto.source,
-        contactName: dto.contactName,
-        contactPhone: dto.contactPhone,
-        paymentMethod: dto.paymentMethod,
-        pnr: dto.pnr?.trim().toUpperCase() || null,
-        notes: dto.notes,
-        internalNotes: dto.internalNotes,
-        supplierId: dto.supplierId || null,
-      },
-      include: {
-        customer: { select: { fullName: true, phone: true } },
-        staff: { select: { fullName: true } },
-        supplier: { select: { id: true, name: true, code: true } },
-      },
-    });
+      const booking = await this.prisma.booking.create({
+        data: {
+          bookingCode,
+          customerId,
+          staffId,
+          source: dto.source,
+          contactName: dto.contactName,
+          contactPhone: dto.contactPhone,
+          paymentMethod: dto.paymentMethod,
+          pnr: dto.pnr?.trim().toUpperCase() || null,
+          notes: dto.notes,
+          internalNotes: dto.internalNotes,
+          supplierId: dto.supplierId || null,
+        },
+        include: {
+          customer: { select: { fullName: true, phone: true } },
+          staff: { select: { fullName: true } },
+          supplier: { select: { id: true, name: true, code: true } },
+        },
+      });
 
-    // Ghi log tạo mới
-    await this.prisma.bookingStatusLog.create({
-      data: {
-        bookingId: booking.id,
-        fromStatus: 'NEW',
-        toStatus: 'NEW',
-        changedBy: staffId,
-        reason: 'Tạo booking mới',
-      },
-    });
+      // Ghi log tạo mới
+      await this.prisma.bookingStatusLog.create({
+        data: {
+          bookingId: booking.id,
+          fromStatus: 'NEW',
+          toStatus: 'NEW',
+          changedBy: staffId,
+          reason: 'Tạo booking mới',
+        },
+      });
 
-    // Trigger n8n webhook thông báo booking mới
-    await this.n8n.triggerWebhook('/booking-new', {
-      bookingCode: booking.bookingCode,
-      customerName: booking.customer.fullName,
-      customerPhone: booking.customer.phone,
-      staffName: booking.staff.fullName,
-    });
+      // Trigger n8n webhook thông báo booking mới (fire & forget)
+      this.n8n.triggerWebhook('/booking-new', {
+        bookingCode: booking.bookingCode,
+        customerName: booking.customer.fullName,
+        customerPhone: booking.customer.phone,
+        staffName: booking.staff.fullName,
+      }).catch(err => console.error('[N8N] webhook error:', err));
 
-    return booking;
+      return booking;
+    } catch (error) {
+      console.error('[BookingsService.create] ERROR:', error);
+      throw error;
+    }
   }
 
   // Cập nhật thông tin booking
@@ -448,7 +453,7 @@ export class BookingsService {
               direction: 'RECEIVABLE',
               bookingId,
               customerId: booking.customerId,
-              customerName: customer?.fullName ?? booking.contactName,
+              partyType: 'CUSTOMER_INDIVIDUAL',
               totalAmount: dto.amount,
               paidAmount: 0,
               remaining: dto.amount,
@@ -478,7 +483,7 @@ export class BookingsService {
             reference: booking.pnr || booking.bookingCode,
             date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
             status: 'DONE',
-            notes: `Quỹ nhận: ${fundLabel}`,
+            fundAccount: dto.fundAccount as any,
           },
         });
         console.log(`[INFLOW] +${dto.amount} từ KH ${booking.contactName} vào ${fundLabel}`);
@@ -493,7 +498,8 @@ export class BookingsService {
         where: { bookingId, direction: 'RECEIVABLE', status: { not: 'PAID' } },
       });
 
-      if (arLedger) {
+      // Chỉ giảm trừ công nợ nếu khách trả tiền thực tế (không phải là ghi nợ mới)
+      if (arLedger && dto.method !== 'DEBT') {
         const newPaid = Number(arLedger.paidAmount) + dto.amount;
         const newRemaining = Math.max(0, Number(arLedger.totalAmount) - newPaid);
         const newStatus = newRemaining <= 0 ? 'PAID' : newPaid > 0 ? 'PARTIAL_PAID' : 'ACTIVE';
@@ -560,11 +566,14 @@ export class BookingsService {
 
     if (!booking) return;
 
-    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    // Chỉ cộng dồn các khoản thu thực tế, bỏ qua phương thức CÔNG NỢ (DEBT) vì không sinh dòng tiền
+    const totalPaid = payments
+      .filter(p => p.method !== 'DEBT')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
     const totalSell = Number(booking.totalSellPrice);
 
     let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
-    if (totalPaid >= totalSell) paymentStatus = 'PAID';
+    if (totalPaid >= totalSell && totalSell > 0) paymentStatus = 'PAID';
     else if (totalPaid > 0) paymentStatus = 'PARTIAL';
     else paymentStatus = 'UNPAID';
 

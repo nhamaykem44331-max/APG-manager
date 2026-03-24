@@ -240,7 +240,14 @@ export default function CustomerDetailPage() {
 function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmScore; stats?: CustomerStats }) {
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
-  const [editForm, setEditForm] = useState({ fullName: customer.fullName, phone: customer.phone });
+  const [editForm, setEditForm] = useState({
+    fullName: customer.fullName || '', phone: customer.phone || '',
+    email: customer.email || '', idNumber: customer.idNumber || '',
+    passport: customer.passport || '',
+    dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
+    preferredSeat: customer.preferredSeat || '',
+    companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
+  });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => customersApi.update(customer.id, data),
@@ -252,7 +259,17 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
 
   const handleSaveInfo = () => {
     if (!editForm.fullName.trim() || !editForm.phone.trim()) return;
-    updateMutation.mutate({ fullName: editForm.fullName.trim(), phone: editForm.phone.trim() });
+    updateMutation.mutate({
+      fullName: editForm.fullName.trim(),
+      phone: editForm.phone.trim(),
+      email: editForm.email.trim() || null,
+      idNumber: editForm.idNumber.trim() || null,
+      passport: editForm.passport.trim() || null,
+      dateOfBirth: editForm.dateOfBirth || null,
+      preferredSeat: editForm.preferredSeat.trim() || null,
+      companyName: editForm.companyName.trim() || null,
+      companyTaxId: editForm.companyTaxId.trim() || null
+    });
   };
 
   return (
@@ -263,7 +280,20 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
           <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
             <h3 className="text-[13px] font-medium text-foreground">Thông tin cá nhân</h3>
             <button
-              onClick={() => { if (editMode) handleSaveInfo(); else { setEditForm({ fullName: customer.fullName, phone: customer.phone }); setEditMode(true); }}}
+              onClick={() => {
+                if (editMode) handleSaveInfo();
+                else {
+                  setEditForm({
+                    fullName: customer.fullName || '', phone: customer.phone || '',
+                    email: customer.email || '', idNumber: customer.idNumber || '',
+                    passport: customer.passport || '',
+                    dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
+                    preferredSeat: customer.preferredSeat || '',
+                    companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
+                  });
+                  setEditMode(true);
+                }
+              }}
               className={cn(
                 'text-[11px] font-medium px-2 py-1 rounded-md transition-colors',
                 editMode ? 'bg-primary text-white hover:bg-primary/90' : 'text-primary hover:bg-accent',
@@ -311,30 +341,64 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
 
           <div className="flex flex-col text-[13px]">
             {editMode ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">Họ tên</label>
-                  <input
-                    value={editForm.fullName}
-                    onChange={(e) => setEditForm(p => ({ ...p, fullName: e.target.value }))}
-                    className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+              <div className="space-y-3 pb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Họ tên *</label>
+                    <input value={editForm.fullName} onChange={(e) => setEditForm(p => ({ ...p, fullName: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Số điện thoại *</label>
+                    <input type="tel" value={editForm.phone} onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
                 </div>
+                
                 <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">Số điện thoại</label>
-                  <input
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))}
-                    className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                  <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Email</label>
+                  <input type="email" value={editForm.email} onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditMode(false)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  Hủy
-                </button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">CCCD / CMND</label>
+                    <input value={editForm.idNumber} onChange={(e) => setEditForm(p => ({ ...p, idNumber: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Hộ chiếu</label>
+                    <input value={editForm.passport} onChange={(e) => setEditForm(p => ({ ...p, passport: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Ngày sinh</label>
+                    <input type="date" value={editForm.dateOfBirth} onChange={(e) => setEditForm(p => ({ ...p, dateOfBirth: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Ghế ưa thích</label>
+                    <input value={editForm.preferredSeat} onChange={(e) => setEditForm(p => ({ ...p, preferredSeat: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                  </div>
+                </div>
+
+                {customer.type === 'CORPORATE' && (
+                  <div className="pt-3 mt-3 border-t border-border">
+                    <p className="text-[11px] text-foreground font-semibold uppercase tracking-wide mb-3">Thông tin doanh nghiệp</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground uppercase tracking-wide line-clamp-1">Tên công ty xuất HĐ</label>
+                        <input value={editForm.companyName} onChange={(e) => setEditForm(p => ({ ...p, companyName: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Mã số thuế</label>
+                        <input value={editForm.companyTaxId} onChange={(e) => setEditForm(p => ({ ...p, companyTaxId: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex pt-2">
+                  <button type="button" onClick={() => setEditMode(false)} className="text-[11px] text-muted-foreground hover:text-foreground">Hủy chỉnh sửa</button>
+                </div>
               </div>
             ) : (
               [{label: 'Họ tên', value: customer.fullName},
@@ -356,7 +420,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
             )}
           </div>
 
-          {customer.type === 'CORPORATE' && (
+          {customer.type === 'CORPORATE' && !editMode && (
             <div className="mt-5 pt-5 border-t border-border">
               <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
                 <h4 className="text-[13px] font-medium text-foreground">Thông tin doanh nghiệp</h4>

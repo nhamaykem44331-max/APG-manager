@@ -357,3 +357,19 @@ export const airportsApi = {
       '/airports/distance', { params: { origin, destination } },
     ),
 };
+
+// ==========================================
+// DOCUMENTS API (PDF: Hóa đơn, Báo giá, Phiếu thu/chi)
+// ==========================================
+const docsBase = () => apiClient.defaults.baseURL || 'http://localhost:3001/api/v1';
+
+export const documentsApi = {
+  /** URL tải hóa đơn PDF */
+  invoiceUrl: (bookingId: string) => `${docsBase()}/documents/invoice/${bookingId}`,
+  /** URL tải báo giá PDF */
+  quotationUrl: (bookingId: string) => `${docsBase()}/documents/quotation/${bookingId}`,
+  /** URL tải phiếu thu PDF */
+  receiptUrl: (paymentId: string) => `${docsBase()}/documents/receipt/${paymentId}?type=THU`,
+  /** URL tải phiếu chi PDF */
+  voucherUrl: (cashflowId: string) => `${docsBase()}/documents/receipt/${cashflowId}?type=CHI`,
+};

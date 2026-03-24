@@ -39,11 +39,11 @@ async function main() {
 
   // Tạo deposit ban đầu cho các hãng bay
   const airlines = [
-    { airline: Airline.VN, balance: 450_000_000, alertThreshold: 50_000_000 },
-    { airline: Airline.VJ, balance: 230_000_000, alertThreshold: 30_000_000 },
-    { airline: Airline.QH, balance: 120_000_000, alertThreshold: 20_000_000 },
-    { airline: Airline.BL, balance: 90_000_000,  alertThreshold: 15_000_000 },
-    { airline: Airline.VU, balance: 50_000_000,  alertThreshold: 10_000_000 },
+    { airline: 'VN', balance: 450_000_000, alertThreshold: 50_000_000 },
+    { airline: 'VJ', balance: 230_000_000, alertThreshold: 30_000_000 },
+    { airline: 'QH', balance: 120_000_000, alertThreshold: 20_000_000 },
+    { airline: 'BL', balance: 90_000_000,  alertThreshold: 15_000_000 },
+    { airline: 'VU', balance: 50_000_000,  alertThreshold: 10_000_000 },
   ];
 
   for (const deposit of airlines) {

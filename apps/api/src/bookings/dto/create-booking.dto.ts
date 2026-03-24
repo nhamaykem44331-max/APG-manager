@@ -2,15 +2,16 @@
 import {
   IsString, IsOptional, IsEnum,
 } from 'class-validator';
-import { BookingSource, PaymentMethod } from '@prisma/client';
+import { PaymentMethod } from '@prisma/client';
 
 export class CreateBookingDto {
   @IsOptional()
   @IsString()
   customerId?: string;
 
-  @IsEnum(BookingSource)
-  source: BookingSource;
+  @IsString()
+  @IsOptional()
+  source?: string;
 
   @IsString()
   contactName: string;

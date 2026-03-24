@@ -197,7 +197,8 @@ export class LedgerService {
             reference: dto.reference || ledger.code,
             date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
             status: 'DONE',
-            notes: `Quỹ chi: ${fundLabel}. Ledger: ${ledger.code}`,
+            fundAccount: dto.fundAccount as any,
+            notes: `Ledger: ${ledger.code}`,
           },
         });
         console.log(`[OUTFLOW-AP] -${dto.amount} trả ${supplierName} từ ${fundLabel}`);
@@ -238,7 +239,8 @@ export class LedgerService {
             reference: dto.reference || ledger.code,
             date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
             status: 'DONE',
-            notes: `Quỹ nhận: ${fundLabel}. Ledger: ${ledger.code}`,
+            fundAccount: dto.fundAccount as any,
+            notes: `Ledger: ${ledger.code}`,
           },
         });
         console.log(`[INFLOW-AR] +${dto.amount} thu từ ${customerName} vào ${fundLabel}`);

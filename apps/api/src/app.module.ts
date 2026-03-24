@@ -15,6 +15,7 @@ import { TicketParserModule } from './ticket-parser/ticket-parser.module';
 import { SheetSyncModule } from './sheet-sync/sheet-sync.module';
 import { FlightsModule } from './flights/flights.module';
 import { AirportsModule } from './airports/airports.module';
+import { DocumentsModule } from './documents/documents.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { AirportsModule } from './airports/airports.module';
     SheetSyncModule,
     FlightsModule, // FIX 10: Đăng ký Flights Module (airports data + search endpoint)
     AirportsModule, // Airports search + distance API (Cách 2 & 3)
+    DocumentsModule, // PDF: Hóa đơn, báo giá, phiếu thu/chi
   ],
 })
 export class AppModule {}

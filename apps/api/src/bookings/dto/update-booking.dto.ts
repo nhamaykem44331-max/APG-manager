@@ -11,6 +11,10 @@ export class UpdateBookingDto {
 
   @IsOptional()
   @IsString()
+  source?: string;
+
+  @IsOptional()
+  @IsString()
   contactPhone?: string;
 
   @IsOptional()

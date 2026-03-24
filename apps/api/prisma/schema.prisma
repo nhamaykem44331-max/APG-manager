@@ -53,15 +53,6 @@ enum BookingStatus {
   CANCELLED        // Đã hủy
 }
 
-enum BookingSource {
-  WEBSITE   // book.tanphuapg.com
-  ZALO      // Zalo OA
-  MESSENGER // Facebook Messenger
-  PHONE     // Điện thoại
-  WALK_IN   // Trực tiếp
-  REFERRAL  // Giới thiệu
-}
-
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -236,7 +227,7 @@ model Booking {
   customerId   String        @map("customer_id")
   staffId      String        @map("staff_id")
   status       BookingStatus @default(NEW)
-  source       BookingSource @default(PHONE)
+  source       String        @default("PHONE")
   contactPhone String        @map("contact_phone")
   contactName  String        @map("contact_name")
 
@@ -613,6 +604,7 @@ model CashFlowEntry {
   date          DateTime
   status        String            @default("DONE") // DONE, PENDING
   notes         String?
+  fundAccount   FundAccount?      @map("fund_account")
   createdBy     String?           @map("created_by")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")

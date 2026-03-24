@@ -33,6 +33,7 @@ export function CashFlowTab() {
     reference: '',
     date: new Date().toISOString().slice(0, 10),
     notes: '',
+    fundAccount: 'CASH_OFFICE',
   });
 
   const params: Record<string, string> = { pageSize: '50' };
@@ -63,7 +64,7 @@ export function CashFlowTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cashflow'] });
       setShowForm(false);
-      setForm({ direction: 'INFLOW', category: 'TICKET_PAYMENT', amount: '', pic: 'Ms Thanh', description: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+      setForm({ direction: 'INFLOW', category: 'TICKET_PAYMENT', amount: '', pic: 'Ms Thanh', description: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '', fundAccount: 'CASH_OFFICE' });
     },
   });
 
@@ -183,7 +184,7 @@ export function CashFlowTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['Ngày', 'Loại', 'Mô tả', 'Tham chiếu', 'PIC', 'Số tiền'].map((h) => (
+                  {['Ngày', 'Loại', 'Quỹ', 'Mô tả', 'Tham chiếu', 'PIC', 'Số tiền'].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-2.5 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -198,6 +199,9 @@ export function CashFlowTab() {
                       >
                         {CASHFLOW_CATEGORY_LABELS[e.category]}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-[11px] font-medium text-foreground whitespace-nowrap">
+                      {e.fundAccount === 'CASH_OFFICE' ? 'TM VP' : e.fundAccount === 'BANK_HTX' ? 'BIDV HTX' : e.fundAccount === 'BANK_PERSONAL' ? 'MB Cá nhân' : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-foreground max-w-[200px] truncate" title={e.description}>{e.description}</td>
                     <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">{e.reference ?? '—'}</td>
@@ -234,11 +238,20 @@ export function CashFlowTab() {
                 ))}
               </div>
               {/* Category */}
-              <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+                <select value={form.fundAccount} onChange={(e) => setForm((f) => ({ ...f, fundAccount: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="CASH_OFFICE">Quỹ TM VP</option>
+                  <option value="BANK_HTX">TK BIDV HTX</option>
+                  <option value="BANK_PERSONAL">TK MB cá nhân</option>
+                </select>
+              </div>
               {/* Amount */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Số tiền (VNĐ)</label>

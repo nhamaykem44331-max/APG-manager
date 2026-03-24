@@ -1,15 +1,15 @@
 // APG Manager RMS - Booking Detail Page (Part 3: Add Ticket + Add Payment)
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plane, User, Clock, CreditCard,
-  Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap,
+  Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap, FileText,
 } from 'lucide-react';
-import { bookingsApi, supplierApi, customersApi } from '@/lib/api';
+import { bookingsApi, supplierApi, customersApi, documentsApi } from '@/lib/api';
 import {
   cn, formatVND, formatDateTime, formatTime,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
@@ -545,7 +545,18 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
         )}
         <p className="text-xs text-muted-foreground">{formatDateTime(payment.paidAt)}</p>
       </div>
-      <p className="text-sm font-bold text-emerald-500">+{formatVND(payment.amount)}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-bold text-emerald-500">+{formatVND(payment.amount)}</p>
+        <a
+          href={documentsApi.receiptUrl(payment.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+          title="In phiếu thu"
+        >
+          <FileText className="w-3 h-3" /> PT
+        </a>
+      </div>
     </div>
   );
 }
@@ -636,81 +647,128 @@ function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; co
 }
 
 // ────────────────────────────────────────────────────
-// Customer Inline Display (with edit) in Booking
+// Edit Contact Modal
 // ────────────────────────────────────────────────────
-function CustomerInlineDisplay({ customer, bookingId }: { customer: Customer; bookingId: string }) {
+function EditContactModal({ 
+  booking, 
+  onClose,
+}: { 
+  booking: Booking; 
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ fullName: customer.fullName, phone: customer.phone });
+  const isPresetSource = ['WEBSITE', 'ZALO', 'MESSENGER', 'PHONE', 'WALK_IN', 'REFERRAL'].includes(booking.source);
+  
+  const [form, setForm] = useState({
+    contactName: booking.customer?.fullName || booking.contactName,
+    contactPhone: booking.customer?.phone || booking.contactPhone,
+    sourceType: isPresetSource ? booking.source : 'OTHER',
+    customSource: isPresetSource ? '' : booking.source,
+  });
 
   const mutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => customersApi.update(customer.id, data),
+    mutationFn: async () => {
+      const finalSource = form.sourceType === 'OTHER' ? form.customSource : form.sourceType;
+      
+      // Bản thân Customer có thay đổi name/phone không?
+      if (booking.customer) {
+        if (booking.customer.fullName !== form.contactName || booking.customer.phone !== form.contactPhone) {
+          await customersApi.update(booking.customer.id, {
+            fullName: form.contactName,
+            phone: form.contactPhone,
+          });
+        }
+      }
+
+      // Cập nhật booking record
+      await bookingsApi.update(booking.id, {
+        contactName: form.contactName,
+        contactPhone: form.contactPhone,
+        source: finalSource,
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
-      queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
-      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+      if (booking.customer) {
+        queryClient.invalidateQueries({ queryKey: ['customer', booking.customer.id] });
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+      }
+      onClose();
     },
   });
 
-  if (editing) {
-    return (
-      <div className="space-y-2">
-        <div className="space-y-1.5">
-          <input
-            value={form.fullName}
-            onChange={(e) => setForm(p => ({ ...p, fullName: e.target.value }))}
-            placeholder="Tên khách hàng"
-            className="w-full px-3 h-7 text-[12px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-          <input
-            value={form.phone}
-            onChange={(e) => setForm(p => ({ ...p, phone: e.target.value }))}
-            placeholder="Số điện thoại"
-            className="w-full px-3 h-7 text-[12px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => mutation.mutate({ fullName: form.fullName.trim(), phone: form.phone.trim() })}
-            disabled={!form.fullName.trim() || !form.phone.trim() || mutation.isPending}
-            className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Đang lưu...' : 'Lưu'}
-          </button>
-          <button onClick={() => setEditing(false)} className="text-[11px] text-muted-foreground hover:text-foreground">Hủy</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary">
-          {customer.fullName?.charAt(0) || 'K'}
+    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-card w-full max-w-sm rounded-xl border border-border shadow-lg p-5">
+        <h3 className="text-[15px] font-bold text-foreground mb-4">Cập nhật thông tin liên hệ</h3>
+        
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-foreground">Tên liên hệ</label>
+            <input
+              value={form.contactName}
+              onChange={e => setForm(p => ({ ...p, contactName: e.target.value }))}
+              placeholder="Tên khách hàng"
+              className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+            />
+          </div>
+          
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-foreground">Số điện thoại</label>
+            <input
+              value={form.contactPhone}
+              onChange={e => setForm(p => ({ ...p, contactPhone: e.target.value }))}
+              placeholder="Nhập số điện thoại"
+              className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-foreground">Nguồn khách</label>
+            <select
+              value={form.sourceType}
+              onChange={e => setForm(p => ({ ...p, sourceType: e.target.value }))}
+              className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+            >
+              {Object.entries(BOOKING_SOURCE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+              <option value="OTHER">Khác (Nhập tay)...</option>
+            </select>
+            {form.sourceType === 'OTHER' && (
+              <input
+                value={form.customSource}
+                onChange={e => setForm(p => ({ ...p, customSource: e.target.value }))}
+                placeholder="Nhập nguồn tùy chỉnh..."
+                className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background mt-2 focus:ring-1 focus:ring-primary outline-none"
+                autoFocus
+              />
+            )}
+          </div>
         </div>
-        <div>
-          <p className="text-[13px] font-medium text-foreground">{customer.fullName}</p>
-          <p className="text-[11px] text-muted-foreground">{customer.phone} · {customer.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}</p>
+
+        <div className="flex items-center justify-end gap-2 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            Hủy
+          </button>
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !form.contactName.trim() || !form.contactPhone.trim() || (form.sourceType === 'OTHER' && !form.customSource.trim())}
+            className="px-4 py-2 text-[13px] font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50"
+          >
+            {mutation.isPending ? 'Đang lưu...' : 'Lưu cập nhật'}
+          </button>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <button onClick={() => { setForm({ fullName: customer.fullName, phone: customer.phone }); setEditing(true); }} className="text-[10px] text-primary hover:underline">Sửa</button>
-        <span className={cn(
-          'text-[10px] px-2 py-0.5 rounded-full font-medium',
-          customer.vipTier === 'PLATINUM' ? 'bg-purple-500/10 text-purple-500' :
-          customer.vipTier === 'GOLD' ? 'bg-amber-500/10 text-amber-500' :
-          customer.vipTier === 'SILVER' ? 'bg-zinc-400/10 text-zinc-500' :
-          'bg-accent text-muted-foreground'
-        )}>
-          {customer.vipTier || 'NORMAL'}
-        </span>
       </div>
     </div>
   );
 }
 
 // ────────────────────────────────────────────────────
+
 // Main Page
 // ────────────────────────────────────────────────────
 export default function BookingDetailPage() {
@@ -722,6 +780,7 @@ export default function BookingDetailPage() {
   const [showAddTicket, setShowAddTicket]   = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [showEditContact, setShowEditContact] = useState(false);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
@@ -769,6 +828,53 @@ export default function BookingDetailPage() {
     },
   });
 
+  // Nhóm vé theo chuyến bay để hiển thị gọn gàng hơn
+  const groupedFlights = useMemo(() => {
+    if (!booking?.tickets) return [];
+    
+    // Key format: "VN-VN249-HAN-SGN-2024-03-24T15:30:00.000Z"
+    const grouped = new Map<string, {
+      airline: string;
+      flightNumber: string;
+      departureCode: string;
+      arrivalCode: string;
+      departureTime: string | Date;
+      arrivalTime: string | Date;
+      sellPrice: number;
+      profit: number;
+      tickets: typeof booking.tickets;
+    }>();
+
+    for (const t of booking.tickets) {
+      const gDate = new Date(t.departureTime).toISOString();
+      const key = `${t.airline}-${t.flightNumber}-${t.departureCode}-${t.arrivalCode}-${gDate}`;
+      
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          airline: t.airline,
+          flightNumber: t.flightNumber,
+          departureCode: t.departureCode,
+          arrivalCode: t.arrivalCode,
+          departureTime: t.departureTime,
+          arrivalTime: t.arrivalTime,
+          sellPrice: 0,
+          profit: 0,
+          tickets: []
+        });
+      }
+      
+      const groupItem = grouped.get(key)!;
+      groupItem.tickets.push(t);
+      // We sum up the prices logically to show flight totals if needed
+      groupItem.sellPrice += Number(t.sellPrice);
+      groupItem.profit += Number(t.profit);
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => 
+      new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
+    );
+  }, [booking?.tickets]);
+
   useEffect(() => {
     if (quickImportInitialized || !booking || typeof window === 'undefined') return;
 
@@ -801,7 +907,8 @@ export default function BookingDetailPage() {
 
   const bk: Booking = booking ?? SAMPLE_BOOKING;
   const actions = NEXT_ACTIONS[bk.status] ?? [];
-  const totalPaid = (bk.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+  const validPayments = (bk.payments ?? []).filter(p => p.method !== 'DEBT');
+  const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0);
   const totalRemaining = Number(bk.totalSellPrice) - totalPaid;
   const canAddTicket  = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
   const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
@@ -867,6 +974,27 @@ export default function BookingDetailPage() {
                 )}
               </div>
             )}
+            {/* PDF document buttons */}
+            <a
+              href={documentsApi.quotationUrl(id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+              title="Tải báo giá PDF"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-500" /> Báo giá
+            </a>
+            {['ISSUED', 'COMPLETED'].includes(bk.status) && (
+              <a
+                href={documentsApi.invoiceUrl(id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+                title="Tải hoá đơn PDF"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-500" /> Hóa đơn
+              </a>
+            )}
             {actions.map((action) => (
               <button
                 key={action.status}
@@ -890,147 +1018,163 @@ export default function BookingDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: Details (70%) */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Contact info + Customer link */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
-              <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
-              {bk.customer && (
-                <Link
-                  href={`/customers/${bk.customer.id}`}
-                  className="text-[11px] text-primary hover:underline font-medium"
-                >
-                  Xem hồ sơ KH →
-                </Link>
-              )}
-            </div>
-            <div className="flex flex-col text-[13px]">
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                <span className="text-muted-foreground">Tên liên hệ</span>
-                <span className="font-medium text-foreground">{bk.contactName}</span>
-              </div>
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                <span className="text-muted-foreground">Số điện thoại</span>
-                <span className="font-medium text-foreground flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                  {bk.contactPhone}
-                </span>
-              </div>
-              {bk.pnr && (
-                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                  <span className="text-muted-foreground">Mã PNR (GDS)</span>
-                  <span className="font-mono font-bold text-primary">{bk.pnr}</span>
+          {/* Side-by-side Contact & Supplier to save space */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Contact info + Customer link */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+                <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowEditContact(true)}
+                    className="text-[11px] text-primary hover:underline font-medium"
+                  >
+                    Sửa
+                  </button>
+                  {bk.customer && (
+                    <Link
+                      href={`/customers/${bk.customer.id}`}
+                      className="text-[11px] text-primary hover:underline font-medium"
+                    >
+                      Xem hồ sơ KH →
+                    </Link>
+                  )}
                 </div>
-              )}
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                <span className="text-muted-foreground">Nguồn</span>
-                <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source]}</span>
               </div>
+              <div className="flex flex-col text-[13px]">
+                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                  <span className="text-muted-foreground">Tên liên hệ</span>
+                  <span className="font-medium text-foreground text-right flex flex-col items-end">
+                    {bk.customer ? bk.customer.fullName : bk.contactName}
+                    {bk.customer && (
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        Khách {bk.customer.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                  <span className="text-muted-foreground">Số điện thoại</span>
+                  <span className="font-medium text-foreground flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                    {bk.customer ? bk.customer.phone : bk.contactPhone}
+                  </span>
+                </div>
+                {bk.pnr && (
+                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                    <span className="text-muted-foreground">Mã PNR (GDS)</span>
+                    <span className="font-mono font-bold text-primary">{bk.pnr}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+                  <span className="text-muted-foreground">Nguồn</span>
+                  <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source] || bk.source}</span>
+                </div>
 
-              {/* Linked Customer */}
-              <div className="mt-3 pt-3 border-t border-border">
-                {bk.customer ? (
-                  <CustomerInlineDisplay customer={bk.customer} bookingId={id} />
-                ) : (
-                  <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
+                {/* Linked Customer Link */}
+                {!bk.customer && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
+                  </div>
                 )}
               </div>
+              {bk.notes && (
+                <div className="mt-4 pt-3 border-t border-border">
+                  <p className="text-[13px] text-muted-foreground mb-1">Ghi chú</p>
+                  <p className="text-[13px] text-foreground">{bk.notes}</p>
+                </div>
+              )}
             </div>
-            {bk.notes && (
-              <div className="mt-4 pt-3 border-t border-border">
-                <p className="text-[13px] text-muted-foreground mb-1">Ghi chú</p>
-                <p className="text-[13px] text-foreground">{bk.notes}</p>
+
+            {/* Supplier (NCC) selector */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+                <h3 className="text-[13px] font-medium text-foreground">Nhà cung cấp (NCC)</h3>
+                <button
+                  onClick={() => setShowNewSupplier(!showNewSupplier)}
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  {showNewSupplier ? 'Hủy' : '+ Tạo NCC mới'}
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Supplier (NCC) selector */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
-              <h3 className="text-[13px] font-medium text-foreground">Nhà cung cấp (NCC)</h3>
-              <button
-                onClick={() => setShowNewSupplier(!showNewSupplier)}
-                className="text-xs text-primary hover:underline font-medium"
-              >
-                {showNewSupplier ? 'Hủy' : '+ Tạo NCC mới'}
-              </button>
-            </div>
+              {/* Dropdown chọn NCC */}
+              <div className="space-y-3">
+                <FormSelect
+                  label="Chọn nhà cung cấp"
+                  value={bk.supplierId || ''}
+                  onChange={(e) => supplierMutation.mutate(e.target.value || null)}
+                >
+                  <option value="">— Chưa chọn NCC —</option>
+                  {(suppliers ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>
+                  ))}
+                </FormSelect>
 
-            {/* Dropdown chọn NCC */}
-            <div className="space-y-3">
-              <FormSelect
-                label="Chọn nhà cung cấp"
-                value={bk.supplierId || ''}
-                onChange={(e) => supplierMutation.mutate(e.target.value || null)}
-              >
-                <option value="">— Chưa chọn NCC —</option>
-                {(suppliers ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>
-                ))}
-              </FormSelect>
-
-              {/* Supplier badge */}
-              {bk.supplier && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-accent/50 rounded-lg border border-border/50">
-                  <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                    {bk.supplier.code?.slice(0, 2)}
+                {/* Supplier badge */}
+                {bk.supplier && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-accent/50 rounded-lg border border-border/50">
+                    <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                      {bk.supplier.code?.slice(0, 2)}
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">{bk.supplier.name}</p>
+                      {bk.supplier.contactName && (
+                        <p className="text-[11px] text-muted-foreground">{bk.supplier.contactName}</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-foreground">{bk.supplier.name}</p>
-                    {bk.supplier.contactName && (
-                      <p className="text-[11px] text-muted-foreground">{bk.supplier.contactName}</p>
-                    )}
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* Inline form tạo NCC mới */}
-              {showNewSupplier && (
-                <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border/50">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tạo NCC mới</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormInput
-                      label="Mã NCC" required
-                      placeholder="VN, SCCM..."
-                      value={newSupplierForm.code}
-                      onChange={(e) => setNewSupplierForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
-                    />
-                    <FormInput
-                      label="Tên NCC" required
-                      placeholder="Vietnam Airlines"
-                      value={newSupplierForm.name}
-                      onChange={(e) => setNewSupplierForm(p => ({ ...p, name: e.target.value }))}
-                    />
-                    <FormSelect
-                      label="Loại"
-                      value={newSupplierForm.type}
-                      onChange={(e) => setNewSupplierForm(p => ({ ...p, type: e.target.value }))}
+                {/* Inline form tạo NCC mới */}
+                {showNewSupplier && (
+                  <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border/50">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tạo NCC mới</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <FormInput
+                        label="Mã NCC" required
+                        placeholder="VN, SCCM..."
+                        value={newSupplierForm.code}
+                        onChange={(e) => setNewSupplierForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                      />
+                      <FormInput
+                        label="Tên NCC" required
+                        placeholder="Vietnam Airlines"
+                        value={newSupplierForm.name}
+                        onChange={(e) => setNewSupplierForm(p => ({ ...p, name: e.target.value }))}
+                      />
+                      <FormSelect
+                        label="Loại"
+                        value={newSupplierForm.type}
+                        onChange={(e) => setNewSupplierForm(p => ({ ...p, type: e.target.value }))}
+                      >
+                        <option value="AIRLINE">Hãng bay</option>
+                        <option value="GDS_PROVIDER">GDS Provider</option>
+                        <option value="PARTNER">Đối tác</option>
+                        <option value="OTHER_SUPPLIER">Khác</option>
+                      </FormSelect>
+                      <FormInput
+                        label="Người liên hệ"
+                        placeholder="Mr/Ms..."
+                        value={newSupplierForm.contactName}
+                        onChange={(e) => setNewSupplierForm(p => ({ ...p, contactName: e.target.value }))}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newSupplierForm.code || !newSupplierForm.name) return;
+                        createSupplierMutation.mutate(newSupplierForm);
+                      }}
+                      disabled={createSupplierMutation.isPending || !newSupplierForm.code || !newSupplierForm.name}
+                      className="w-full mt-1 py-1.5 bg-foreground text-background rounded-md text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5"
                     >
-                      <option value="AIRLINE">Hãng bay</option>
-                      <option value="GDS_PROVIDER">GDS Provider</option>
-                      <option value="PARTNER">Đối tác</option>
-                      <option value="OTHER_SUPPLIER">Khác</option>
-                    </FormSelect>
-                    <FormInput
-                      label="Người liên hệ"
-                      placeholder="Mr/Ms..."
-                      value={newSupplierForm.contactName}
-                      onChange={(e) => setNewSupplierForm(p => ({ ...p, contactName: e.target.value }))}
-                    />
+                      {createSupplierMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      Tạo & Gán NCC
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!newSupplierForm.code || !newSupplierForm.name) return;
-                      createSupplierMutation.mutate(newSupplierForm);
-                    }}
-                    disabled={createSupplierMutation.isPending || !newSupplierForm.code || !newSupplierForm.name}
-                    className="w-full mt-1 py-1.5 bg-foreground text-background rounded-md text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  >
-                    {createSupplierMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    Tạo & Gán NCC
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
@@ -1070,59 +1214,73 @@ export default function BookingDetailPage() {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {(bk.tickets ?? []).map((ticket) => (
-                  <div key={ticket.id} className="p-5">
-                    <div className="flex items-center justify-between mb-4">
+                {groupedFlights.map((flight, fIdx) => (
+                  <div key={fIdx} className="p-4">
+                    <div className="flex items-center justify-between mb-3 border-b border-border/50 pb-3">
                       <div className="flex items-center gap-2">
-                        {/* FIX 8: AirlineBadge với logo từ Kiwi CDN */}
-                        <AirlineBadge code={ticket.airline} showName={false} size="md" />
-                        <span className="text-[13px] font-mono font-medium text-foreground mt-0.5">{ticket.flightNumber}</span>
-                        <span className="text-[11px] text-muted-foreground mt-0.5 ml-1">{ticket.seatClass}</span>
-                        {ticket.fareClass && (
-                          <span className="px-1.5 py-0.5 bg-accent rounded text-[11px] font-mono mt-0.5">{ticket.fareClass}</span>
-                        )}
+                        <AirlineBadge code={flight.airline} showName={false} size="md" />
+                        <span className="text-[13px] font-mono font-medium text-foreground mt-0.5">{flight.flightNumber}</span>
                       </div>
                       <div className="text-right">
-                        <p className="text-[13px] font-bold font-tabular text-foreground">{formatVND(ticket.sellPrice)}</p>
-                        <p className="text-[11px] font-tabular text-emerald-500">+{formatVND(ticket.profit)}</p>
+                        <p className="text-[13px] font-bold font-tabular text-foreground">{formatVND(flight.sellPrice)}</p>
+                        <p className="text-[11px] font-tabular text-emerald-500">+{formatVND(flight.profit)} (Tổng)</p>
                       </div>
                     </div>
 
-                    {/* FIX 8: Route with airport names */}
-                    <div className="flex items-center gap-3">
-                      <div className="text-center">
-                        <p className="text-xl font-bold text-foreground">{ticket.departureCode}</p>
-                        <p className="text-[10px] text-muted-foreground">{getAirportName(ticket.departureCode)}</p>
-                        <p className="text-xs text-muted-foreground">{formatTime(ticket.departureTime)}</p>
+                    <div className="flex items-center gap-3 mb-4 max-w-sm mx-auto">
+                      <div className="text-center w-24">
+                        <p className="text-lg font-bold text-foreground">{flight.departureCode}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{getAirportName(flight.departureCode)}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatTime(flight.departureTime)} <span className="text-[10px] opacity-70">({new Date(flight.departureTime).toLocaleDateString('vi-VN')})</span></p>
                       </div>
                       <div className="flex-1 flex items-center gap-2">
-                        <div className="flex-1 border-t border-dashed border-border" />
-                        <Plane className="w-3.5 h-3.5 text-muted-foreground" />
-                        <div className="flex-1 border-t border-dashed border-border" />
+                        <div className="flex-1 border-t border-dashed border-border/60" />
+                        <Plane className="w-3.5 h-3.5 text-muted-foreground/60" />
+                        <div className="flex-1 border-t border-dashed border-border/60" />
                       </div>
-                      <div className="text-center">
-                        <p className="text-xl font-bold text-foreground">{ticket.arrivalCode}</p>
-                        <p className="text-[10px] text-muted-foreground">{getAirportName(ticket.arrivalCode)}</p>
-                        <p className="text-xs text-muted-foreground">{formatTime(ticket.arrivalTime)}</p>
+                      <div className="text-center w-24">
+                        <p className="text-lg font-bold text-foreground">{flight.arrivalCode}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{getAirportName(flight.arrivalCode)}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatTime(flight.arrivalTime)}</p>
                       </div>
                     </div>
 
-                    {/* Passenger + eticket + booking code */}
-                    {ticket.passenger && (
-                      <p className="mt-2.5 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{ticket.passenger.fullName}</span>
-                        <span className="ml-1 opacity-60">({ticket.passenger.type})</span>
-                        {ticket.airlineBookingCode && (
-                          <span className="ml-2 font-mono font-bold text-primary"> · Code: {ticket.airlineBookingCode}</span>
-                        )}
-                        {ticket.eTicketNumber && (
-                          <span className="ml-2 font-mono text-primary opacity-80"> · {ticket.eTicketNumber}</span>
-                        )}
-                        {ticket.baggageAllowance && (
-                          <span className="ml-2 opacity-60"> · {ticket.baggageAllowance}</span>
-                        )}
-                      </p>
-                    )}
+                    <div className="mt-3 bg-muted/20 border border-border/30 rounded-lg overflow-hidden">
+                      <div className="grid grid-cols-1 divide-y divide-border/30">
+                        {flight.tickets.map((ticket, idx) => (
+                          <div key={ticket.id || idx} className="p-2.5 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12px] font-bold text-foreground uppercase tracking-tight">
+                                  {ticket.passenger?.fullName || 'CHƯA CÓ TÊN'}
+                                </span>
+                                <span className="text-[9px] bg-muted-foreground/10 text-muted-foreground px-1 py-0.5 rounded font-mono">
+                                  {ticket.passenger?.type || 'ADT'}
+                                </span>
+                                {ticket.airlineBookingCode && (
+                                  <span className="text-[10px] font-mono text-primary bg-primary/10 px-1 py-0.5 rounded">
+                                    {ticket.airlineBookingCode}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground mt-1">
+                                <span className="font-medium text-foreground">{ticket.seatClass} {ticket.fareClass}</span>
+                                {ticket.eTicketNumber && (
+                                  <span>· Số vé: <span className="font-mono">{ticket.eTicketNumber}</span></span>
+                                )}
+                                {ticket.baggageAllowance && (
+                                  <span>· Hành lý: {ticket.baggageAllowance}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-[12px] font-bold font-tabular text-foreground">{formatVND(ticket.sellPrice)}</p>
+                              <p className="text-[10px] font-tabular text-emerald-500">+{formatVND(ticket.profit)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1377,6 +1535,14 @@ export default function BookingDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Contact Modal */}
+      {showEditContact && (
+        <EditContactModal
+          booking={bk}
+          onClose={() => setShowEditContact(false)}
+        />
       )}
 
       {/* Add Ticket Modal */}

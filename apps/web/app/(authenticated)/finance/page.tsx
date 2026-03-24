@@ -20,6 +20,7 @@ import { PayableTab } from '@/components/finance/payable-tab';
 import { SuppliersTab } from '@/components/finance/suppliers-tab';
 import { CashFlowTab } from '@/components/finance/cashflow-tab';
 import { ExpenseTab } from '@/components/finance/expense-tab';
+import { FundsTab } from '@/components/finance/funds-tab';
 import type { LedgerSummary } from '@/types';
 
 const TABS = [
@@ -27,6 +28,7 @@ const TABS = [
   { key: 'receivable', label: '📥 Phải thu (AR)', icon: ArrowDownCircle },
   { key: 'payable', label: '📤 Phải trả (AP)', icon: ArrowUpCircle },
   { key: 'cashflow', label: '💵 Dòng tiền', icon: TrendingUp },
+  { key: 'funds', label: '💳 Sổ quỹ', icon: Wallet },
   { key: 'expenses', label: '📉 Chi phí VP', icon: TrendingDown },
   { key: 'deposits', label: 'Deposit', icon: CreditCard },
   { key: 'debts', label: 'Công nợ cũ', icon: AlertCircle },
@@ -80,6 +82,7 @@ export default function FinancePage() {
       {activeTab === 'receivable' && <ReceivableTab />}
       {activeTab === 'payable' && <PayableTab />}
       {activeTab === 'cashflow' && <CashFlowTab />}
+      {activeTab === 'funds' && <FundsTab />}
       {activeTab === 'expenses' && <ExpenseTab />}
       {activeTab === 'deposits' && <DepositsTab />}
       {activeTab === 'debts' && <DebtsTab />}
