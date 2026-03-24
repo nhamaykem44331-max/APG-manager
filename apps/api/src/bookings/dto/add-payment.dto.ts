@@ -14,6 +14,10 @@ export class AddPaymentDto {
   @IsEnum(PaymentMethod)
   method: PaymentMethod;
 
+  // Quỹ tiền nhận thanh toán
+  @IsOptional() @IsString()
+  fundAccount?: string;  // 'CASH_OFFICE' | 'BANK_HTX' | 'BANK_PERSONAL'
+
   @IsOptional()
   @IsString()
   reference?: string;

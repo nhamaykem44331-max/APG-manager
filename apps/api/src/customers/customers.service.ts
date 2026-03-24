@@ -97,17 +97,28 @@ export class CustomersService {
     return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
-  // Chi tiết khách hàng kèm lịch sử booking
+  // Chi tiết khách hàng kèm lịch sử booking + công nợ
   async findOne(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
         bookings: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 20,
-          include: { tickets: { take: 1 } },
+          include: {
+            tickets: { take: 1 },
+            supplier: { select: { code: true, name: true } },
+            _count: { select: { tickets: true, payments: true } },
+          },
         },
-        debts: { where: { status: { in: ['ACTIVE', 'OVERDUE', 'PARTIAL_PAID'] } } },
+        ledgers: {
+          where: { direction: 'RECEIVABLE' },
+          orderBy: { dueDate: 'asc' },
+          select: { id: true, code: true, totalAmount: true, remaining: true, status: true, dueDate: true },
+        },
+        interactions: { take: 10, orderBy: { createdAt: 'desc' } },
+        customerNotes: { take: 10, orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -132,21 +143,68 @@ export class CustomersService {
   }
 
   // Cập nhật thông tin khách hàng
-  async update(id: string, data: Partial<CreateCustomerDto>) {
+  async update(id: string, data: Partial<CreateCustomerDto> & { vipTier?: string }) {
     await this.findOne(id);
-    return this.prisma.customer.update({ where: { id }, data });
+    const updated = await this.prisma.customer.update({ where: { id }, data: data as never });
+
+    // Auto-classify VIP tier nếu không chỉ định thủ công
+    if (!data.vipTier) {
+      try {
+        await this.autoClassifyVipTier(id);
+      } catch (e) {
+        console.log('[VIP-TIER] Auto-classify error:', e);
+      }
+    }
+    return updated;
   }
 
-  // Thống kê khách hàng (CLV, tuyến hay đi, tần suất)
-  async getStats(id: string) {
-    const customer = await this.findOne(id);
+  // Auto VIP: NORMAL < 50M, SILVER 50-100M, GOLD 100-500M, PLATINUM > 500M
+  async autoClassifyVipTier(customerId: string) {
+    const bookingSum = await this.prisma.booking.aggregate({
+      where: { customerId, deletedAt: null, status: { in: ['ISSUED', 'COMPLETED'] } },
+      _sum: { totalSellPrice: true },
+    });
+    const totalSpent = Number(bookingSum._sum.totalSellPrice ?? 0);
 
+    let tier: VipTier = 'NORMAL';
+    if (totalSpent >= 500_000_000) tier = 'PLATINUM';
+    else if (totalSpent >= 100_000_000) tier = 'GOLD';
+    else if (totalSpent >= 50_000_000) tier = 'SILVER';
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { vipTier: tier, totalSpent },
+    });
+    console.log(`[VIP-TIER] Customer ${customerId}: totalSpent=${totalSpent}, tier=${tier}`);
+  }
+
+  // Thống kê khách hàng (CLV, tài chính tổng hợp)
+  async getStats(id: string) {
+    const customer = await this.prisma.customer.findUniqueOrThrow({ where: { id } });
+
+    const [bookingStats, debtStats, paymentTotal] = await Promise.all([
+      this.prisma.booking.aggregate({
+        where: { customerId: id, deletedAt: null, status: { in: ['ISSUED', 'COMPLETED'] } },
+        _sum: { totalSellPrice: true, profit: true },
+        _count: { id: true },
+      }),
+      this.prisma.accountsLedger.aggregate({
+        where: { customerId: id, direction: 'RECEIVABLE', status: { not: 'PAID' } },
+        _sum: { remaining: true },
+        _count: { id: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { booking: { customerId: id } },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    // Top routes
     const bookings = await this.prisma.booking.findMany({
       where: { customerId: id, status: { in: ['ISSUED', 'COMPLETED'] } },
       include: { tickets: true },
     });
 
-    // Tuyến bay hay đi nhất
     const routeCount: Record<string, number> = {};
     bookings.forEach(b => {
       b.tickets.forEach(t => {
@@ -160,23 +218,24 @@ export class CustomersService {
       .slice(0, 3)
       .map(([route, count]) => ({ route, count }));
 
-    // Doanh thu năm nay
+    // Yearly spend
     const startOfYear = new Date(new Date().getFullYear(), 0, 1);
     const yearlyBookings = bookings.filter(b => new Date(b.createdAt) >= startOfYear);
-    const yearlySpend = yearlyBookings.reduce(
-      (sum, b) => sum + Number(b.totalSellPrice), 0
-    );
+    const yearlySpend = yearlyBookings.reduce((sum, b) => sum + Number(b.totalSellPrice), 0);
 
     return {
-      totalBookings: customer.totalBookings,
+      totalBookings: bookingStats._count.id,
+      totalRevenue: Number(bookingStats._sum.totalSellPrice ?? 0),
+      totalProfit: Number(bookingStats._sum.profit ?? 0),
+      totalPaid: Number(paymentTotal._sum.amount ?? 0),
+      outstandingDebt: Number(debtStats._sum.remaining ?? 0),
+      activeDebts: debtStats._count.id,
       totalSpent: customer.totalSpent,
       yearlySpend,
       vipTier: customer.vipTier,
       topRoutes,
       lastBookingDate: bookings[0]?.createdAt ?? null,
-      averageTicketValue: bookings.length > 0
-        ? Number(customer.totalSpent) / bookings.length
-        : 0,
+      averageTicketValue: bookings.length > 0 ? Number(customer.totalSpent) / bookings.length : 0,
     };
   }
 

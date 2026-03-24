@@ -33,4 +33,8 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   internalNotes?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
 }

@@ -198,6 +198,10 @@ export const financeApi = {
   getDeposits: () => apiClient.get('/finance/deposits'),
   updateDeposit: (id: string, data: { amount: number; notes?: string }) =>
     apiClient.patch(`/finance/deposits/${id}`, data),
+  createDeposit: (data: { airline: string; alertThreshold?: number }) =>
+    apiClient.post('/finance/deposits', data),
+  getLedgerSummary: () => apiClient.get('/finance/ledger/summary'),
+  getFundBalances: () => apiClient.get('/finance/cashflow/fund-balances'),
 };
 
 export const customerIntelligenceApi = {
@@ -231,7 +235,7 @@ export const ledgerApi = {
   get: (id: string) => apiClient.get(`/finance/ledger/${id}`),
   create: (data: unknown) => apiClient.post('/finance/ledger', data),
   update: (id: string, data: unknown) => apiClient.patch(`/finance/ledger/${id}`, data),
-  pay: (id: string, data: { amount: number; method: string; reference?: string; notes?: string }) =>
+  pay: (id: string, data: { amount: number; method: string; fundAccount?: string; reference?: string; notes?: string }) =>
     apiClient.post(`/finance/ledger/${id}/pay`, data),
   getSummary: () => apiClient.get('/finance/ledger/summary'),
   getAging: (direction?: string) =>

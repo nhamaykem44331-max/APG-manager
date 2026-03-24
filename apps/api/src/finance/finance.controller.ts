@@ -59,6 +59,14 @@ export class FinanceController {
     return this.service.updateDeposit(id, body.amount, body.notes);
   }
 
+  @Post('deposits')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createDeposit(
+    @Body() body: { airline: string; alertThreshold?: number },
+  ) {
+    return this.service.createDeposit(body.airline, body.alertThreshold ?? 5_000_000);
+  }
+
   @Post('reconciliation/run')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.MANAGER)
   runReconciliation(@Body() body: { date?: string }) {
@@ -155,6 +163,11 @@ export class FinanceController {
   }
 
   // ─── Phase B: Dòng tiền (CashFlow) ────────────────────────────────
+  @Get('cashflow/fund-balances')
+  getFundBalances() {
+    return this.cashflow.getFundBalances();
+  }
+
   @Get('cashflow/summary')
   getCashFlowSummary(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
     return this.cashflow.getSummary(dateFrom, dateTo);

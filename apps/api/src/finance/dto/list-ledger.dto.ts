@@ -32,4 +32,10 @@ export class ListLedgerDto {
 
   @IsOptional() @IsString()
   pic?: string; // Filter theo người phụ trách
+
+  @IsOptional() @IsIn(['remaining', 'totalAmount', 'dueDate', 'createdAt'])
+  sortBy?: string;
+
+  @IsOptional() @IsIn(['asc', 'desc'])
+  sortOrder?: string;
 }

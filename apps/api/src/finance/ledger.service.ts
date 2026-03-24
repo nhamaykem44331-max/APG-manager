@@ -59,12 +59,16 @@ export class LedgerService {
       ];
     }
 
+    const orderBy = dto.sortBy
+      ? { [dto.sortBy]: dto.sortOrder || 'desc' }
+      : { dueDate: 'asc' as const };
+
     const [data, total] = await Promise.all([
       this.prisma.accountsLedger.findMany({
         where,
         skip,
         take: pageSize,
-        orderBy: { dueDate: 'asc' },
+        orderBy,
         include: {
           customer: { select: { id: true, fullName: true, phone: true, type: true } },
           supplier: { select: { id: true, code: true, name: true, type: true } },
@@ -137,7 +141,7 @@ export class LedgerService {
   async pay(id: string, dto: PayLedgerDto, userId: string) {
     const ledger = await this.prisma.accountsLedger.findUniqueOrThrow({
       where: { id },
-      include: { customer: true, supplier: true },
+      include: { customer: true, supplier: true, booking: { select: { bookingCode: true, pnr: true } } },
     });
 
     // Tạo LedgerPayment
@@ -171,6 +175,77 @@ export class LedgerService {
       direction: ledger.direction,
       partyName,
     }).catch(() => undefined); // Không block response nếu lỗi webhook
+
+    // ── AUTO CASHFLOW khi thanh toán ledger ─────────────────────
+    const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
+      : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
+      : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'N/A';
+
+    // Nếu AP (trả NCC) → ghi OUTFLOW
+    if (ledger.direction === 'PAYABLE') {
+      try {
+        const supplierName = ledger.supplier?.name ?? ledger.customerCode ?? 'NCC';
+        const bookingRef = ledger.booking?.bookingCode || ledger.code;
+
+        await this.prisma.cashFlowEntry.create({
+          data: {
+            direction: 'OUTFLOW',
+            category: 'AIRLINE_PAYMENT',
+            amount: dto.amount,
+            pic: 'System',
+            description: `Trả NCC ${supplierName} — ${bookingRef}`,
+            reference: dto.reference || ledger.code,
+            date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+            status: 'DONE',
+            notes: `Quỹ chi: ${fundLabel}. Ledger: ${ledger.code}`,
+          },
+        });
+        console.log(`[OUTFLOW-AP] -${dto.amount} trả ${supplierName} từ ${fundLabel}`);
+      } catch (err) {
+        console.error('[OUTFLOW-AP] Lỗi ghi CashFlow:', err);
+      }
+
+      // Trừ Deposit nếu NCC là hãng bay
+      if (ledger.supplier?.type === 'AIRLINE') {
+        try {
+          const deposit = await this.prisma.airlineDeposit.findFirst({
+            where: { airline: ledger.supplier.code },
+          });
+          if (deposit) {
+            await this.prisma.airlineDeposit.update({
+              where: { id: deposit.id },
+              data: { balance: { decrement: dto.amount } },
+            });
+            console.log(`[DEPOSIT] Trừ ${dto.amount} deposit ${ledger.supplier.code}`);
+          }
+        } catch (err) {
+          console.error('[DEPOSIT] Lỗi trừ deposit:', err);
+        }
+      }
+    }
+
+    // Nếu AR (thu KH từ Finance) → ghi INFLOW
+    if (ledger.direction === 'RECEIVABLE') {
+      try {
+        const customerName = ledger.customer?.fullName ?? ledger.customerCode ?? 'KH';
+        await this.prisma.cashFlowEntry.create({
+          data: {
+            direction: 'INFLOW',
+            category: 'TICKET_PAYMENT',
+            amount: dto.amount,
+            pic: 'System',
+            description: `Thu công nợ KH ${customerName} — ${ledger.code}`,
+            reference: dto.reference || ledger.code,
+            date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+            status: 'DONE',
+            notes: `Quỹ nhận: ${fundLabel}. Ledger: ${ledger.code}`,
+          },
+        });
+        console.log(`[INFLOW-AR] +${dto.amount} thu từ ${customerName} vào ${fundLabel}`);
+      } catch (err) {
+        console.error('[INFLOW-AR] Lỗi ghi CashFlow:', err);
+      }
+    }
 
     return updated;
   }

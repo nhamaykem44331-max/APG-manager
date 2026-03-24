@@ -49,6 +49,18 @@ export default function DashboardPage() {
     select: (res) => res.data,
   });
 
+  // Fetch ledger summary (AR/AP totals)
+  const { data: ledgerSummary } = useQuery({
+    queryKey: ['ledger-summary'],
+    queryFn: () => financeApi.getLedgerSummary().then(r => r.data),
+  });
+
+  // Fetch fund balances
+  const { data: fundBalances } = useQuery({
+    queryKey: ['fund-balances'],
+    queryFn: () => financeApi.getFundBalances().then(r => r.data),
+  });
+
   const recentBookings = bookingsData?.data ?? SAMPLE_BOOKINGS;
   const lowDeposits = (depositsData ?? []).filter(
     (d: { balance: number; alertThreshold: number }) => d.balance < d.alertThreshold
@@ -132,7 +144,29 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Row 2: Charts */}
+      {/* Row 2: Financial KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Công nợ phải thu"
+          value={formatVND(ledgerSummary?.totalReceivable ?? 0)}
+          accentColor="amber"
+        />
+        <KpiCard
+          label="Công nợ phải trả"
+          value={formatVND(ledgerSummary?.totalPayable ?? 0)}
+          accentColor="red"
+        />
+        {(fundBalances || []).slice(0, 2).map((f: { fund: string; label: string; balance: number }) => (
+          <KpiCard
+            key={f.fund}
+            label={f.label}
+            value={formatVND(f.balance)}
+            accentColor={f.balance >= 0 ? 'emerald' : 'red'}
+          />
+        ))}
+      </div>
+
+      {/* Row 3: Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <RevenueChart data={SAMPLE_REVENUE_DATA} />
@@ -142,7 +176,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Row 3: Recent bookings + Alerts */}
+      {/* Row 4: Recent bookings + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Booking gần nhất */}
         <div className="lg:col-span-2 flex flex-col gap-3">
@@ -161,11 +195,27 @@ export default function DashboardPage() {
             <h3 className="text-[13px] font-medium text-foreground">Cảnh báo hệ thống</h3>
           </div>
           <div className="p-4 space-y-2.5">
+            {/* AR quá hạn */}
+            {(ledgerSummary?.overdueReceivable ?? 0) > 0 && (
+              <AlertItem
+                type="warning"
+                text={`Công nợ phải thu quá hạn: ${formatVND(ledgerSummary.overdueReceivable)}`}
+                time="Realtime"
+              />
+            )}
+            {/* AP quá hạn */}
+            {(ledgerSummary?.overduePayable ?? 0) > 0 && (
+              <AlertItem
+                type="error"
+                text={`Công nợ phải trả quá hạn: ${formatVND(ledgerSummary.overduePayable)}`}
+                time="Realtime"
+              />
+            )}
             {/* Deposit thấp */}
             {lowDeposits.length === 0 ? (
               <AlertItem
-                type="warning"
-                text="Deposit VJ còn 2.1M - sắp hết"
+                type="info"
+                text="Deposit các hãng bay đều ổn"
                 time="Vừa cập nhật"
               />
             ) : (
@@ -179,16 +229,6 @@ export default function DashboardPage() {
               ))
             )}
 
-            <AlertItem
-              type="error"
-              text="3 khách doanh nghiệp quá hạn thanh toán"
-              time="2 giờ trước"
-            />
-            <AlertItem
-              type="info"
-              text="Vé APG-260321-012 chưa được xuất"
-              time="45 phút trước"
-            />
             <AlertItem
               type="info"
               text="2 khách sinh nhật tuần này"

@@ -160,4 +160,30 @@ export class CashFlowService {
       pic, ...vals, net: vals.inflow - vals.outflow,
     })).sort((a, b) => b.inflow - a.inflow);
   }
+
+  // ─── Số dư theo quỹ tiền (CASH_OFFICE / BANK_HTX / BANK_PERSONAL) ─
+  async getFundBalances() {
+    const funds = ['CASH_OFFICE', 'BANK_HTX', 'BANK_PERSONAL'];
+    const balances = await Promise.all(funds.map(async (fund) => {
+      const [inflow, outflow] = await Promise.all([
+        this.prisma.cashFlowEntry.aggregate({
+          where: { direction: 'INFLOW', status: 'DONE', notes: { contains: fund } },
+          _sum: { amount: true },
+        }),
+        this.prisma.cashFlowEntry.aggregate({
+          where: { direction: 'OUTFLOW', status: 'DONE', notes: { contains: fund } },
+          _sum: { amount: true },
+        }),
+      ]);
+      return {
+        fund,
+        label: fund === 'CASH_OFFICE' ? 'Quỹ tiền mặt VP'
+          : fund === 'BANK_HTX' ? 'TK BIDV HTX' : 'TK MB cá nhân',
+        inflow: Number(inflow._sum.amount ?? 0),
+        outflow: Number(outflow._sum.amount ?? 0),
+        balance: Number(inflow._sum.amount ?? 0) - Number(outflow._sum.amount ?? 0),
+      };
+    }));
+    return balances;
+  }
 }

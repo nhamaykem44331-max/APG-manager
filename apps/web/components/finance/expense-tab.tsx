@@ -26,6 +26,7 @@ export function ExpenseTab() {
     description: '',
     amount: '',
     date: new Date().toISOString().slice(0, 10),
+    fundAccount: 'BANK_HTX',
     notes: '',
   });
 
@@ -52,11 +53,12 @@ export function ExpenseTab() {
     mutationFn: () => expenseApi.create({
       ...form,
       amount: Number(form.amount.replace(/\./g, '')),
+      fundAccount: form.fundAccount,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       setShowForm(false);
-      setForm({ category: 'OFFICE_SUPPLIES', description: '', amount: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+      setForm({ category: 'OFFICE_SUPPLIES', description: '', amount: '', date: new Date().toISOString().slice(0, 10), fundAccount: 'BANK_HTX', notes: '' });
     },
   });
 
@@ -220,6 +222,16 @@ export function ExpenseTab() {
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground resize-none focus:outline-none"
               />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Chi từ quỹ</label>
+                <select value={form.fundAccount} onChange={(e) => setForm((f) => ({ ...f, fundAccount: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="CASH_OFFICE">Quỹ tiền mặt VP</option>
+                  <option value="BANK_HTX">TK BIDV HTX (3900543757)</option>
+                  <option value="BANK_PERSONAL">TK MB cá nhân (996106688)</option>
+                </select>
+              </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-accent">Hủy</button>
                 <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.description || !form.amount}

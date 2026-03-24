@@ -19,6 +19,9 @@ export class CreateExpenseDto {
 
   @IsOptional() @IsString()
   notes?: string;
+
+  @IsOptional() @IsString()
+  fundAccount?: string;  // 'CASH_OFFICE' | 'BANK_HTX' | 'BANK_PERSONAL'
 }
 
 export class ListExpenseDto {

@@ -94,6 +94,10 @@ export interface Booking {
   tickets?: Ticket[];
   payments?: Payment[];
   statusHistory?: BookingStatusLog[];
+  // Nhà cung cấp vé
+  supplierId?: string;
+  supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type' | 'contactName'>;
+  ledgers?: { id: string; code: string; direction: string; status: string; remaining: number; totalAmount: number; createdAt: string }[];
 }
 
 export interface Ticket {
@@ -348,6 +352,11 @@ export interface TimelineItem {
 
 export interface CustomerStats {
   totalBookings: number;
+  totalRevenue: number;
+  totalProfit: number;
+  totalPaid: number;
+  outstandingDebt: number;
+  activeDebts: number;
   totalSpent: number;
   yearlySpend: number;
   vipTier: VipTier;

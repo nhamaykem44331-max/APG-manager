@@ -24,6 +24,7 @@ export function PaymentModal({ ledger, onClose }: Props) {
   const qc = useQueryClient();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('BANK_TRANSFER');
+  const [fundAccount, setFundAccount] = useState('BANK_HTX');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
@@ -35,6 +36,7 @@ export function PaymentModal({ ledger, onClose }: Props) {
     mutationFn: () => ledgerApi.pay(ledger.id, {
       amount: Number(amount),
       method,
+      fundAccount,
       reference: reference || undefined,
       notes: notes || undefined,
     }),
@@ -101,7 +103,10 @@ export function PaymentModal({ ledger, onClose }: Props) {
           {/* Method */}
           <div className="grid grid-cols-2 gap-2">
             {METHODS.map((m) => (
-              <button key={m.value} type="button" onClick={() => setMethod(m.value)}
+              <button key={m.value} type="button" onClick={() => {
+                setMethod(m.value);
+                setFundAccount(m.value === 'CASH' ? 'CASH_OFFICE' : 'BANK_HTX');
+              }}
                 className={cn('px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left',
                   method === m.value ? 'bg-primary/15 border border-primary text-primary' : 'border border-border text-muted-foreground hover:bg-accent'
                 )}
@@ -109,6 +114,18 @@ export function PaymentModal({ ledger, onClose }: Props) {
                 {m.label}
               </button>
             ))}
+          </div>
+
+          {/* Chọn quỹ */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Chi từ quỹ</label>
+            <select value={fundAccount} onChange={(e) => setFundAccount(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="CASH_OFFICE">Quỹ tiền mặt VP</option>
+              <option value="BANK_HTX">TK BIDV HTX (3900543757)</option>
+              <option value="BANK_PERSONAL">TK MB cá nhân (996106688)</option>
+            </select>
           </div>
 
           {/* Reference */}

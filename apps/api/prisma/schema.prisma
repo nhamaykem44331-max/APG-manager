@@ -251,6 +251,11 @@ model Booking {
   // GDS
   pnr          String?
   gdsBookingId String? @map("gds_booking_id")
+
+  // Nhà cung cấp vé
+  supplierId   String?       @map("supplier_id")
+  supplier     SupplierProfile? @relation("BookingSupplier", fields: [supplierId], references: [id])
+
   notes        String?
   internalNotes String? @map("internal_notes")
 
@@ -330,6 +335,12 @@ model Passenger {
   @@map("passengers")
 }
 
+enum FundAccount {
+  CASH_OFFICE     // Quỹ tiền mặt văn phòng
+  BANK_HTX        // Tài khoản ngân hàng HTX (BIDV 3900543757)
+  BANK_PERSONAL   // Tài khoản cá nhân (MB 996106688)
+}
+
 model Payment {
   id        String        @id @default(uuid())
   bookingId String        @map("booking_id")
@@ -338,6 +349,7 @@ model Payment {
   reference String?       // Mã giao dịch / biên lai
   paidAt    DateTime      @default(now()) @map("paid_at")
   notes     String?
+  fundAccount   FundAccount?  @map("fund_account")
   createdAt DateTime      @default(now()) @map("created_at")
 
   booking Booking @relation(fields: [bookingId], references: [id])
@@ -369,7 +381,7 @@ model Debt {
 
 model AirlineDeposit {
   id             String   @id @default(uuid())
-  airline        Airline
+  airline        String
   balance        Decimal  @default(0)
   lastTopUp      Decimal  @default(0) @map("last_top_up")
   lastTopUpAt    DateTime? @map("last_top_up_at")
@@ -514,6 +526,7 @@ model SupplierProfile {
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
   ledgers       AccountsLedger[]
+  bookings      Booking[]     @relation("BookingSupplier")
 
   @@map("supplier_profiles")
 }

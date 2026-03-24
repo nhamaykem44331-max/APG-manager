@@ -36,12 +36,24 @@ export class SupplierService {
     }));
   }
 
-  // Chi tiết 1 NCC + danh sách công nợ
+  // Chi tiết 1 NCC + bookings + danh sách công nợ
   async findOne(id: string) {
     return this.prisma.supplierProfile.findUniqueOrThrow({
       where: { id },
       include: {
+        bookings: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            id: true, bookingCode: true, pnr: true,
+            totalNetPrice: true, totalSellPrice: true,
+            status: true, createdAt: true,
+            contactName: true,
+          },
+        },
         ledgers: {
+          where: { direction: 'PAYABLE' },
           orderBy: { dueDate: 'asc' },
           include: { payments: { orderBy: { paidAt: 'desc' } } },
         },

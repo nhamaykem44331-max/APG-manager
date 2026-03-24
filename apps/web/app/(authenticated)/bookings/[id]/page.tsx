@@ -9,7 +9,7 @@ import {
   ArrowLeft, Plane, User, Clock, CreditCard,
   Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap,
 } from 'lucide-react';
-import { bookingsApi } from '@/lib/api';
+import { bookingsApi, supplierApi, customersApi } from '@/lib/api';
 import {
   cn, formatVND, formatDateTime, formatTime,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
@@ -19,7 +19,7 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
-import type { Booking, BookingStatus } from '@/types';
+import type { Booking, BookingStatus, SupplierProfile, Customer } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 
 // ────────────────────────────────────────────────────
@@ -348,11 +348,12 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
 // ────────────────────────────────────────────────────
 // Add Payment Modal
 // ────────────────────────────────────────────────────
-function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: string; totalSellPrice: number; onClose: () => void }) {
+function AddPaymentModal({ bookingId, totalSellPrice, hasCustomer, onClose }: { bookingId: string; totalSellPrice: number; hasCustomer: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     amount: '',
     method: 'BANK_TRANSFER',
+    fundAccount: 'BANK_HTX',   // Default TK BIDV
     reference: '',
     paidAt: new Date().toISOString().slice(0, 16),
     notes: '',
@@ -361,11 +362,12 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
 
   const mutation = useMutation({
     mutationFn: () => bookingsApi.addPayment(bookingId, {
-      amount: Number(form.amount),
+      amount: form.method === 'DEBT' ? totalSellPrice : Number(form.amount),
       method: form.method,
-      reference: form.reference || undefined,
-      paidAt: form.paidAt,
-      notes: form.notes || undefined,
+      fundAccount: form.method === 'DEBT' ? undefined : form.fundAccount,
+      reference: form.method === 'DEBT' ? undefined : (form.reference || undefined),
+      paidAt: form.method === 'DEBT' ? undefined : form.paidAt,
+      notes: form.method === 'DEBT' ? 'Ghi nhận công nợ phải thu' : (form.notes || undefined),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
@@ -380,7 +382,7 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!form.amount || Number(form.amount) <= 0) { setError('Vui lòng nhập số tiền hợp lệ'); return; }
+    if (form.method !== 'DEBT' && (!form.amount || Number(form.amount) <= 0)) { setError('Vui lòng nhập số tiền hợp lệ'); return; }
     mutation.mutate();
   };
 
@@ -414,53 +416,73 @@ function AddPaymentModal({ bookingId, totalSellPrice, onClose }: { bookingId: st
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Amount + quick-fill */}
-          <div className="space-y-2">
-            <MoneyInput
-              label="Số tiền (VND)"
-              required
-              value={form.amount}
-              onChange={(v) => setForm(p => ({ ...p, amount: String(v) }))}
-              placeholder="2.000.000"
-              className="[&_input]:text-[15px] [&_input]:font-bold [&_input]:h-10"
-            />
-            {quickAmounts.length > 0 && (
-              <div className="flex gap-2">
-                {quickAmounts.map(q => (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => setForm(p => ({ ...p, amount: String(q.value) }))}
-                    className="flex-1 py-1.5 text-xs rounded-lg border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                  >
-                    {q.label} · {formatVND(q.value)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Amount + quick-fill — hidden for DEBT */}
+          {form.method !== 'DEBT' && (
+            <div className="space-y-2">
+              <MoneyInput
+                label="Số tiền (VND)"
+                required
+                value={form.amount}
+                onChange={(v) => setForm(p => ({ ...p, amount: String(v) }))}
+                placeholder="2.000.000"
+                className="[&_input]:text-[15px] [&_input]:font-bold [&_input]:h-10"
+              />
+              {quickAmounts.length > 0 && (
+                <div className="flex gap-2">
+                  {quickAmounts.map(q => (
+                    <button
+                      key={q.label}
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, amount: String(q.value) }))}
+                      className="flex-1 py-1.5 text-xs rounded-lg border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                    >
+                      {q.label} · {formatVND(q.value)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          <FormSelect label="Hình thức thanh toán" required value={form.method} onChange={set('method')}>
-            {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          <FormSelect label="Hình thức thanh toán" required value={form.method} onChange={(e) => {
+            setForm(p => ({ ...p, method: e.target.value, fundAccount: e.target.value === 'CASH' ? 'CASH_OFFICE' : 'BANK_HTX' }));
+          }}>
+            {PAYMENT_METHODS.filter(m => m.value !== 'DEBT' || hasCustomer).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </FormSelect>
 
-          <FormInput label="Mã giao dịch / Tham chiếu" placeholder="GD123456..." value={form.reference} onChange={set('reference')} />
-          <FormInput label="Thời gian thanh toán" type="datetime-local" value={form.paidAt} onChange={set('paidAt')} />
+          {/* Công nợ: auto-ghi nhận, ẩn các trường không cần */}
+          {form.method === 'DEBT' ? (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 text-[12px] text-amber-600 dark:text-amber-400">
+              <p className="font-medium">Ghi nhận công nợ</p>
+              <p className="mt-0.5 text-[11px] opacity-80">Số tiền sẽ được tự động ghi vào công nợ phải thu của khách hàng. Không cần chọn quỹ hay mã giao dịch.</p>
+            </div>
+          ) : (
+            <>
+              <FormSelect label="Nhận vào quỹ" required value={form.fundAccount} onChange={set('fundAccount')}>
+                <option value="CASH_OFFICE">Quỹ tiền mặt VP</option>
+                <option value="BANK_HTX">TK BIDV HTX (3900543757)</option>
+                <option value="BANK_PERSONAL">TK MB cá nhân (996106688)</option>
+              </FormSelect>
 
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-foreground mb-1.5">Ghi chú</label>
-            <textarea
-              placeholder="Ghi chú thêm..."
-              value={form.notes}
-              onChange={set('notes')}
-              rows={2}
-              className={cn(
-                'w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background',
-                'text-foreground placeholder:text-muted-foreground resize-none',
-                'focus:outline-none focus:ring-1 focus:ring-primary',
-              )}
-            />
-          </div>
+              <FormInput label="Mã giao dịch / Tham chiếu" placeholder="GD123456..." value={form.reference} onChange={set('reference')} />
+              <FormInput label="Thời gian thanh toán" type="datetime-local" value={form.paidAt} onChange={set('paidAt')} />
+
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-foreground mb-1.5">Ghi chú</label>
+                <textarea
+                  placeholder="Ghi chú thêm..."
+                  value={form.notes}
+                  onChange={set('notes')}
+                  rows={2}
+                  className={cn(
+                    'w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background',
+                    'text-foreground placeholder:text-muted-foreground resize-none',
+                    'focus:outline-none focus:ring-1 focus:ring-primary',
+                  )}
+                />
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-red-500">
@@ -501,16 +523,189 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
     CASH: 'Tiền mặt', BANK_TRANSFER: 'Chuyển khoản', CREDIT_CARD: 'Thẻ ngân hàng',
     MOMO: 'MoMo', VNPAY: 'VNPay', DEBT: 'Công nợ',
   };
+  const fundLabels: Record<string, string> = {
+    CASH_OFFICE: 'Tiền mặt VP', BANK_HTX: 'TK BIDV HTX', BANK_PERSONAL: 'TK MB',
+  };
+  const fundLabel = (payment as unknown as Record<string, unknown>).fundAccount
+    ? fundLabels[(payment as unknown as Record<string, unknown>).fundAccount as string] ?? ''
+    : '';
   return (
     <div className="flex items-center justify-between py-2.5 px-1 border-b border-border/50 last:border-0">
       <div>
-        <p className="text-sm font-medium text-foreground">{methodLabel[payment.method] ?? payment.method}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-foreground">{methodLabel[payment.method] ?? payment.method}</p>
+          {fundLabel && (
+            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              {fundLabel}
+            </span>
+          )}
+        </div>
         {payment.reference && (
           <p className="text-xs text-muted-foreground font-mono">{payment.reference}</p>
         )}
         <p className="text-xs text-muted-foreground">{formatDateTime(payment.paidAt)}</p>
       </div>
       <p className="text-sm font-bold text-emerald-500">+{formatVND(payment.amount)}</p>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────
+// Customer Search & Link Component
+// ────────────────────────────────────────────────────
+function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; contactPhone: string }) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+
+  const { data: searchResults } = useQuery({
+    queryKey: ['customer-search', search],
+    queryFn: () => customersApi.list({ search, pageSize: 5 }),
+    select: (r) => r.data?.data ?? [],
+    enabled: search.length >= 2,
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: (customerId: string) =>
+      bookingsApi.update(bookingId, { customerId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
+      setShowSearch(false);
+    },
+  });
+
+  if (!showSearch) {
+    return (
+      <div className="flex items-center justify-between">
+        <p className="text-[12px] text-muted-foreground">Chưa liên kết khách hàng</p>
+        <button
+          onClick={() => { setShowSearch(true); setSearch(contactPhone || ''); }}
+          className="text-xs text-primary hover:underline font-medium"
+        >
+          + Tìm & liên kết KH
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Tìm theo tên hoặc SĐT..."
+          className={cn(
+            'flex-1 px-3 h-8 text-[12px] rounded-md border border-border bg-background',
+            'text-foreground placeholder:text-muted-foreground',
+            'focus:outline-none focus:ring-1 focus:ring-primary',
+          )}
+          autoFocus
+        />
+        <button
+          onClick={() => setShowSearch(false)}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Hủy
+        </button>
+      </div>
+      {search.length >= 2 && (
+        <div className="border border-border rounded-md divide-y divide-border/50 max-h-40 overflow-y-auto">
+          {(searchResults ?? []).length === 0 ? (
+            <p className="text-[11px] text-muted-foreground p-3 text-center">Không tìm thấy KH nào</p>
+          ) : (
+            (searchResults ?? []).map((c: { id: string; fullName: string; phone: string; type: string }) => (
+              <button
+                key={c.id}
+                onClick={() => linkMutation.mutate(c.id)}
+                className="w-full flex items-center justify-between px-3 py-2 text-[12px] hover:bg-accent transition-colors text-left"
+              >
+                <div>
+                  <p className="font-medium text-foreground">{c.fullName}</p>
+                  <p className="text-[11px] text-muted-foreground">{c.phone} · {c.type === 'CORPORATE' ? 'DN' : 'CN'}</p>
+                </div>
+                <span className="text-[10px] text-primary">Chọn</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────
+// Customer Inline Display (with edit) in Booking
+// ────────────────────────────────────────────────────
+function CustomerInlineDisplay({ customer, bookingId }: { customer: Customer; bookingId: string }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ fullName: customer.fullName, phone: customer.phone });
+
+  const mutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => customersApi.update(customer.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
+      queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
+      setEditing(false);
+    },
+  });
+
+  if (editing) {
+    return (
+      <div className="space-y-2">
+        <div className="space-y-1.5">
+          <input
+            value={form.fullName}
+            onChange={(e) => setForm(p => ({ ...p, fullName: e.target.value }))}
+            placeholder="Tên khách hàng"
+            className="w-full px-3 h-7 text-[12px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <input
+            value={form.phone}
+            onChange={(e) => setForm(p => ({ ...p, phone: e.target.value }))}
+            placeholder="Số điện thoại"
+            className="w-full px-3 h-7 text-[12px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => mutation.mutate({ fullName: form.fullName.trim(), phone: form.phone.trim() })}
+            disabled={!form.fullName.trim() || !form.phone.trim() || mutation.isPending}
+            className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
+          >
+            {mutation.isPending ? 'Đang lưu...' : 'Lưu'}
+          </button>
+          <button onClick={() => setEditing(false)} className="text-[11px] text-muted-foreground hover:text-foreground">Hủy</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary">
+          {customer.fullName?.charAt(0) || 'K'}
+        </div>
+        <div>
+          <p className="text-[13px] font-medium text-foreground">{customer.fullName}</p>
+          <p className="text-[11px] text-muted-foreground">{customer.phone} · {customer.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={() => { setForm({ fullName: customer.fullName, phone: customer.phone }); setEditing(true); }} className="text-[10px] text-primary hover:underline">Sửa</button>
+        <span className={cn(
+          'text-[10px] px-2 py-0.5 rounded-full font-medium',
+          customer.vipTier === 'PLATINUM' ? 'bg-purple-500/10 text-purple-500' :
+          customer.vipTier === 'GOLD' ? 'bg-amber-500/10 text-amber-500' :
+          customer.vipTier === 'SILVER' ? 'bg-zinc-400/10 text-zinc-500' :
+          'bg-accent text-muted-foreground'
+        )}>
+          {customer.vipTier || 'NORMAL'}
+        </span>
+      </div>
     </div>
   );
 }
@@ -528,11 +723,40 @@ export default function BookingDetailPage() {
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
+  const [showNewSupplier, setShowNewSupplier] = useState(false);
+  const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
 
   const { data: booking, isLoading } = useQuery({
     queryKey: ['booking', id],
     queryFn: () => bookingsApi.get(id),
     select: (r) => r.data as Booking,
+  });
+
+  // Load danh sách NCC
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => supplierApi.list(),
+    select: (r) => r.data as SupplierProfile[],
+  });
+
+  // Mutation cập nhật supplier cho booking
+  const supplierMutation = useMutation({
+    mutationFn: (supplierId: string | null) =>
+      bookingsApi.update(id, { supplierId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking', id] }),
+  });
+
+  // Mutation tạo NCC mới
+  const createSupplierMutation = useMutation({
+    mutationFn: (data: typeof newSupplierForm) =>
+      supplierApi.create(data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      const created = (res.data as SupplierProfile);
+      if (created?.id) supplierMutation.mutate(created.id);
+      setShowNewSupplier(false);
+      setNewSupplierForm({ code: '', name: '', type: 'AIRLINE', contactName: '' });
+    },
   });
 
   const statusMutation = useMutation({
@@ -625,12 +849,23 @@ export default function BookingDetailPage() {
               </>
             )}
             {canAddPayment && (
-              <button
-                onClick={() => setShowAddPayment(true)}
-                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
-              >
-                <Banknote className="w-3.5 h-3.5 text-emerald-500" /> Ghi thanh toán
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => bk.customer ? setShowAddPayment(true) : null}
+                  disabled={!bk.customer}
+                  className={cn(
+                    'px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border flex items-center gap-1.5 transition-colors',
+                    bk.customer ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed',
+                  )}
+                >
+                  <Banknote className="w-3.5 h-3.5 text-emerald-500" /> Ghi thanh toán
+                </button>
+                {!bk.customer && (
+                  <div className="absolute top-full mt-1 left-0 bg-card border border-border rounded-md px-2 py-1 text-[10px] text-muted-foreground whitespace-nowrap shadow-lg hidden group-hover:block z-10">
+                    Cần liên kết khách hàng trước
+                  </div>
+                )}
+              </div>
             )}
             {actions.map((action) => (
               <button
@@ -655,10 +890,18 @@ export default function BookingDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: Details (70%) */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Contact info */}
+          {/* Contact info + Customer link */}
           <div className="card p-4">
             <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
               <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
+              {bk.customer && (
+                <Link
+                  href={`/customers/${bk.customer.id}`}
+                  className="text-[11px] text-primary hover:underline font-medium"
+                >
+                  Xem hồ sơ KH →
+                </Link>
+              )}
             </div>
             <div className="flex flex-col text-[13px]">
               <div className="flex items-center justify-between py-2.5 border-b border-border/50">
@@ -682,6 +925,15 @@ export default function BookingDetailPage() {
                 <span className="text-muted-foreground">Nguồn</span>
                 <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source]}</span>
               </div>
+
+              {/* Linked Customer */}
+              <div className="mt-3 pt-3 border-t border-border">
+                {bk.customer ? (
+                  <CustomerInlineDisplay customer={bk.customer} bookingId={id} />
+                ) : (
+                  <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
+                )}
+              </div>
             </div>
             {bk.notes && (
               <div className="mt-4 pt-3 border-t border-border">
@@ -689,6 +941,97 @@ export default function BookingDetailPage() {
                 <p className="text-[13px] text-foreground">{bk.notes}</p>
               </div>
             )}
+          </div>
+
+          {/* Supplier (NCC) selector */}
+          <div className="card p-4">
+            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+              <h3 className="text-[13px] font-medium text-foreground">Nhà cung cấp (NCC)</h3>
+              <button
+                onClick={() => setShowNewSupplier(!showNewSupplier)}
+                className="text-xs text-primary hover:underline font-medium"
+              >
+                {showNewSupplier ? 'Hủy' : '+ Tạo NCC mới'}
+              </button>
+            </div>
+
+            {/* Dropdown chọn NCC */}
+            <div className="space-y-3">
+              <FormSelect
+                label="Chọn nhà cung cấp"
+                value={bk.supplierId || ''}
+                onChange={(e) => supplierMutation.mutate(e.target.value || null)}
+              >
+                <option value="">— Chưa chọn NCC —</option>
+                {(suppliers ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>
+                ))}
+              </FormSelect>
+
+              {/* Supplier badge */}
+              {bk.supplier && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-accent/50 rounded-lg border border-border/50">
+                  <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                    {bk.supplier.code?.slice(0, 2)}
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">{bk.supplier.name}</p>
+                    {bk.supplier.contactName && (
+                      <p className="text-[11px] text-muted-foreground">{bk.supplier.contactName}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Inline form tạo NCC mới */}
+              {showNewSupplier && (
+                <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border/50">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tạo NCC mới</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <FormInput
+                      label="Mã NCC" required
+                      placeholder="VN, SCCM..."
+                      value={newSupplierForm.code}
+                      onChange={(e) => setNewSupplierForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                    />
+                    <FormInput
+                      label="Tên NCC" required
+                      placeholder="Vietnam Airlines"
+                      value={newSupplierForm.name}
+                      onChange={(e) => setNewSupplierForm(p => ({ ...p, name: e.target.value }))}
+                    />
+                    <FormSelect
+                      label="Loại"
+                      value={newSupplierForm.type}
+                      onChange={(e) => setNewSupplierForm(p => ({ ...p, type: e.target.value }))}
+                    >
+                      <option value="AIRLINE">Hãng bay</option>
+                      <option value="GDS_PROVIDER">GDS Provider</option>
+                      <option value="PARTNER">Đối tác</option>
+                      <option value="OTHER_SUPPLIER">Khác</option>
+                    </FormSelect>
+                    <FormInput
+                      label="Người liên hệ"
+                      placeholder="Mr/Ms..."
+                      value={newSupplierForm.contactName}
+                      onChange={(e) => setNewSupplierForm(p => ({ ...p, contactName: e.target.value }))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newSupplierForm.code || !newSupplierForm.name) return;
+                      createSupplierMutation.mutate(newSupplierForm);
+                    }}
+                    disabled={createSupplierMutation.isPending || !newSupplierForm.code || !newSupplierForm.name}
+                    className="w-full mt-1 py-1.5 bg-foreground text-background rounded-md text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {createSupplierMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Tạo & Gán NCC
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Tickets */}
@@ -849,6 +1192,49 @@ export default function BookingDetailPage() {
               </button>
             )}
           </div>
+
+          {/* Linked Ledgers (AR/AP) */}
+          {(bk.ledgers ?? []).length > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+                <h3 className="text-[13px] font-medium text-foreground">Công nợ liên kết ({bk.ledgers!.length})</h3>
+              </div>
+              <div className="flex flex-col text-[13px] divide-y divide-border/50">
+                {bk.ledgers!.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        'px-2 py-0.5 rounded text-[10px] font-bold',
+                        l.direction === 'RECEIVABLE'
+                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                          : 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+                      )}>
+                        {l.direction === 'RECEIVABLE' ? 'AR' : 'AP'}
+                      </span>
+                      <span className="font-mono text-muted-foreground">{l.code}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className={cn(
+                        'font-medium font-tabular',
+                        l.status === 'PAID' ? 'text-emerald-500' : 'text-foreground',
+                      )}>
+                        {formatVND(l.remaining)}
+                      </span>
+                      <span className={cn(
+                        'ml-2 px-1.5 py-0.5 rounded text-[10px]',
+                        l.status === 'PAID' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                        l.status === 'ACTIVE' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                        l.status === 'OVERDUE' && 'bg-red-500/10 text-red-600 dark:text-red-400',
+                        l.status === 'PARTIAL_PAID' && 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+                      )}>
+                        {l.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: Timeline + Staff */}
@@ -856,32 +1242,52 @@ export default function BookingDetailPage() {
           {/* Status timeline */}
           <div className="card p-4">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
-              <h3 className="text-[13px] font-medium text-foreground">Lịch sử trạng thái</h3>
+              <h3 className="text-[13px] font-medium text-foreground">Lịch sử & sự kiện</h3>
             </div>
-            <div className="space-y-3">
-              {(bk.statusHistory ?? []).map((log, i) => (
-                <div key={log.id} className="flex gap-3">
-                  <div className="flex flex-col items-center">
-                    <div className={cn(
-                      'w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
-                      i === 0 ? 'bg-primary' : 'bg-muted-foreground/40',
-                    )} />
-                    {i < (bk.statusHistory?.length ?? 0) - 1 && (
-                      <div className="w-px flex-1 bg-border mt-1" />
-                    )}
-                  </div>
-                  <div className="pb-3 min-w-0">
-                    <p className="text-xs font-medium text-foreground">
-                      {BOOKING_STATUS_LABELS[log.toStatus as BookingStatus] ?? log.toStatus}
-                    </p>
-                    {log.reason && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{log.reason}</p>
-                    )}
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{formatDateTime(log.createdAt)}</p>
-                  </div>
+            {(() => {
+              // Merge statusHistory + ledger auto-events
+              type TimelineEvent = { time: string; type: 'status' | 'ar' | 'ap'; label: string; detail?: string };
+              const events: TimelineEvent[] = [
+                ...(bk.statusHistory ?? []).map(h => ({
+                  time: h.createdAt,
+                  type: 'status' as const,
+                  label: `${BOOKING_STATUS_LABELS[h.fromStatus as BookingStatus] ?? h.fromStatus} → ${BOOKING_STATUS_LABELS[h.toStatus as BookingStatus] ?? h.toStatus}`,
+                  detail: h.reason || undefined,
+                })),
+                ...(bk.ledgers ?? []).map(l => ({
+                  time: l.createdAt || new Date().toISOString(),
+                  type: (l.direction === 'RECEIVABLE' ? 'ar' : 'ap') as 'ar' | 'ap',
+                  label: l.direction === 'RECEIVABLE'
+                    ? `Auto: Tạo AR ${l.code} — ${formatVND(l.totalAmount)}`
+                    : `Auto: Tạo AP ${l.code} — ${formatVND(l.totalAmount)}`,
+                  detail: l.status === 'PAID' ? 'Đã TT' : l.status === 'PARTIAL_PAID' ? 'TT 1 phần' : 'Chưa TT',
+                })),
+              ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+              return (
+                <div className="space-y-3">
+                  {events.map((ev, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={cn(
+                          'w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
+                          ev.type === 'status' ? (i === events.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40')
+                            : ev.type === 'ar' ? 'bg-blue-500' : 'bg-amber-500'
+                        )} />
+                        {i < events.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+                      </div>
+                      <div className="pb-3 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{ev.label}</p>
+                        {ev.detail && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{ev.detail}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{formatDateTime(ev.time)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
 
           {/* Staff info */}
@@ -987,6 +1393,7 @@ export default function BookingDetailPage() {
         <AddPaymentModal
           bookingId={bk.id}
           totalSellPrice={Number(bk.totalSellPrice)}
+          hasCustomer={!!bk.customer}
           onClose={() => setShowAddPayment(false)}
         />
       )}

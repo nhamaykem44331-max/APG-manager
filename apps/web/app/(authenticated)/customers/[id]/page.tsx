@@ -187,10 +187,10 @@ export default function CustomerDetailPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Tổng chi tiêu', value: formatVND(Number(cust.totalSpent)), icon: TrendingUp, color: 'text-emerald-500' },
-          { label: 'Tổng booking', value: cust.totalBookings.toString(), icon: Plane, color: 'text-blue-500' },
-          { label: 'Chi năm nay', value: formatVND(stats?.yearlySpend ?? 0), icon: Activity, color: 'text-purple-500' },
-          { label: 'TB/vé', value: formatVND(stats?.averageTicketValue ?? 0), icon: CreditCard, color: 'text-orange-500' },
+          { label: 'Doanh thu', value: formatVND(stats?.totalRevenue ?? Number(cust.totalSpent)), icon: TrendingUp, color: 'text-emerald-500' },
+          { label: 'Đã thanh toán', value: formatVND(stats?.totalPaid ?? 0), icon: Plane, color: 'text-blue-500' },
+          { label: 'Công nợ còn', value: formatVND(stats?.outstandingDebt ?? 0), icon: CreditCard, color: stats?.outstandingDebt ? 'text-red-500' : 'text-emerald-500' },
+          { label: 'Lợi nhuận', value: formatVND(stats?.totalProfit ?? 0), icon: Activity, color: 'text-purple-500' },
         ].map((s) => (
           <div key={s.label} className="card p-4 flex flex-col justify-between min-h-[100px]">
             <div className="flex items-start justify-between">
@@ -228,7 +228,7 @@ export default function CustomerDetailPage() {
         {activeTab === 'profile' && <ProfileTab customer={cust} rfm={rfm} stats={stats} />}
         {activeTab === 'bookings' && <BookingsTab customerId={id} bookings={(customer as unknown as Record<string, unknown>)?.bookings as Booking[] | undefined} />}
         {activeTab === 'interactions' && <InteractionsTab customerId={id} />}
-        {activeTab === 'debts' && <DebtsTab debts={(customer as unknown as Record<string, unknown>)?.debts as Record<string, unknown>[] | undefined} />}
+        {activeTab === 'debts' && <DebtsTab ledgers={(customer as unknown as Record<string, unknown>)?.ledgers as Record<string, unknown>[] | undefined} />}
         {activeTab === 'notes' && <NotesTab customerId={id} />}
       </div>
     </div>
@@ -238,6 +238,23 @@ export default function CustomerDetailPage() {
 // ===== TAB COMPONENTS =====
 
 function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmScore; stats?: CustomerStats }) {
+  const queryClient = useQueryClient();
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({ fullName: customer.fullName, phone: customer.phone });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => customersApi.update(customer.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
+      setEditMode(false);
+    },
+  });
+
+  const handleSaveInfo = () => {
+    if (!editForm.fullName.trim() || !editForm.phone.trim()) return;
+    updateMutation.mutate({ fullName: editForm.fullName.trim(), phone: editForm.phone.trim() });
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Left: Info */}
@@ -245,25 +262,98 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
         <div className="card p-5">
           <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
             <h3 className="text-[13px] font-medium text-foreground">Thông tin cá nhân</h3>
+            <button
+              onClick={() => { if (editMode) handleSaveInfo(); else { setEditForm({ fullName: customer.fullName, phone: customer.phone }); setEditMode(true); }}}
+              className={cn(
+                'text-[11px] font-medium px-2 py-1 rounded-md transition-colors',
+                editMode ? 'bg-primary text-white hover:bg-primary/90' : 'text-primary hover:bg-accent',
+              )}
+            >
+              {editMode ? (updateMutation.isPending ? 'Đang lưu...' : '✓ Lưu') : 'Chỉnh sửa'}
+            </button>
           </div>
-          <div className="flex flex-col text-[13px]">
-            {[
-              { label: 'Họ tên', value: customer.fullName },
-              { label: 'Điện thoại', value: customer.phone },
-              { label: 'Email', value: customer.email ?? '—' },
-              { label: 'CCCD/CMND', value: customer.idNumber ?? '—', mono: true },
-              { label: 'Hộ chiếu', value: customer.passport ?? '—', mono: true },
-              { label: 'Ngày sinh', value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—' },
-              { label: 'Ghế ưa thích', value: customer.preferredSeat ?? '—' },
-              { label: 'Ngày tạo', value: formatDate(customer.createdAt) },
-            ].map((row, idx, arr) => (
-              <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>
-                <span className="text-muted-foreground">{row.label}</span>
-                <span className={cn('font-medium text-foreground', row.mono && 'font-mono text-primary')}>
-                  {row.value}
-                </span>
+
+          {/* Loại KH + VIP */}
+          <div className="flex items-center gap-3 mb-3 pb-3 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Loại:</span>
+              <div className="flex bg-muted rounded-md overflow-hidden text-[11px]">
+                {(['INDIVIDUAL', 'CORPORATE'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => updateMutation.mutate({ type: t })}
+                    className={cn(
+                      'px-2.5 py-1 font-medium transition-colors',
+                      customer.type === t
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {t === 'INDIVIDUAL' ? '👤 Cá nhân' : '🏢 Doanh nghiệp'}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-[11px] text-muted-foreground">Hạng:</span>
+              <select
+                value={customer.vipTier}
+                onChange={(e) => updateMutation.mutate({ vipTier: e.target.value })}
+                className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-background text-foreground cursor-pointer"
+              >
+                <option value="NORMAL">Thường</option>
+                <option value="SILVER">Bạc</option>
+                <option value="GOLD">Vàng</option>
+                <option value="PLATINUM">Kim cương</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col text-[13px]">
+            {editMode ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Họ tên</label>
+                  <input
+                    value={editForm.fullName}
+                    onChange={(e) => setEditForm(p => ({ ...p, fullName: e.target.value }))}
+                    className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Số điện thoại</label>
+                  <input
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                    className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  Hủy
+                </button>
+              </div>
+            ) : (
+              [{label: 'Họ tên', value: customer.fullName},
+               {label: 'Điện thoại', value: customer.phone},
+               {label: 'Email', value: customer.email ?? '—'},
+               {label: 'CCCD/CMND', value: customer.idNumber ?? '—', mono: true},
+               {label: 'Hộ chiếu', value: customer.passport ?? '—', mono: true},
+               {label: 'Ngày sinh', value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—'},
+               {label: 'Ghế ưa thích', value: customer.preferredSeat ?? '—'},
+               {label: 'Ngày tạo', value: formatDate(customer.createdAt)},
+              ].map((row, idx, arr) => (
+                <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span className={cn('font-medium text-foreground', row.mono && 'font-mono text-primary')}>
+                    {row.value}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
 
           {customer.type === 'CORPORATE' && (
@@ -571,8 +661,8 @@ function InteractionsTab({ customerId }: { customerId: string }) {
   );
 }
 
-function DebtsTab({ debts }: { debts?: Record<string, unknown>[] }) {
-  const list = debts ?? [];
+function DebtsTab({ ledgers }: { ledgers?: Record<string, unknown>[] }) {
+  const list = ledgers ?? [];
 
   return (
     <div className="mx-[-16px] sm:mx-0">

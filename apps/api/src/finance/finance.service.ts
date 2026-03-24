@@ -138,6 +138,18 @@ export class FinanceService {
     });
   }
 
+  // Thêm deposit hãng bay mới (cho phép hãng quốc tế)
+  async createDeposit(airline: string, alertThreshold: number) {
+    return this.prisma.airlineDeposit.create({
+      data: {
+        airline: airline as never,
+        balance: 0,
+        alertThreshold,
+        lastTopUp: 0,
+      },
+    });
+  }
+
   // Chạy đối soát ngày
   async runReconciliation(date: Date) {
     const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());

@@ -19,15 +19,17 @@ const SUB_TABS = [
 export function PayableTab() {
   const [subTab, setSubTab] = useState('');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('dueDate:asc');
   const [paying, setPaying] = useState<AccountsLedger | null>(null);
 
-  const params: Record<string, string> = { direction: 'PAYABLE', pageSize: '50' };
+  const [sortBy, sortOrder] = sort.split(':');
+  const params: Record<string, string> = { direction: 'PAYABLE', pageSize: '50', sortBy, sortOrder };
   if (subTab === 'OVERDUE') params.status = 'OVERDUE';
   else if (subTab) params.partyType = subTab;
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['ledger', 'PAYABLE', subTab, search],
+    queryKey: ['ledger', 'PAYABLE', subTab, search, sort],
     queryFn: () => ledgerApi.list(params).then((r) => r.data),
   });
 
@@ -72,6 +74,22 @@ export function PayableTab() {
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
+      </div>
+
+      {/* Sort */}
+      <div className="flex gap-2 text-xs">
+        {[
+          { key: 'remaining:desc', label: 'Nợ nhiều nhất' },
+          { key: 'remaining:asc', label: 'Nợ ít nhất' },
+          { key: 'dueDate:asc', label: 'Sắp đến hạn' },
+          { key: 'createdAt:desc', label: 'Mới nhất' },
+        ].map((s) => (
+          <button key={s.key} onClick={() => setSort(s.key)}
+            className={cn('px-2.5 py-1 rounded-md font-medium transition-colors',
+              sort === s.key ? 'bg-foreground text-background' : 'bg-accent text-muted-foreground hover:text-foreground'
+            )}
+          >{s.label}</button>
+        ))}
       </div>
 
       {/* Table */}

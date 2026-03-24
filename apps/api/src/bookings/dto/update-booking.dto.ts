@@ -28,4 +28,8 @@ export class UpdateBookingDto {
   @IsOptional()
   @IsString()
   internalNotes?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
 }

@@ -18,4 +18,7 @@ export class PayLedgerDto {
 
   @IsOptional() @IsString()
   notes?: string;
+
+  @IsOptional() @IsString()
+  fundAccount?: string;  // 'CASH_OFFICE' | 'BANK_HTX' | 'BANK_PERSONAL'
 }

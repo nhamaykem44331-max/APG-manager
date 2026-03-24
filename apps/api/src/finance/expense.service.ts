@@ -42,7 +42,7 @@ export class ExpenseService {
 
   // ─── Tạo chi phí mới ─────────────────────────────────────────────
   async create(dto: CreateExpenseDto, userId: string) {
-    return this.prisma.operatingExpense.create({
+    const expense = await this.prisma.operatingExpense.create({
       data: {
         category: dto.category as never,
         description: dto.description,
@@ -53,6 +53,32 @@ export class ExpenseService {
         createdBy: userId,
       },
     });
+
+    // ── AUTO CASHFLOW OUTFLOW ────────────────────────────────
+    try {
+      const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
+        : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
+        : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'Chưa chọn';
+
+      await this.prisma.cashFlowEntry.create({
+        data: {
+          direction: 'OUTFLOW',
+          category: dto.category as never,
+          amount: dto.amount,
+          pic: userId,
+          description: `Chi phí: ${dto.description}`,
+          reference: expense.id,
+          date: new Date(dto.date),
+          status: 'DONE',
+          notes: `Quỹ chi: ${fundLabel}`,
+        },
+      });
+      console.log(`[OUTFLOW-EXPENSE] -${dto.amount} — ${dto.description} từ ${fundLabel}`);
+    } catch (err) {
+      console.error('[OUTFLOW-EXPENSE] Lỗi ghi CashFlow:', err);
+    }
+
+    return expense;
   }
 
   // ─── Cập nhật chi phí ────────────────────────────────────────────

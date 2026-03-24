@@ -349,6 +349,59 @@ function DepositsTab() {
           );
         })}
       </div>
+
+      {/* Form thêm deposit hãng mới */}
+      <AddDepositForm />
+    </div>
+  );
+}
+
+function AddDepositForm() {
+  const queryClient = useQueryClient();
+  const [airline, setAirline] = useState('');
+  const [threshold, setThreshold] = useState('5000000');
+
+  const createMutation = useMutation({
+    mutationFn: (data: { airline: string; alertThreshold: number }) =>
+      financeApi.createDeposit(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      setAirline('');
+      setThreshold('5000000');
+    },
+  });
+
+  return (
+    <div className="card p-5">
+      <h4 className="text-xs font-semibold text-foreground mb-3">+ Thêm deposit hãng bay</h4>
+      <div className="grid grid-cols-3 gap-3">
+        <input
+          type="text"
+          placeholder="Mã hãng (VD: EK, SQ)"
+          maxLength={3}
+          value={airline}
+          onChange={(e) => setAirline(e.target.value.toUpperCase())}
+          className="px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <input
+          type="number"
+          placeholder="Ngưỡng cảnh báo"
+          value={threshold}
+          onChange={(e) => setThreshold(e.target.value)}
+          className="px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <button
+          onClick={() => createMutation.mutate({ airline, alertThreshold: Number(threshold) })}
+          disabled={!airline || createMutation.isPending}
+          className="h-9 px-4 text-[13px] font-medium bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-all"
+        >
+          {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Thêm
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-2">
+        Cho phép thêm deposit cho các hãng quốc tế như Emirates (EK), Singapore Airlines (SQ), v.v.
+      </p>
     </div>
   );
 }

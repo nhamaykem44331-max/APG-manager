@@ -109,6 +109,8 @@ export class BookingsService {
         tickets: { include: { passenger: true } },
         payments: { orderBy: { paidAt: 'desc' } },
         statusHistory: { orderBy: { createdAt: 'asc' } },
+        supplier: true,
+        ledgers: { select: { id: true, code: true, direction: true, status: true, remaining: true, totalAmount: true, createdAt: true } },
       },
     });
 
@@ -137,10 +139,12 @@ export class BookingsService {
         pnr: dto.pnr?.trim().toUpperCase() || null,
         notes: dto.notes,
         internalNotes: dto.internalNotes,
+        supplierId: dto.supplierId || null,
       },
       include: {
         customer: { select: { fullName: true, phone: true } },
         staff: { select: { fullName: true } },
+        supplier: { select: { id: true, name: true, code: true } },
       },
     });
 
@@ -281,6 +285,43 @@ export class BookingsService {
       }
     }
 
+    // ── Auto-tạo AP (phải trả NCC) khi xuất vé có supplier ─────
+    if (targetStatus === 'ISSUED' && booking.supplierId) {
+      try {
+        const supplier = await this.prisma.supplierProfile.findUnique({
+          where: { id: booking.supplierId },
+          select: { id: true, name: true, type: true, paymentTerms: true },
+        });
+
+        if (supplier) {
+          const apDueDays = supplier.paymentTerms ?? 15;
+          const apDueDate = new Date();
+          apDueDate.setDate(apDueDate.getDate() + apDueDays);
+
+          const apCode = await this.generateLedgerCode('PAYABLE');
+
+          await this.prisma.accountsLedger.create({
+            data: {
+              code: apCode,
+              direction: 'PAYABLE',
+              partyType: supplier.type as any,
+              supplierId: booking.supplierId,
+              bookingId: booking.id,
+              totalAmount: booking.totalNetPrice,
+              paidAmount: 0,
+              remaining: booking.totalNetPrice,
+              dueDate: apDueDate,
+              description: `Phải trả NCC ${supplier.name} — Booking ${booking.bookingCode}`,
+              createdBy: changedBy,
+            },
+          });
+          console.log(`[AP-AUTO] Tạo AP ${apCode} — ${supplier.name} — ${booking.totalNetPrice}`);
+        }
+      } catch (err) {
+        console.error(`[AP-AUTO] Lỗi tạo AP cho booking ${booking.bookingCode}:`, err);
+      }
+    }
+
     // Gửi thông báo khi xuất vé hoặc hủy
     if (targetStatus === 'ISSUED' || targetStatus === 'CANCELLED') {
       await this.n8n.triggerWebhook('/booking-status', {
@@ -368,28 +409,120 @@ export class BookingsService {
 
   // Ghi nhận thanh toán
   async addPayment(bookingId: string, dto: AddPaymentDto) {
-    await this.findOne(bookingId);
+    const booking = await this.findOne(bookingId);
 
+    // 1. Tạo payment record
     const payment = await this.prisma.payment.create({
       data: {
         bookingId,
         amount: dto.amount,
         method: dto.method,
+        fundAccount: dto.fundAccount as any || null,
         reference: dto.reference,
         paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
         notes: dto.notes,
       },
     });
 
-    // Cập nhật trạng thái thanh toán
+    // 2. Cập nhật paymentStatus booking
     await this.updatePaymentStatus(bookingId);
 
-    // Gửi webhook cập nhật Google Sheets kế toán
+    // 3. ── DEBT: tạo AR trực tiếp, skip CashFlow ──────────────────
+    if (dto.method === 'DEBT') {
+      try {
+        // Kiểm tra AR đã tồn tại chưa
+        const existingAR = await this.prisma.accountsLedger.findFirst({
+          where: { bookingId, direction: 'RECEIVABLE', status: { not: 'PAID' } },
+        });
+
+        if (!existingAR) {
+          // Tạo mới AR cho toàn bộ giá trị booking
+          const arCode = `AR-${booking.bookingCode}`;
+          const customer = await this.prisma.customer.findUnique({
+            where: { id: booking.customerId },
+          });
+
+          await this.prisma.accountsLedger.create({
+            data: {
+              code: arCode,
+              direction: 'RECEIVABLE',
+              bookingId,
+              customerId: booking.customerId,
+              customerName: customer?.fullName ?? booking.contactName,
+              totalAmount: dto.amount,
+              paidAmount: 0,
+              remaining: dto.amount,
+              status: 'ACTIVE',
+              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 ngày
+            },
+          });
+          console.log(`[AR-CREATE-DEBT] AR ${arCode} — ${dto.amount} cho KH ${customer?.fullName}`);
+        }
+      } catch (err) {
+        console.error('[AR-DEBT] Lỗi tạo AR từ công nợ:', err);
+      }
+    } else {
+      // NON-DEBT: ghi CashFlow Inflow bình thường
+      try {
+        const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
+          : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
+          : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'N/A';
+
+        await this.prisma.cashFlowEntry.create({
+          data: {
+            direction: 'INFLOW',
+            category: 'TICKET_PAYMENT',
+            amount: dto.amount,
+            pic: booking.staff?.fullName ?? 'System',
+            description: `KH thanh toán ${booking.bookingCode} — ${booking.contactName}`,
+            reference: booking.pnr || booking.bookingCode,
+            date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+            status: 'DONE',
+            notes: `Quỹ nhận: ${fundLabel}`,
+          },
+        });
+        console.log(`[INFLOW] +${dto.amount} từ KH ${booking.contactName} vào ${fundLabel}`);
+      } catch (err) {
+        console.error('[INFLOW] Lỗi ghi CashFlow:', err);
+      }
+    }
+
+    // 4. ── AUTO CẬP NHẬT AR (công nợ phải thu) ────────────────────
+    try {
+      const arLedger = await this.prisma.accountsLedger.findFirst({
+        where: { bookingId, direction: 'RECEIVABLE', status: { not: 'PAID' } },
+      });
+
+      if (arLedger) {
+        const newPaid = Number(arLedger.paidAmount) + dto.amount;
+        const newRemaining = Math.max(0, Number(arLedger.totalAmount) - newPaid);
+        const newStatus = newRemaining <= 0 ? 'PAID' : newPaid > 0 ? 'PARTIAL_PAID' : 'ACTIVE';
+
+        await this.prisma.accountsLedger.update({
+          where: { id: arLedger.id },
+          data: { paidAmount: newPaid, remaining: newRemaining, status: newStatus as any },
+        });
+
+        await this.prisma.ledgerPayment.create({
+          data: {
+            ledgerId: arLedger.id,
+            amount: dto.amount,
+            method: dto.method,
+            reference: dto.reference,
+            notes: `Auto từ payment booking ${booking.bookingCode}`,
+          },
+        });
+        console.log(`[AR-UPDATE] AR ${arLedger.code} — paid +${dto.amount}, remaining ${newRemaining}`);
+      }
+    } catch (err) {
+      console.error('[AR-UPDATE] Lỗi cập nhật AR:', err);
+    }
+
+    // 5. Webhook n8n
     await this.n8n.triggerWebhook('/payment', {
-      bookingId,
-      amount: payment.amount,
-      method: payment.method,
-      reference: payment.reference,
+      bookingId, bookingCode: booking.bookingCode,
+      amount: payment.amount, method: payment.method,
+      fundAccount: dto.fundAccount, customerName: booking.contactName,
     });
 
     return payment;
