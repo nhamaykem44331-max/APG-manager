@@ -73,14 +73,72 @@ export function calcChange(current: number, previous: number): number {
   return Math.round(((current - previous) / previous) * 100);
 }
 
-// Màu hãng bay
+// Màu hãng bay — brand colors chính xác
 export const AIRLINE_COLORS: Record<string, string> = {
-  VN: '#1a56db',  // Vietnam Airlines - xanh
-  VJ: '#e02424',  // Vietjet - đỏ
-  QH: '#057a55',  // Bamboo - xanh lá
-  BL: '#c27803',  // Pacific Airlines - vàng
-  VU: '#7e3af2',  // Vietravel - tím
-  OTHER: '#6b7280',
+  // === Nội địa Việt Nam ===
+  VN: '#0A4D8C',   // Vietnam Airlines — xanh navy đậm
+  VJ: '#EC1C24',   // Vietjet Air — đỏ tươi
+  QH: '#00875A',   // Bamboo Airways — xanh lá tre
+  BL: '#F7941D',   // Pacific Airlines — cam
+  VU: '#6B21A8',   // Vietravel Airlines — tím
+  // === Quốc tế phổ biến ===
+  EK: '#D71921',   // Emirates — đỏ đậm
+  SQ: '#F5BE10',   // Singapore Airlines — vàng gold
+  TG: '#6B2C8F',   // Thai Airways — tím
+  CX: '#006564',   // Cathay Pacific — xanh ngọc đậm
+  MH: '#1C3F94',   // Malaysia Airlines — xanh navy
+  KE: '#00267F',   // Korean Air — xanh dương đậm
+  QR: '#5C0632',   // Qatar Airways — burgundy
+  OD: '#E87722',   // Batik Air — cam
+  AK: '#DA291C',   // AirAsia — đỏ
+  TR: '#FFD700',   // Scoot — vàng
+  CZ: '#E41F26',   // China Southern — đỏ
+  CA: '#E60012',   // Air China — đỏ
+  NH: '#1E3C6E',   // ANA — xanh navy
+  JL: '#CC0000',   // Japan Airlines — đỏ
+  BR: '#006847',   // EVA Air — xanh lá
+  CI: '#E5007E',   // China Airlines — magenta
+  PR: '#0033A0',   // Philippine Airlines — xanh dương
+  LJ: '#232F7E',   // Jin Air — xanh navy
+  '7C': '#F47920', // Jeju Air — cam
+  '9G': '#1E90FF', // Air Arabia — xanh dương
+  OTHER: '#6B7280',
+};
+
+// Tạo lighter version cho background (10% opacity)
+export function getAirlineBgColor(code: string): string {
+  const hex = AIRLINE_COLORS[code] || AIRLINE_COLORS.OTHER;
+  return `${hex}1A`; // 10% opacity hex
+}
+
+// Palette cho charts — Vercel-compatible, contrast tốt trên dark bg
+export const CHART_COLORS = {
+  revenue: '#3B82F6',      // Blue-500 — doanh thu
+  profit: '#10B981',       // Emerald-500 — lợi nhuận
+  cost: '#6B7280',         // Gray-500 — chi phí
+  debt: '#F59E0B',         // Amber-500 — công nợ
+  overdue: '#EF4444',      // Red-500 — quá hạn
+  paid: '#10B981',         // Emerald — đã thanh toán
+  pending: '#F59E0B',      // Amber — chờ
+  cancelled: '#6B7280',    // Gray — hủy
+};
+
+// Payment method colors
+export const PAYMENT_METHOD_COLORS: Record<string, string> = {
+  CASH: '#10B981',          // Emerald — tiền mặt
+  BANK_TRANSFER: '#3B82F6', // Blue — chuyển khoản
+  CREDIT_CARD: '#8B5CF6',   // Purple — thẻ
+  MOMO: '#EC4899',          // Pink — MoMo
+  VNPAY: '#3B82F6',         // Blue — VNPay
+  DEBT: '#F59E0B',          // Amber — công nợ
+};
+
+// VIP tier colors
+export const VIP_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+  NORMAL:   { text: 'text-muted-foreground', bg: 'bg-muted',             border: 'border-border' },
+  SILVER:   { text: 'text-gray-400',         bg: 'bg-gray-500/10',       border: 'border-gray-500/30' },
+  GOLD:     { text: 'text-amber-500',        bg: 'bg-amber-500/10',      border: 'border-amber-500/30' },
+  PLATINUM: { text: 'text-purple-400',       bg: 'bg-purple-500/10',     border: 'border-purple-500/30' },
 };
 
 // Tên đầy đủ hãng bay

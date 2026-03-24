@@ -27,6 +27,12 @@
     --radius: 0.5rem;
     --success: 160 84% 39%;
     --warning: 38 92% 50%;
+    /* Chart semantic colors */
+    --chart-revenue: 217 91% 60%;
+    --chart-profit: 160 84% 39%;
+    --chart-cost: 220 9% 46%;
+    --chart-debt: 38 92% 50%;
+    --chart-overdue: 0 84% 60%;
   }
 
   .dark {
@@ -52,6 +58,12 @@
     --ring: 221 83% 53%;
     --success: 160 84% 39%;
     --warning: 38 92% 50%;
+    /* Chart semantic colors (slightly brighter for dark bg) */
+    --chart-revenue: 217 91% 60%;
+    --chart-profit: 160 73% 49%;
+    --chart-cost: 220 9% 56%;
+    --chart-debt: 38 92% 56%;
+    --chart-overdue: 0 84% 65%;
   }
 }
 

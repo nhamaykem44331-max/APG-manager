@@ -4,7 +4,6 @@ import {
   Line,
   LineChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -61,11 +60,11 @@ export function RevenueChartInner({ data }: RevenueChartProps) {
         </div>
         <div className="flex items-center gap-4 text-[12px]">
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-0.5 rounded-full bg-foreground" />
+            <div className="w-3 h-0.5 rounded-full bg-blue-500" />
             <span className="text-muted-foreground">Doanh thu</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-0.5 rounded-full bg-muted-foreground" />
+            <div className="w-3 h-0.5 rounded-full bg-emerald-500" />
             <span className="text-muted-foreground">Lợi nhuận</span>
           </div>
         </div>
@@ -97,24 +96,26 @@ export function RevenueChartInner({ data }: RevenueChartProps) {
             cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '4 4' }} 
           />
 
+          {/* Doanh thu — Blue */}
           <Line
             type="monotone"
             dataKey="revenue"
             name="revenue"
-            stroke="hsl(var(--foreground))"
-            strokeWidth={1.5}
+            stroke="#3B82F6"
+            strokeWidth={2}
             dot={false}
-            activeDot={{ r: 4, fill: 'hsl(var(--background))', stroke: 'hsl(var(--foreground))', strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2 }}
           />
 
+          {/* Lợi nhuận — Emerald */}
           <Line
             type="monotone"
             dataKey="profit"
             name="profit"
-            stroke="hsl(var(--muted-foreground))"
+            stroke="#10B981"
             strokeWidth={1.5}
             dot={false}
-            activeDot={{ r: 4, fill: 'hsl(var(--background))', stroke: 'hsl(var(--muted-foreground))', strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: '#10B981', stroke: '#059669', strokeWidth: 2 }}
           />
         </LineChart>
       </ResponsiveContainer>

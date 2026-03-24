@@ -195,25 +195,26 @@ function OverviewTab() {
             { airline: 'QH', revenue: 168_000_000, pct: 14 },
             { airline: 'BL', revenue: 72_000_000, pct: 6 },
             { airline: 'VU', revenue: 24_000_000, pct: 2 },
-          ].map((row, index) => (
+          ].map((row) => (
             <div key={row.airline} className="space-y-1.5">
               <div className="flex items-center justify-between text-[13px]">
-                <span className="font-medium text-foreground">
-                  {AIRLINE_NAMES[row.airline]}
+                <span className="flex items-center gap-2">
+                  <img
+                    src={`https://images.kiwi.com/airlines/32/${row.airline}.png`}
+                    alt={row.airline}
+                    className="w-4 h-4 rounded-sm object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                  <span className="font-medium" style={{ color: AIRLINE_COLORS[row.airline] }}>
+                    {AIRLINE_NAMES[row.airline]}
+                  </span>
                 </span>
                 <span className="text-muted-foreground font-tabular">{formatVND(row.revenue)} · {row.pct}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                 <div
-                  className={cn(
-                    "h-full rounded-full transition-all duration-500",
-                    index === 0 ? "bg-foreground" :
-                    index === 1 ? "bg-foreground/80 dark:bg-foreground/80" :
-                    index === 2 ? "bg-foreground/60 dark:bg-foreground/60" :
-                    index === 3 ? "bg-foreground/40 dark:bg-foreground/40" : 
-                    "bg-foreground/20 dark:bg-foreground/20"
-                  )}
-                  style={{ width: `${row.pct}%` }}
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${row.pct}%`, backgroundColor: AIRLINE_COLORS[row.airline] || '#6B7280' }}
                 />
               </div>
             </div>
@@ -276,13 +277,18 @@ function DepositsTab() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-primary-foreground text-xs font-bold"
-                    style={{ backgroundColor: AIRLINE_COLORS[d.airline] }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: AIRLINE_COLORS[d.airline], borderLeft: `3px solid ${AIRLINE_COLORS[d.airline]}` }}
                   >
-                    {d.airline}
+                    <img
+                      src={`https://images.kiwi.com/airlines/64/${d.airline}.png`}
+                      alt={d.airline}
+                      className="w-5 h-5 object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).replaceWith(Object.assign(document.createElement('span'), { className: 'text-white text-xs font-bold', textContent: d.airline })); }}
+                    />
                   </div>
                   <div>
-                    <p className="text-[13px] font-semibold text-foreground">{AIRLINE_NAMES[d.airline]}</p>
+                    <p className="text-[13px] font-semibold" style={{ color: AIRLINE_COLORS[d.airline] }}>{AIRLINE_NAMES[d.airline]}</p>
                     {isLow && (
                       <p className="text-[11px] text-red-500 font-medium">⚠ Sắp hết</p>
                     )}

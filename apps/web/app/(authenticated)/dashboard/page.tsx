@@ -111,20 +111,24 @@ export default function DashboardPage() {
           label="Vé xuất hôm nay"
           value="23"
           change={15}
+          accentColor="blue"
         />
         <KpiCard
           label="Doanh thu ngày"
           value="45.2M"
           change={8}
+          accentColor="blue"
         />
         <KpiCard
           label="Lợi nhuận ngày"
           value="4.8M"
           change={12}
+          accentColor="emerald"
         />
         <KpiCard
           label="Booking chờ xử lý"
           value="7"
+          accentColor="amber"
         />
       </div>
 
