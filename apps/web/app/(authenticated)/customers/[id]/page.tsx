@@ -44,6 +44,12 @@ const VIP_BADGE: Record<string, string> = {
   NORMAL:   'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 };
 
+function getCustomerCodeBadgeClass(type?: string) {
+  return type === 'CORPORATE'
+    ? 'bg-orange-500/12 text-orange-500 border border-orange-500/20'
+    : 'bg-primary/10 text-primary border border-primary/20';
+}
+
 const CHURN_COLORS: Record<string, string> = {
   LOW: 'text-emerald-500',
   MEDIUM: 'text-yellow-500',
@@ -145,6 +151,11 @@ export default function CustomerDetailPage() {
             )}>
               {VIP_TIER_LABELS[cust.vipTier]}
             </span>
+            {cust.customerCode && (
+              <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono font-medium', getCustomerCodeBadgeClass(cust.type))}>
+                {cust.customerCode}
+              </span>
+            )}
             {cust.type === 'CORPORATE' && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-500/10 text-orange-600 dark:text-orange-400">
                 <Building2 className="w-3 h-3" /> Doanh nghiệp
@@ -245,6 +256,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
     email: customer.email || '', idNumber: customer.idNumber || '',
     passport: customer.passport || '',
     dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
+    customerCode: customer.customerCode || '',
     preferredSeat: customer.preferredSeat || '',
     companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
   });
@@ -253,6 +265,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
     mutationFn: (data: Record<string, unknown>) => customersApi.update(customer.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       setEditMode(false);
     },
   });
@@ -263,6 +276,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
       fullName: editForm.fullName.trim(),
       phone: editForm.phone.trim(),
       email: editForm.email.trim() || null,
+      customerCode: editForm.customerCode.trim() || undefined,
       idNumber: editForm.idNumber.trim() || null,
       passport: editForm.passport.trim() || null,
       dateOfBirth: editForm.dateOfBirth || null,
@@ -288,6 +302,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                     email: customer.email || '', idNumber: customer.idNumber || '',
                     passport: customer.passport || '',
                     dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
+                    customerCode: customer.customerCode || '',
                     preferredSeat: customer.preferredSeat || '',
                     companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
                   });
@@ -354,6 +369,11 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                 </div>
                 
                 <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Mã khách hàng</label>
+                  <input value={editForm.customerCode} onChange={(e) => setEditForm(p => ({ ...p, customerCode: e.target.value.toUpperCase() }))} placeholder="KH000123" className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background font-mono uppercase focus:ring-1 focus:ring-primary outline-none" />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Email</label>
                   <input type="email" value={editForm.email} onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none" />
                 </div>
@@ -399,10 +419,17 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                 <div className="flex pt-2">
                   <button type="button" onClick={() => setEditMode(false)} className="text-[11px] text-muted-foreground hover:text-foreground">Hủy chỉnh sửa</button>
                 </div>
+                {updateMutation.error && (
+                  <p className="text-[12px] text-destructive">
+                    {(updateMutation.error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+                      || 'Không thể cập nhật hồ sơ khách hàng. Vui lòng thử lại.'}
+                  </p>
+                )}
               </div>
             ) : (
               [{label: 'Họ tên', value: customer.fullName},
                {label: 'Điện thoại', value: customer.phone},
+               {label: 'Mã khách hàng', value: customer.customerCode ?? '—', mono: true},
                {label: 'Email', value: customer.email ?? '—'},
                {label: 'CCCD/CMND', value: customer.idNumber ?? '—', mono: true},
                {label: 'Hộ chiếu', value: customer.passport ?? '—', mono: true},

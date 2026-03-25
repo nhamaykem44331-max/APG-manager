@@ -43,7 +43,8 @@ export function SuppliersTab() {
     queryFn: () => supplierApi.list().then((r) => r.data),
   });
 
-  const suppliers: SupplierProfile[] = data ?? [];
+  const raw = data as unknown;
+  const suppliers: SupplierProfile[] = Array.isArray(raw) ? raw : Array.isArray((raw as { data?: unknown })?.data) ? (raw as { data: SupplierProfile[] }).data : [];
 
   // Mutation: tạo NCC mới
   const createMutation = useMutation({

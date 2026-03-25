@@ -5,6 +5,7 @@ import {
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
 import { BookingStatus, Prisma } from '@prisma/client';
+import { CustomersService } from '../customers/customers.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
@@ -44,6 +45,7 @@ export class BookingsService {
   constructor(
     private prisma: PrismaService,
     private n8n: N8nService,
+    private customers: CustomersService,
   ) {}
 
   // Lấy danh sách booking có filter, sort, paginate
@@ -57,7 +59,7 @@ export class BookingsService {
     const where: Prisma.BookingWhereInput = { deletedAt: null };
 
     if (status) where.status = status as BookingStatus;
-    if (source) where.source = source as string;
+    if (source) where.source = source as never;
     if (search) {
       where.OR = [
         { bookingCode: { contains: search, mode: 'insensitive' } },
@@ -79,7 +81,7 @@ export class BookingsService {
       this.prisma.booking.findMany({
         where,
         include: {
-          customer: { select: { id: true, fullName: true, vipTier: true } },
+          customer: { select: { id: true, fullName: true, vipTier: true, customerCode: true, type: true, phone: true } },
           staff: { select: { id: true, fullName: true } },
           tickets: { take: 1 }, // Chỉ lấy ticket đầu tiên cho hiển thị danh sách
         },
@@ -118,6 +120,10 @@ export class BookingsService {
       throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
     }
 
+    if (booking.customer && !booking.customer.customerCode) {
+      booking.customer.customerCode = await this.customers.ensureCustomerCode(booking.customer.id);
+    }
+
     return booking;
   }
 
@@ -128,12 +134,18 @@ export class BookingsService {
       const bookingCode = await this.generateBookingCode();
       const customerId = await this.resolveCustomerId(dto);
 
-      const booking = await this.prisma.booking.create({
+      const booking: Prisma.BookingGetPayload<{
+        include: {
+          customer: { select: { fullName: true; phone: true; customerCode: true } };
+          staff: { select: { fullName: true } };
+          supplier: { select: { id: true; name: true; code: true } };
+        };
+      }> = await this.prisma.booking.create({
         data: {
           bookingCode,
           customerId,
           staffId,
-          source: dto.source,
+          source: dto.source as never,
           contactName: dto.contactName,
           contactPhone: dto.contactPhone,
           paymentMethod: dto.paymentMethod,
@@ -143,7 +155,7 @@ export class BookingsService {
           supplierId: dto.supplierId || null,
         },
         include: {
-          customer: { select: { fullName: true, phone: true } },
+          customer: { select: { fullName: true, phone: true, customerCode: true } },
           staff: { select: { fullName: true } },
           supplier: { select: { id: true, name: true, code: true } },
         },
@@ -179,9 +191,40 @@ export class BookingsService {
   async update(id: string, dto: UpdateBookingDto) {
     await this.findOne(id); // Kiểm tra tồn tại
 
+    const data: Prisma.BookingUncheckedUpdateInput = {};
+
+    if (dto.contactName !== undefined) data.contactName = dto.contactName;
+    if (dto.source !== undefined) data.source = dto.source as Prisma.BookingUncheckedUpdateInput['source'];
+    if (dto.contactPhone !== undefined) data.contactPhone = dto.contactPhone;
+    if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
+    if (dto.pnr !== undefined) data.pnr = dto.pnr;
+    if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.internalNotes !== undefined) data.internalNotes = dto.internalNotes;
+    if (dto.supplierId !== undefined) data.supplierId = dto.supplierId;
+
+    if (dto.customerId !== undefined) {
+      const customerId = dto.customerId?.trim();
+      if (!customerId) {
+        throw new BadRequestException('customerId không hợp lệ.');
+      }
+
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, fullName: true, phone: true },
+      });
+
+      if (!customer) {
+        throw new NotFoundException('Không tìm thấy khách hàng.');
+      }
+
+      data.customerId = customer.id;
+      if (dto.contactName === undefined) data.contactName = customer.fullName;
+      if (dto.contactPhone === undefined) data.contactPhone = customer.phone;
+    }
+
     return this.prisma.booking.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 
@@ -255,7 +298,7 @@ export class BookingsService {
       try {
         const customer = await this.prisma.customer.findUnique({
           where: { id: booking.customerId },
-          select: { id: true, type: true, fullName: true },
+          select: { id: true, type: true, fullName: true, customerCode: true },
         });
 
         // Hạn thanh toán: 7 ngày (lẻ) hoặc 30 ngày (doanh nghiệp)
@@ -275,7 +318,9 @@ export class BookingsService {
             direction:   'RECEIVABLE',
             partyType:   partyType as never,
             customerId:  booking.customerId,
+            customerCode: customer?.customerCode ?? null,
             bookingId:   booking.id,
+            bookingCode: booking.bookingCode,
             totalAmount: booking.totalSellPrice,
             paidAmount:  0,
             remaining:   booking.totalSellPrice,
@@ -445,6 +490,7 @@ export class BookingsService {
           const arCode = `AR-${booking.bookingCode}`;
           const customer = await this.prisma.customer.findUnique({
             where: { id: booking.customerId },
+            select: { fullName: true, customerCode: true, type: true },
           });
 
           await this.prisma.accountsLedger.create({
@@ -452,8 +498,10 @@ export class BookingsService {
               code: arCode,
               direction: 'RECEIVABLE',
               bookingId,
+              bookingCode: booking.bookingCode,
               customerId: booking.customerId,
-              partyType: 'CUSTOMER_INDIVIDUAL',
+              customerCode: customer?.customerCode ?? null,
+              partyType: customer?.type === 'CORPORATE' ? 'CUSTOMER_CORPORATE' : 'CUSTOMER_INDIVIDUAL',
               totalAmount: dto.amount,
               paidAmount: 0,
               remaining: dto.amount,
@@ -604,6 +652,7 @@ export class BookingsService {
   // FIX 2: Xử lý contactPhone rỗng → sinh phone unique tạm
   private async resolveCustomerId(dto: CreateBookingDto) {
     const providedCustomerId = dto.customerId?.trim();
+    const providedCustomerCode = dto.customerCode?.trim().toUpperCase();
 
     // 1. Nếu có customerId hợp lệ → dùng luôn
     if (providedCustomerId && providedCustomerId !== 'new') {
@@ -611,26 +660,45 @@ export class BookingsService {
         where: { id: providedCustomerId },
         select: { id: true },
       });
-      if (existing) return existing.id;
+      if (existing) {
+        await this.customers.ensureCustomerCode(existing.id);
+        return existing.id;
+      }
     }
 
-    // 2. Nếu có phone hợp lệ (không rỗng) → tìm theo phone
+    // 2. Nếu có mã KH → ưu tiên tìm theo mã
+    if (providedCustomerCode) {
+      const existingByCode = await this.prisma.customer.findUnique({
+        where: { customerCode: providedCustomerCode },
+        select: { id: true },
+      });
+      if (existingByCode) {
+        await this.customers.ensureCustomerCode(existingByCode.id);
+        return existingByCode.id;
+      }
+    }
+
+    // 3. Nếu có phone hợp lệ (không rỗng) → tìm theo phone
     const phone = dto.contactPhone?.trim();
     if (phone && phone.length >= 5) {
       const existingByPhone = await this.prisma.customer.findUnique({
         where: { phone },
         select: { id: true },
       });
-      if (existingByPhone) return existingByPhone.id;
+      if (existingByPhone) {
+        await this.customers.ensureCustomerCode(existingByPhone.id);
+        return existingByPhone.id;
+      }
     }
 
-    // 3. Tạo khách mới — sinh phone unique nếu rỗng
-    const newCustomer = await this.prisma.customer.create({
+    // 4. Tạo khách mới — sinh phone unique nếu rỗng
+    const newCustomer = await this.customers.create({
       data: {
         fullName: dto.contactName || 'Khách hàng mới',
         phone: phone && phone.length >= 5
           ? phone
           : `TEMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        customerCode: providedCustomerCode,
         tags: [],
       },
       select: { id: true },

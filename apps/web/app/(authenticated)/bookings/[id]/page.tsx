@@ -1,13 +1,14 @@
 // APG Manager RMS - Booking Detail Page (Part 3: Add Ticket + Add Payment)
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plane, User, Clock, CreditCard,
   Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap, FileText,
+  ChevronDown, Check, Save, Edit3, RotateCcw, Ban, RefreshCw, Ticket, Search,
 } from 'lucide-react';
 import { bookingsApi, supplierApi, customersApi, documentsApi } from '@/lib/api';
 import {
@@ -21,6 +22,12 @@ import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
 import type { Booking, BookingStatus, SupplierProfile, Customer } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
+
+function getCustomerCodeBadgeClass(type?: string) {
+  return type === 'CORPORATE'
+    ? 'bg-orange-500/12 text-orange-500 border border-orange-500/20'
+    : 'bg-primary/10 text-primary border border-primary/20';
+}
 
 // ────────────────────────────────────────────────────
 // Status state machine
@@ -57,6 +64,19 @@ const NEXT_ACTIONS: Record<string, { status: BookingStatus; label: string; varia
   REFUNDED:        [],
   CANCELLED:       [],
 };
+
+// All statuses with icons and colors for the dropdown menu
+const ALL_STATUSES: { key: BookingStatus; label: string; icon: React.ElementType; color: string; bgColor: string }[] = [
+  { key: 'NEW',             label: 'Mới',             icon: Plus,          color: 'text-blue-500',    bgColor: 'bg-blue-500/10' },
+  { key: 'PROCESSING',      label: 'Đang xử lý',     icon: RefreshCw,     color: 'text-amber-500',   bgColor: 'bg-amber-500/10' },
+  { key: 'QUOTED',          label: 'Đã báo giá',     icon: FileText,      color: 'text-indigo-500',  bgColor: 'bg-indigo-500/10' },
+  { key: 'PENDING_PAYMENT', label: 'Chờ thanh toán',  icon: Banknote,      color: 'text-orange-500',  bgColor: 'bg-orange-500/10' },
+  { key: 'ISSUED',          label: 'Đã xuất vé',     icon: Ticket,        color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
+  { key: 'COMPLETED',       label: 'Hoàn thành',      icon: CheckCircle2,  color: 'text-green-600',   bgColor: 'bg-green-600/10' },
+  { key: 'CHANGED',         label: 'Đổi vé',          icon: RotateCcw,     color: 'text-yellow-500',  bgColor: 'bg-yellow-500/10' },
+  { key: 'REFUNDED',        label: 'Hoàn vé',         icon: RotateCcw,     color: 'text-pink-500',    bgColor: 'bg-pink-500/10' },
+  { key: 'CANCELLED',       label: 'Đã hủy',          icon: Ban,           color: 'text-red-500',     bgColor: 'bg-red-500/10' },
+];
 
 // FIX 5: Đồng bộ PAYMENT_METHODS với backend enum
 const PAYMENT_METHODS = [
@@ -606,7 +626,7 @@ function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; co
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tìm theo tên hoặc SĐT..."
+          placeholder="Tìm theo tên, SĐT hoặc mã KH..."
           className={cn(
             'flex-1 px-3 h-8 text-[12px] rounded-md border border-border bg-background',
             'text-foreground placeholder:text-muted-foreground',
@@ -626,7 +646,7 @@ function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; co
           {(searchResults ?? []).length === 0 ? (
             <p className="text-[11px] text-muted-foreground p-3 text-center">Không tìm thấy KH nào</p>
           ) : (
-            (searchResults ?? []).map((c: { id: string; fullName: string; phone: string; type: string }) => (
+            (searchResults ?? []).map((c: { id: string; fullName: string; phone: string; type: string; customerCode?: string }) => (
               <button
                 key={c.id}
                 onClick={() => linkMutation.mutate(c.id)}
@@ -634,6 +654,9 @@ function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; co
               >
                 <div>
                   <p className="font-medium text-foreground">{c.fullName}</p>
+                  {c.customerCode && (
+                    <p className={cn('inline-flex w-max items-center rounded-md px-1.5 py-0.5 text-[10px] font-mono mt-1', getCustomerCodeBadgeClass(c.type))}>{c.customerCode}</p>
+                  )}
                   <p className="text-[11px] text-muted-foreground">{c.phone} · {c.type === 'CORPORATE' ? 'DN' : 'CN'}</p>
                 </div>
                 <span className="text-[10px] text-primary">Chọn</span>
@@ -780,10 +803,50 @@ export default function BookingDetailPage() {
   const [showAddTicket, setShowAddTicket]   = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
-  const [showEditContact, setShowEditContact] = useState(false);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Inline edit state for contact info
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [contactEditMode, setContactEditMode] = useState<'manual' | 'search'>('manual');
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [editForm, setEditForm] = useState({ contactName: '', contactPhone: '', customerCode: '', source: '', notes: '' });
+
+  // Load danh sách KH gợi ý khi tìm kiếm
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const { data: customerSearchResults, isFetching: isSearchingCustomers } = useQuery({
+    queryKey: ['customers-search', contactSearchQuery],
+    queryFn: () => customersApi.list({ search: contactSearchQuery, pageSize: 5 }),
+    select: (r) => r.data?.data ?? [],
+    enabled: showCustomerDropdown,
+  });
+
+  // Supplier search state
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target as Node)) {
+        setShowSupplierDropdown(false);
+      }
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const { data: booking, isLoading } = useQuery({
     queryKey: ['booking', id],
@@ -794,8 +857,12 @@ export default function BookingDetailPage() {
   // Load danh sách NCC
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers'],
-    queryFn: () => supplierApi.list(),
-    select: (r) => r.data as SupplierProfile[],
+    queryFn: () => supplierApi.list().then((r) => r.data),
+    select: (raw) => {
+      if (Array.isArray(raw)) return raw as SupplierProfile[];
+      if (raw && Array.isArray((raw as { data?: unknown }).data)) return (raw as { data: SupplierProfile[] }).data;
+      return [] as SupplierProfile[];
+    },
   });
 
   // Mutation cập nhật supplier cho booking
@@ -823,10 +890,79 @@ export default function BookingDetailPage() {
       bookingsApi.updateStatus(id, toStatus, statusReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
       setConfirmAction(null);
       setStatusReason('');
     },
   });
+
+  // Mutation lưu thông tin liên hệ (inline edit)
+  const saveContactMutation = useMutation({
+    mutationFn: async () => {
+      const normalizedCustomerCode = editForm.customerCode.trim();
+
+      if (booking?.customer?.id) {
+        await customersApi.update(booking.customer.id, {
+          fullName: editForm.contactName,
+          phone: editForm.contactPhone,
+          ...(normalizedCustomerCode ? { customerCode: normalizedCustomerCode } : {}),
+        });
+      }
+
+      return bookingsApi.update(id, {
+        contactName: editForm.contactName,
+        contactPhone: editForm.contactPhone,
+        source: editForm.source,
+        notes: editForm.notes,
+      });
+    },
+    onSuccess: async () => {
+      if (booking?.customer?.id) {
+        await queryClient.invalidateQueries({ queryKey: ['customer', booking.customer.id] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      setIsEditingContact(false);
+    },
+  });
+
+  const linkCustomerMutation = useMutation({
+    mutationFn: (customer: Pick<Customer, 'id' | 'fullName' | 'phone' | 'customerCode'>) =>
+      bookingsApi.update(id, { customerId: customer.id }),
+    onSuccess: async (_, customer) => {
+      setEditForm((prev) => ({
+        ...prev,
+        contactName: customer.fullName || '',
+        contactPhone: customer.phone || '',
+        customerCode: customer.customerCode || '',
+      }));
+      setShowCustomerDropdown(false);
+      await queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      setIsEditingContact(false);
+    },
+  });
+
+  // Start inline edit mode
+  const startEditing = useCallback(() => {
+    if (!booking) return;
+    setEditForm({
+      contactName: booking.customer?.fullName || booking.contactName,
+      contactPhone: booking.customer?.phone || booking.contactPhone,
+      customerCode: booking.customer?.customerCode || '',
+      source: booking.source,
+      notes: booking.notes || '',
+    });
+    setIsEditingContact(true);
+  }, [booking]);
+
+  // Auto-edit mode for newly created bookings
+  useEffect(() => {
+    if (booking && booking.status === 'NEW' && booking.contactName === 'Khách hàng mới') {
+      startEditing();
+    }
+  }, [booking, startEditing]);
 
   // Nhóm vé theo chuyến bay để hiển thị gọn gàng hơn
   const groupedFlights = useMemo(() => {
@@ -930,9 +1066,67 @@ export default function BookingDetailPage() {
                 <span className="text-[10px] text-muted-foreground font-mono">{bk.bookingCode}</span>
               )}
             </div>
-            <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium', BOOKING_STATUS_CLASSES[bk.status])}>
-              {BOOKING_STATUS_LABELS[bk.status]}
-            </span>
+
+            {/* Status Dropdown (Option B) */}
+            <div className="relative" ref={statusDropdownRef}>
+              <button
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all duration-150',
+                  'hover:shadow-md cursor-pointer active:scale-[0.97]',
+                  BOOKING_STATUS_CLASSES[bk.status],
+                  'border-current/20',
+                )}
+              >
+                {(() => { const s = ALL_STATUSES.find(s => s.key === bk.status); return s ? <s.icon className="w-3 h-3" /> : null; })()}
+                {BOOKING_STATUS_LABELS[bk.status]}
+                <ChevronDown className={cn('w-3 h-3 transition-transform', showStatusDropdown && 'rotate-180')} />
+              </button>
+
+              {/* Dropdown menu */}
+              {showStatusDropdown && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <p className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Chuyển trạng thái</p>
+                  <div className="my-1 border-t border-border/50" />
+                  {ALL_STATUSES.map((st) => {
+                    const isCurrent = st.key === bk.status;
+                    const allowed = (NEXT_ACTIONS[bk.status] ?? []).some(a => a.status === st.key);
+                    const isDisabled = !isCurrent && !allowed;
+                    const Icon = st.icon;
+
+                    return (
+                      <button
+                        key={st.key}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isCurrent || isDisabled) return;
+                          setShowStatusDropdown(false);
+                          const action = (NEXT_ACTIONS[bk.status] ?? []).find(a => a.status === st.key);
+                          if (action) setConfirmAction({ status: action.status, label: action.label });
+                        }}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors text-left',
+                          isCurrent && 'bg-accent/60 font-semibold',
+                          !isCurrent && allowed && 'hover:bg-accent cursor-pointer',
+                          isDisabled && 'opacity-30 cursor-not-allowed',
+                        )}
+                      >
+                        <div className={cn('w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0', st.bgColor)}>
+                          <Icon className={cn('w-3.5 h-3.5', st.color)} />
+                        </div>
+                        <span className={cn('flex-1', isCurrent ? 'text-foreground' : isDisabled ? 'text-muted-foreground' : 'text-foreground')}>
+                          {st.label}
+                        </span>
+                        {isCurrent && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                        {!isCurrent && allowed && (
+                          <span className="text-[10px] text-primary font-medium flex-shrink-0">Chọn</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         }
         description={`${BOOKING_SOURCE_LABELS[bk.source]} · ${formatDateTime(bk.createdAt)}`}
@@ -995,21 +1189,15 @@ export default function BookingDetailPage() {
                 <FileText className="w-3.5 h-3.5 text-emerald-500" /> Hóa đơn
               </a>
             )}
-            {actions.map((action) => (
+            {/* Cancel button — shown if status allows */}
+            {(NEXT_ACTIONS[bk.status] ?? []).some(a => a.status === 'CANCELLED') && (
               <button
-                key={action.status}
-                onClick={() => setConfirmAction({ status: action.status, label: action.label })}
-                className={cn(
-                  'px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors border border-transparent',
-                  action.variant === 'primary' && 'bg-foreground text-background hover:opacity-90',
-                  action.variant === 'success' && 'bg-emerald-600 text-white hover:bg-emerald-700',
-                  action.variant === 'danger'  && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-                  action.variant === 'warning' && 'bg-warning text-warning-foreground hover:bg-warning/90',
-                )}
+                onClick={() => setConfirmAction({ status: 'CANCELLED' as BookingStatus, label: 'Hủy booking' })}
+                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 flex items-center gap-1.5 transition-colors"
               >
-                {action.label}
+                Hủy
               </button>
-            ))}
+            )}
           </div>
         }
       />
@@ -1020,17 +1208,21 @@ export default function BookingDetailPage() {
         <div className="lg:col-span-2 space-y-4">
           {/* Side-by-side Contact & Supplier to save space */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Contact info + Customer link */}
+            {/* Contact info + Customer link — with inline edit mode */}
             <div className="card p-4">
               <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
                 <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setShowEditContact(true)}
-                    className="text-[11px] text-primary hover:underline font-medium"
-                  >
-                    Sửa
-                  </button>
+                  {!isEditingContact ? (
+                    <button
+                      onClick={startEditing}
+                      className="text-[11px] text-primary hover:underline font-medium flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3 h-3" /> Sửa
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-amber-500 font-medium">Đang chỉnh sửa</span>
+                  )}
                   {bk.customer && (
                     <Link
                       href={`/customers/${bk.customer.id}`}
@@ -1041,44 +1233,247 @@ export default function BookingDetailPage() {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col text-[13px]">
-                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                  <span className="text-muted-foreground">Tên liên hệ</span>
-                  <span className="font-medium text-foreground text-right flex flex-col items-end">
-                    {bk.customer ? bk.customer.fullName : bk.contactName}
-                    {bk.customer && (
-                      <span className="text-[10px] text-muted-foreground font-normal">
-                        Khách {bk.customer.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                  <span className="text-muted-foreground">Số điện thoại</span>
-                  <span className="font-medium text-foreground flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                    {bk.customer ? bk.customer.phone : bk.contactPhone}
-                  </span>
-                </div>
-                {bk.pnr && (
-                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
-                    <span className="text-muted-foreground">Mã PNR (GDS)</span>
-                    <span className="font-mono font-bold text-primary">{bk.pnr}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                  <span className="text-muted-foreground">Nguồn</span>
-                  <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source] || bk.source}</span>
-                </div>
 
-                {/* Linked Customer Link */}
-                {!bk.customer && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
+              {isEditingContact ? (
+                /* ─── Inline Edit Mode ─── */
+                <div className="space-y-3">
+                  {/* Tabs for Search vs Manual */}
+                  <div className="flex p-1 bg-muted/50 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setContactEditMode('search')}
+                      className={cn(
+                        'flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                        contactEditMode === 'search' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Tìm khách có sẵn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContactEditMode('manual')}
+                      className={cn(
+                        'flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                        contactEditMode === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Nhập thủ công
+                    </button>
                   </div>
-                )}
-              </div>
-              {bk.notes && (
+
+                  {contactEditMode === 'search' ? (
+                    /* Search Customer Mode */
+                    <div className="space-y-3 pt-1" ref={customerDropdownRef}>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                        <input
+                          type="text"
+                          value={contactSearchQuery}
+                          onChange={(e) => {
+                            setContactSearchQuery(e.target.value);
+                            setShowCustomerDropdown(true);
+                          }}
+                          onFocus={() => setShowCustomerDropdown(true)}
+                          placeholder="Tìm theo tên, SĐT hoặc mã KH..."
+                          className="w-full pl-8 pr-8 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          autoFocus
+                        />
+                        {contactSearchQuery && (
+                          <button
+                            onClick={() => {
+                              setContactSearchQuery('');
+                              setShowCustomerDropdown(true);
+                            }}
+                            className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full hover:bg-accent"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      
+                      {showCustomerDropdown && (
+                        <div className="border border-border rounded-md divide-y divide-border/50 max-h-[220px] overflow-y-auto bg-card">
+                          {isSearchingCustomers ? (
+                            <p className="text-[12px] text-muted-foreground p-3 text-center flex items-center justify-center gap-1.5">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang tìm...
+                            </p>
+                          ) : customerSearchResults.length === 0 ? (
+                            <p className="text-[12px] text-muted-foreground p-3 text-center">Không tìm thấy khách hàng</p>
+                          ) : (
+                            customerSearchResults.map((c: Pick<Customer, 'id' | 'fullName' | 'phone' | 'type' | 'customerCode'>) => (
+                              <button
+                                type="button"
+                                key={c.id}
+                                onClick={() => linkCustomerMutation.mutate(c)}
+                                disabled={linkCustomerMutation.isPending}
+                                className="w-full flex items-center justify-between px-3 py-2 hover:bg-accent transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                 <div>
+                                   <p className="text-[13px] font-medium text-foreground">{c.fullName}</p>
+                                   {c.customerCode && (
+                                     <p className={cn('inline-flex w-max items-center rounded-md px-1.5 py-0.5 text-[10px] font-mono mt-1', getCustomerCodeBadgeClass(c.type))}>{c.customerCode}</p>
+                                   )}
+                                   <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                     {c.phone}
+                                    <span className="opacity-50">•</span>
+                                    {c.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] px-2 py-1 bg-primary/10 text-primary rounded-md font-medium">
+                                  {linkCustomerMutation.isPending ? 'Đang lưu...' : 'Chọn'}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                      {linkCustomerMutation.error && (
+                        <p className="text-[12px] text-destructive">
+                          {(linkCustomerMutation.error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+                            || 'Không thể liên kết khách hàng. Vui lòng thử lại.'}
+                        </p>
+                      )}
+                      
+                      <div className="pt-2">
+                        <button
+                          onClick={() => setIsEditingContact(false)}
+                          className="w-full h-8 border border-border rounded-md text-[12px] text-muted-foreground hover:bg-accent transition-colors"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Manual Input Mode */
+                    <>
+                      <div className="space-y-1.5 pt-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">Tên liên hệ</label>
+                        <input
+                          value={editForm.contactName}
+                          onChange={e => setEditForm(p => ({ ...p, contactName: e.target.value }))}
+                          placeholder="Tên khách hàng"
+                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">Số điện thoại</label>
+                        <input
+                          value={editForm.contactPhone}
+                          onChange={e => setEditForm(p => ({ ...p, contactPhone: e.target.value }))}
+                          placeholder="0901234567"
+                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">Mã khách hàng</label>
+                        <input
+                          value={editForm.customerCode}
+                          onChange={e => setEditForm(p => ({ ...p, customerCode: e.target.value.toUpperCase() }))}
+                          placeholder="KH000123"
+                          disabled={!booking?.customer}
+                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background font-mono uppercase focus:ring-1 focus:ring-primary outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          {booking?.customer ? 'Mã này sẽ đồng bộ trực tiếp với hồ sơ khách hàng đang liên kết.' : 'Liên kết khách hàng trước để chỉnh mã khách hàng.'}
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">Nguồn khách</label>
+                        <select
+                          value={Object.keys(BOOKING_SOURCE_LABELS).includes(editForm.source) ? editForm.source : 'OTHER'}
+                          onChange={e => setEditForm(p => ({ ...p, source: e.target.value }))}
+                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                        >
+                          {Object.entries(BOOKING_SOURCE_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">Ghi chú</label>
+                        <textarea
+                          value={editForm.notes}
+                          onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+                          placeholder="Ghi chú về booking..."
+                          rows={2}
+                          className="w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none resize-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => saveContactMutation.mutate()}
+                          disabled={saveContactMutation.isPending || !editForm.contactName.trim() || !editForm.contactPhone.trim()}
+                          className="flex-1 h-9 bg-primary text-primary-foreground rounded-md text-[13px] font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          {saveContactMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          💾 Lưu thay đổi
+                        </button>
+                        <button
+                          onClick={() => setIsEditingContact(false)}
+                          className="px-4 h-9 border border-border rounded-md text-[13px] text-muted-foreground hover:bg-accent transition-colors"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                      {saveContactMutation.error && (
+                        <p className="text-[12px] text-destructive">
+                          {(saveContactMutation.error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+                            || 'Không thể cập nhật khách hàng. Vui lòng thử lại.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                /* ─── Read-only Mode ─── */
+                <div className="flex flex-col text-[13px]">
+                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                    <span className="text-muted-foreground">Tên liên hệ</span>
+                    <span className="font-medium text-foreground text-right flex flex-col items-end">
+                      {bk.customer ? bk.customer.fullName : bk.contactName}
+                      {bk.customer && (
+                        <span className="text-[10px] text-muted-foreground font-normal">
+                          Khách {bk.customer.type === 'CORPORATE' ? 'Doanh nghiệp' : 'Cá nhân'}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                    <span className="text-muted-foreground">Số điện thoại</span>
+                    <span className="font-medium text-foreground flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                      {bk.customer ? bk.customer.phone : bk.contactPhone}
+                    </span>
+                  </div>
+                  {bk.customer?.customerCode && (
+                    <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                      <span className="text-muted-foreground">Mã khách hàng</span>
+                      <span className={cn('inline-flex items-center rounded-md px-2 py-1 text-[11px] font-mono font-medium', getCustomerCodeBadgeClass(bk.customer.type))}>
+                        {bk.customer.customerCode}
+                      </span>
+                    </div>
+                  )}
+                  {bk.pnr && (
+                    <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                      <span className="text-muted-foreground">Mã PNR (GDS)</span>
+                      <span className="font-mono font-bold text-primary">{bk.pnr}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+                    <span className="text-muted-foreground">Nguồn</span>
+                    <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source] || bk.source}</span>
+                  </div>
+
+                  {/* Linked Customer Link */}
+                  {!bk.customer && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isEditingContact && bk.notes && (
                 <div className="mt-4 pt-3 border-t border-border">
                   <p className="text-[13px] text-muted-foreground mb-1">Ghi chú</p>
                   <p className="text-[13px] text-foreground">{bk.notes}</p>
@@ -1099,30 +1494,125 @@ export default function BookingDetailPage() {
               </div>
 
               {/* Dropdown chọn NCC */}
-              <div className="space-y-3">
-                <FormSelect
-                  label="Chọn nhà cung cấp"
-                  value={bk.supplierId || ''}
-                  onChange={(e) => supplierMutation.mutate(e.target.value || null)}
-                >
-                  <option value="">— Chưa chọn NCC —</option>
-                  {(suppliers ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>
-                  ))}
-                </FormSelect>
-
-                {/* Supplier badge */}
-                {bk.supplier && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-accent/50 rounded-lg border border-border/50">
-                    <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                      {bk.supplier.code?.slice(0, 2)}
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-medium text-foreground">{bk.supplier.name}</p>
-                      {bk.supplier.contactName && (
-                        <p className="text-[11px] text-muted-foreground">{bk.supplier.contactName}</p>
+              <div className="space-y-3" ref={supplierDropdownRef}>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={supplierSearchQuery}
+                    placeholder={bk.supplier ? "Sửa NCC (Tìm tên/mã)..." : "Tìm theo mã hoặc tên NCC..."}
+                    onChange={(e) => {
+                      setSupplierSearchQuery(e.target.value);
+                      setShowSupplierDropdown(true);
+                    }}
+                    onFocus={() => setShowSupplierDropdown(true)}
+                    className="w-full pl-8 pr-8 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                  />
+                  {supplierSearchQuery && (
+                    <button
+                      onClick={() => {
+                        setSupplierSearchQuery('');
+                        setShowSupplierDropdown(true);
+                      }}
+                      className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full hover:bg-accent"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  
+                  {/* Dropdown Results */}
+                  {showSupplierDropdown && (
+                    <div className="absolute z-50 top-full mt-1 left-0 right-0 border border-border rounded-md shadow-lg bg-card max-h-[220px] overflow-y-auto">
+                      {/* Option to clear NCC */}
+                      {bk.supplierId && (
+                        <button
+                          onClick={() => {
+                            supplierMutation.mutate(null);
+                            setShowSupplierDropdown(false);
+                            setSupplierSearchQuery('');
+                          }}
+                          className="w-full flex items-center px-3 py-2 text-[12px] text-destructive hover:bg-destructive/10 transition-colors text-left border-b border-border/50"
+                        >
+                          <Ban className="w-3.5 h-3.5 mr-2" /> Xóa nhà cung cấp hiện tại
+                        </button>
                       )}
+                      
+                      {(() => {
+                        const val = supplierSearchQuery.toLowerCase();
+                        const filtered = (suppliers ?? []).filter(s => 
+                          !val || s.name.toLowerCase().includes(val) || s.code.toLowerCase().includes(val)
+                        );
+                        
+                        if (filtered.length === 0) {
+                          return <p className="text-[12px] text-muted-foreground p-3 text-center">Không tìm thấy NCC nào</p>;
+                        }
+                        
+                        return filtered.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              supplierMutation.mutate(s.id);
+                              setShowSupplierDropdown(false);
+                              setSupplierSearchQuery('');
+                            }}
+                            className={cn(
+                              "w-full flex items-center justify-between px-3 py-2 text-[12px] hover:bg-accent transition-colors text-left border-b border-border/50 last:border-0",
+                              bk.supplierId === s.id && "bg-primary/5"
+                            )}
+                          >
+                            <div>
+                              <p className={cn("font-medium", bk.supplierId === s.id ? "text-primary" : "text-foreground")}>
+                                {s.name}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <span className={cn("px-1 rounded bg-muted font-mono font-bold", bk.supplierId === s.id && "bg-primary/10 text-primary")}>
+                                  {s.code}
+                                </span>
+                                {s.contactName && <span>• {s.contactName}</span>}
+                              </p>
+                            </div>
+                            {bk.supplierId === s.id ? (
+                              <CheckCircle2 className="w-4 h-4 text-primary" />
+                            ) : (
+                              <span className="text-[10px] px-2 py-1 bg-primary/10 text-primary rounded-md font-medium opacity-0 group-hover:opacity-100">Chọn</span>
+                            )}
+                          </button>
+                        ));
+                      })()}
                     </div>
+                  )}
+                </div>
+
+                {supplierMutation.error && (
+                  <p className="text-[12px] text-destructive">
+                    {(supplierMutation.error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+                      || 'Không thể cập nhật nhà cung cấp. Vui lòng thử lại.'}
+                  </p>
+                )}
+
+                {bk.supplier ? (
+                  <div className="flex items-center gap-3 px-3 py-3 bg-accent/40 rounded-lg border border-border/60">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary font-mono">
+                      {bk.supplier.code?.slice(0, 2) || 'NCC'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[13px] font-medium text-foreground truncate">{bk.supplier.name}</p>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                          {bk.supplier.code}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        {bk.supplier.contactName || 'Chưa có thông tin liên hệ'}
+                      </p>
+                    </div>
+                    {supplierMutation.isPending && (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/70 px-3 py-3 text-[12px] text-muted-foreground">
+                    Chưa chọn nhà cung cấp cho booking này.
                   </div>
                 )}
 
@@ -1535,14 +2025,6 @@ export default function BookingDetailPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Edit Contact Modal */}
-      {showEditContact && (
-        <EditContactModal
-          booking={bk}
-          onClose={() => setShowEditContact(false)}
-        />
       )}
 
       {/* Add Ticket Modal */}

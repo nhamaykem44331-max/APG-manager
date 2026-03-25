@@ -56,6 +56,7 @@ export interface Customer {
   type: CustomerType;
   companyName?: string;
   companyTaxId?: string;
+  customerCode?: string;
   vipTier: VipTier;
   totalSpent: number;
   totalBookings: number;

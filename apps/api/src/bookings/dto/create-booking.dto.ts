@@ -9,6 +9,10 @@ export class CreateBookingDto {
   @IsString()
   customerId?: string;
 
+  @IsOptional()
+  @IsString()
+  customerCode?: string;
+
   @IsString()
   @IsOptional()
   source?: string;

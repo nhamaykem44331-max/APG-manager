@@ -36,4 +36,8 @@ export class UpdateBookingDto {
   @IsOptional()
   @IsString()
   supplierId?: string;
+
+  @IsOptional()
+  @IsString()
+  customerId?: string;
 }
