@@ -3,13 +3,13 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, User, Phone, Mail,
   CreditCard, Plane, MessageSquare,
   StickyNote, Loader2, Plus, Pin,
-  Send, Building2, TrendingUp, Activity, Shield,
+  Send, Building2, TrendingUp, Activity, Shield, Trash2,
 } from 'lucide-react';
 import {
   customersApi, customerIntelligenceApi, interactionsApi,
@@ -85,6 +85,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('profile');
   const [mounted, setMounted] = useState(false);
@@ -112,6 +113,20 @@ export default function CustomerDetailPage() {
     select: (r) => r.data as CustomerStats,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => customersApi.delete(id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['customers'] }),
+        queryClient.invalidateQueries({ queryKey: ['customer', id] }),
+      ]);
+      router.push('/customers');
+    },
+    onError: (error: any) => {
+      window.alert(error?.response?.data?.message || 'Không thể xóa khách hàng này.');
+    },
+  });
+
   if (!mounted) return null;
 
   if (isLoading) {
@@ -123,6 +138,13 @@ export default function CustomerDetailPage() {
   }
 
   const cust: Customer = customer ?? SAMPLE_CUSTOMER;
+  const handleDeleteCustomer = () => {
+    const shouldDelete = window.confirm(
+      `Xóa khách hàng "${cust.fullName}"?\n\nChỉ nên dùng khi khách chưa có booking, công nợ hoặc hóa đơn liên kết.`,
+    );
+    if (!shouldDelete) return;
+    deleteMutation.mutate();
+  };
 
   return (
     <div className="max-w-[1400px] space-y-6">
@@ -172,26 +194,48 @@ export default function CustomerDetailPage() {
           </div>
         }
         actions={
-          rfm ? (
-            <div className="hidden md:flex items-center gap-2">
-              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
-                <p className="text-sm font-bold text-foreground">{rfm.totalScore}</p>
-                <p className="text-[10px] text-muted-foreground">RFM Score</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDeleteCustomer}
+              disabled={deleteMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] font-medium text-red-500 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Xóa khách hàng này"
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Đang xóa...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Xóa khách hàng
+                </>
+              )}
+            </button>
+
+            {rfm ? (
+              <div className="hidden md:flex items-center gap-2">
+                <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                  <p className="text-sm font-bold text-foreground">{rfm.totalScore}</p>
+                  <p className="text-[10px] text-muted-foreground">RFM Score</p>
+                </div>
+                <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {SEGMENT_LABELS[rfm.segment]?.emoji} {SEGMENT_LABELS[rfm.segment]?.label}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Phân khúc</p>
+                </div>
+                <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
+                  <p className={cn('text-[13px] font-semibold', CHURN_COLORS[rfm.churnRisk])}>
+                    {rfm.churnRisk === 'LOW' ? '🟢 Thấp' : rfm.churnRisk === 'MEDIUM' ? '🟡 TB' : '🔴 Cao'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Rủi ro rời</p>
+                </div>
               </div>
-              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
-                <p className="text-[13px] font-semibold text-foreground">
-                  {SEGMENT_LABELS[rfm.segment]?.emoji} {SEGMENT_LABELS[rfm.segment]?.label}
-                </p>
-                <p className="text-[10px] text-muted-foreground">Phân khúc</p>
-              </div>
-              <div className="text-center px-3 py-1.5 rounded-md bg-card border border-border">
-                <p className={cn('text-[13px] font-semibold', CHURN_COLORS[rfm.churnRisk])}>
-                  {rfm.churnRisk === 'LOW' ? '🟢 Thấp' : rfm.churnRisk === 'MEDIUM' ? '🟡 TB' : '🔴 Cao'}
-                </p>
-                <p className="text-[10px] text-muted-foreground">Rủi ro rời</p>
-              </div>
-            </div>
-          ) : undefined
+            ) : null}
+          </div>
         }
       />
 

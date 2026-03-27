@@ -19,6 +19,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   bookings: 'Bookings',
   customers: 'Customers',
   finance: 'Finance',
+  invoice: 'Invoice',
   flights: 'Flights',
   reports: 'Reports',
   settings: 'Settings',

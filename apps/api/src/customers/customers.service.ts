@@ -370,6 +370,89 @@ export class CustomersService {
     }
   }
 
+  async remove(id: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        passengers: {
+          select: {
+            id: true,
+            _count: {
+              select: {
+                tickets: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            bookings: true,
+            debts: true,
+            ledgers: true,
+            invoiceRecords: true,
+            invoiceExportBatches: true,
+          },
+        },
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException(`Không tìm thấy khách hàng ID: ${id}`);
+    }
+
+    const blockers = [
+      customer._count.bookings > 0 ? `${customer._count.bookings} booking` : null,
+      customer._count.debts > 0 ? `${customer._count.debts} công nợ cũ` : null,
+      customer._count.ledgers > 0 ? `${customer._count.ledgers} bút toán công nợ` : null,
+      customer._count.invoiceRecords > 0 ? `${customer._count.invoiceRecords} hóa đơn` : null,
+      customer._count.invoiceExportBatches > 0 ? `${customer._count.invoiceExportBatches} batch export invoice` : null,
+    ].filter(Boolean) as string[];
+
+    if (blockers.length > 0) {
+      throw new ConflictException(
+        `Không thể xóa khách hàng vì vẫn còn dữ liệu liên kết: ${blockers.join(', ')}.`,
+      );
+    }
+
+    const passengerIdsToDetach = customer.passengers
+      .filter((passenger) => passenger._count.tickets > 0)
+      .map((passenger) => passenger.id);
+    const passengerIdsToDelete = customer.passengers
+      .filter((passenger) => passenger._count.tickets === 0)
+      .map((passenger) => passenger.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customerInteraction.deleteMany({ where: { customerId: id } });
+      await tx.customerNote.deleteMany({ where: { customerId: id } });
+      await tx.communicationLog.deleteMany({ where: { customerId: id } });
+
+      if (passengerIdsToDetach.length > 0) {
+        await tx.passenger.updateMany({
+          where: { id: { in: passengerIdsToDetach } },
+          data: { customerId: null },
+        });
+      }
+
+      if (passengerIdsToDelete.length > 0) {
+        await tx.passenger.deleteMany({
+          where: { id: { in: passengerIdsToDelete } },
+        });
+      }
+
+      await tx.customer.delete({ where: { id } });
+    });
+
+    return {
+      success: true,
+      id,
+      message: `Đã xóa khách hàng ${customer.fullName}.`,
+      detachedPassengers: passengerIdsToDetach.length,
+      deletedPassengers: passengerIdsToDelete.length,
+    };
+  }
+
   async autoClassifyVipTier(customerId: string) {
     const bookingSum = await this.prisma.booking.aggregate({
       where: { customerId, deletedAt: null, status: { in: ['ISSUED', 'COMPLETED'] } },
@@ -404,7 +487,10 @@ export class CustomersService {
         _count: { id: true },
       }),
       this.prisma.payment.aggregate({
-        where: { booking: { customerId: id } },
+        where: {
+          method: { not: 'DEBT' },
+          booking: { customerId: id, deletedAt: null },
+        },
         _sum: { amount: true },
       }),
     ]);

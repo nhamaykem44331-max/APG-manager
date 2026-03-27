@@ -31,6 +31,7 @@ export function PaymentModal({ ledger, onClose }: Props) {
 
   const partyName = ledger.customer?.fullName ?? ledger.supplier?.name ?? ledger.customerCode ?? '—';
   const remaining = Number(ledger.remaining);
+  const isReceivable = ledger.direction === 'RECEIVABLE';
 
   const mutation = useMutation({
     mutationFn: () => ledgerApi.pay(ledger.id, {
@@ -42,6 +43,10 @@ export function PaymentModal({ ledger, onClose }: Props) {
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ledger'] });
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      if (ledger.bookingId) {
+        qc.invalidateQueries({ queryKey: ['booking', ledger.bookingId] });
+      }
       onClose();
     },
     onError: (err: unknown) => {
@@ -118,7 +123,7 @@ export function PaymentModal({ ledger, onClose }: Props) {
 
           {/* Chọn quỹ */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Chi từ quỹ</label>
+            <label className="text-xs font-medium text-muted-foreground">{isReceivable ? 'Thu vào quỹ' : 'Chi từ quỹ'}</label>
             <select value={fundAccount} onChange={(e) => setFundAccount(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >

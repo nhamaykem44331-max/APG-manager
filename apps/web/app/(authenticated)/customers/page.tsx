@@ -118,39 +118,39 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="max-w-[1400px] space-y-6">
+    <div className="max-w-[1400px] space-y-5">
       <PageHeader
         title="Khách hàng"
         description={`CRM · ${total.toLocaleString('vi-VN')} khách hàng`}
         actions={
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-background transition-all hover:opacity-90 active:scale-[0.98]"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-foreground px-3 text-[12px] font-medium text-background transition-all hover:opacity-90 active:scale-[0.98]"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             Thêm mới
           </button>
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: 'Tổng khách', value: total, icon: Users, color: 'text-blue-500' },
           { label: 'Platinum', value: 3, icon: Star, color: 'text-purple-500' },
           { label: 'Doanh nghiệp', value: 12, icon: Building2, color: 'text-orange-500' },
           { label: 'Mới tháng này', value: 8, icon: Plus, color: 'text-green-500' },
         ].map((item) => (
-          <div key={item.label} className="card flex min-h-[100px] flex-col justify-between p-4">
+          <div key={item.label} className="card flex min-h-[88px] flex-col justify-between p-3.5">
             <div className="flex items-start justify-between">
-              <p className="text-[13px] font-medium text-muted-foreground">{item.label}</p>
-              <item.icon className={cn('h-4 w-4', item.color)} />
+              <p className="text-[12px] font-medium text-muted-foreground">{item.label}</p>
+              <item.icon className={cn('h-3.5 w-3.5', item.color)} />
             </div>
-            <p className="font-tabular text-2xl font-bold tracking-tight text-foreground">{item.value}</p>
+            <p className="font-tabular text-[28px] font-bold tracking-tight text-foreground">{item.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <FilterBar
           searchPlaceholder="Tên, SĐT, email, mã KH..."
           searchValue={search}
@@ -160,7 +160,7 @@ export default function CustomersPage() {
           }}
           filters={
             <>
-              <div className="mr-1 flex gap-1 border-r border-border pr-3">
+              <div className="mr-0.5 flex gap-1 border-r border-border pr-2.5">
                 {TYPE_FILTERS.map((filter) => (
                   <button
                     key={filter.key}
@@ -169,7 +169,7 @@ export default function CustomersPage() {
                       setPage(1);
                     }}
                     className={cn(
-                      'rounded-md border border-transparent px-2.5 py-1.5 text-[13px] font-medium transition-colors',
+                      'rounded-lg border border-transparent px-2.5 py-1 text-[12px] font-medium transition-colors',
                       typeFilter === filter.key
                         ? 'bg-foreground text-background'
                         : 'text-muted-foreground hover:border-border hover:bg-accent',
@@ -188,7 +188,7 @@ export default function CustomersPage() {
                       setPage(1);
                     }}
                     className={cn(
-                      'rounded-md border border-transparent px-2.5 py-1.5 text-[13px] font-medium transition-colors',
+                      'rounded-lg border border-transparent px-2.5 py-1 text-[12px] font-medium transition-colors',
                       vipFilter === filter.key
                         ? 'bg-foreground text-background'
                         : 'text-muted-foreground hover:border-border hover:bg-accent',
@@ -213,15 +213,15 @@ export default function CustomersPage() {
               header: 'Khách hàng',
               cell: (customer) => (
                 <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-sm bg-accent">
+                  <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-accent">
                     <span className="text-xs font-bold text-foreground">
                       {customer.fullName.split(' ').pop()?.charAt(0) ?? '?'}
                     </span>
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{customer.fullName}</p>
+                    <p className="text-[12.5px] font-medium text-foreground">{customer.fullName}</p>
                     {customer.companyName && (
-                      <p className="text-[11px] text-muted-foreground">{customer.companyName}</p>
+                      <p className="text-[10px] text-muted-foreground">{customer.companyName}</p>
                     )}
                   </div>
                 </div>
@@ -249,7 +249,7 @@ export default function CustomersPage() {
               cell: (customer) => (
                 <span
                   className={cn(
-                    'inline-flex min-w-[92px] items-center justify-center rounded-md px-2 py-1 text-[12px] font-medium font-mono',
+                    'inline-flex min-w-[88px] items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-medium font-mono',
                     customer.customerCode
                       ? getCustomerCodeBadgeClass(customer.type)
                       : 'bg-muted text-muted-foreground',
@@ -264,7 +264,7 @@ export default function CustomersPage() {
               cell: (customer) => (
                 <div className="flex items-center gap-1.5">
                   <div className={cn('h-1.5 w-1.5 rounded-full', VIP_DOT[customer.vipTier] ?? VIP_DOT.NORMAL)} />
-                  <span className="text-[13px] text-muted-foreground">
+                  <span className="text-[12px] text-muted-foreground">
                     {VIP_TIER_LABELS[customer.vipTier]}
                   </span>
                 </div>

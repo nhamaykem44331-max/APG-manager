@@ -18,6 +18,11 @@ export function AirlineChartInner({ data }: AirlineChartProps) {
         <p className="text-[11px] text-muted-foreground mt-0.5">Tháng này</p>
       </div>
 
+      {data.length === 0 ? (
+        <div className="flex h-[220px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
+          Chưa có vé phát sinh trong tháng này
+        </div>
+      ) : (
       <div className="space-y-3.5">
         {data.map((row) => {
           const color = AIRLINE_COLORS[row.airline] || '#6B7280';
@@ -51,6 +56,7 @@ export function AirlineChartInner({ data }: AirlineChartProps) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

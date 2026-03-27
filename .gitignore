@@ -15,6 +15,7 @@ dist/
 .next/
 out/
 build/
+*.tsbuildinfo
 
 # Logs
 *.log
@@ -33,3 +34,6 @@ apps/api/node_modules/
 
 # Turbo cache
 .turbo/
+
+# Runtime data
+apps/api/storage/

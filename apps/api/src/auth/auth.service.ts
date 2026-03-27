@@ -11,6 +11,8 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../common/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { normalizePermissions } from '../users/user-permissions';
 
 // Kiểu dữ liệu JWT payload
 interface JwtPayload {
@@ -115,6 +117,38 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!existingUser) {
+      throw new UnauthorizedException('Không tìm thấy tài khoản');
+    }
+
+    if (dto.email && dto.email.trim().toLowerCase() !== existingUser.email) {
+      const conflict = await this.prisma.user.findUnique({
+        where: { email: dto.email.trim().toLowerCase() },
+        select: { id: true },
+      });
+
+      if (conflict && conflict.id !== userId) {
+        throw new BadRequestException('Email đã tồn tại trong hệ thống');
+      }
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: dto.email?.trim().toLowerCase(),
+        fullName: dto.fullName?.trim(),
+        phone: dto.phone === undefined ? undefined : dto.phone.trim() || null,
+      },
+    });
+
+    return this.sanitizeUser(user);
+  }
+
   // Đổi mật khẩu
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -144,6 +178,9 @@ export class AuthService {
   private sanitizeUser(user: User) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...safeUser } = user;
-    return safeUser;
+    return {
+      ...safeUser,
+      permissions: normalizePermissions(safeUser.permissions, safeUser.role),
+    };
   }
 }

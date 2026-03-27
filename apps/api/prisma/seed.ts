@@ -1,5 +1,5 @@
 // APG Manager RMS - Seed Database (tạo dữ liệu mẫu ban đầu)
-import { PrismaClient, UserRole, Airline } from '@prisma/client';
+import { PrismaClient, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();

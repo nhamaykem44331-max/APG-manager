@@ -1,17 +1,18 @@
-// APG Manager RMS - LedgerService: Quản lý sổ cái công nợ 2 chiều (AR/AP)
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CashFlowSourceType, FundAccount, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
-import { CreateLedgerDto, PayLedgerDto, ListLedgerDto } from './dto';
 import { N8nService } from '../automation/n8n.service';
+import { CashFlowService } from './cashflow.service';
+import { CreateLedgerDto, ListLedgerDto, PayLedgerDto } from './dto';
 
 @Injectable()
 export class LedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly n8n: N8nService,
+    private readonly cashflow: CashFlowService,
   ) {}
 
-  // ─── Sinh mã AR/AP tự động ───────────────────────────────────────────
   private async generateCode(direction: string): Promise<string> {
     const prefix = direction === 'RECEIVABLE' ? 'AR' : 'AP';
     const now = new Date();
@@ -25,9 +26,10 @@ export class LedgerService {
     return `${dateStr}-${(count + 1).toString().padStart(3, '0')}`;
   }
 
-  // ─── Tính lại status sau khi có thanh toán ───────────────────────────
   private calcStatus(
-    totalAmount: number, paidAmount: number, dueDate: Date,
+    totalAmount: number,
+    paidAmount: number,
+    dueDate: Date,
   ): 'ACTIVE' | 'PARTIAL_PAID' | 'PAID' | 'OVERDUE' {
     if (paidAmount >= totalAmount) return 'PAID';
     if (paidAmount > 0) return 'PARTIAL_PAID';
@@ -35,7 +37,33 @@ export class LedgerService {
     return 'ACTIVE';
   }
 
-  // ─── findAll: Danh sách công nợ có filter + phân trang ───────────────
+  private async syncBookingPaymentStatus(
+    tx: Prisma.TransactionClient,
+    bookingId: string,
+  ) {
+    const [booking, payments] = await Promise.all([
+      tx.booking.findUnique({ where: { id: bookingId } }),
+      tx.payment.findMany({ where: { bookingId } }),
+    ]);
+
+    if (!booking) return;
+
+    const totalPaid = payments
+      .filter((payment) => payment.method !== 'DEBT')
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const totalSell = Number(booking.totalSellPrice);
+
+    let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
+    if (totalPaid >= totalSell && totalSell > 0) paymentStatus = 'PAID';
+    else if (totalPaid > 0) paymentStatus = 'PARTIAL';
+    else paymentStatus = 'UNPAID';
+
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: { paymentStatus },
+    });
+  }
+
   async findAll(dto: ListLedgerDto) {
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
@@ -56,6 +84,11 @@ export class LedgerService {
         { customerCode: { contains: dto.search, mode: 'insensitive' } },
         { notes: { contains: dto.search, mode: 'insensitive' } },
         { bookingCode: { contains: dto.search, mode: 'insensitive' } },
+        { invoiceNumber: { contains: dto.search, mode: 'insensitive' } },
+        { booking: { is: { pnr: { contains: dto.search, mode: 'insensitive' } } } },
+        { customer: { is: { fullName: { contains: dto.search, mode: 'insensitive' } } } },
+        { customer: { is: { customerCode: { contains: dto.search, mode: 'insensitive' } } } },
+        { supplier: { is: { name: { contains: dto.search, mode: 'insensitive' } } } },
       ];
     }
 
@@ -70,9 +103,9 @@ export class LedgerService {
         take: pageSize,
         orderBy,
         include: {
-          customer: { select: { id: true, fullName: true, phone: true, type: true } },
+          customer: { select: { id: true, fullName: true, phone: true, type: true, customerCode: true } },
           supplier: { select: { id: true, code: true, name: true, type: true } },
-          booking: { select: { id: true, bookingCode: true, totalSellPrice: true } },
+          booking: { select: { id: true, bookingCode: true, pnr: true, totalSellPrice: true } },
           payments: { orderBy: { paidAt: 'desc' } },
         },
       }),
@@ -85,20 +118,18 @@ export class LedgerService {
     };
   }
 
-  // ─── findOne: Chi tiết 1 công nợ ─────────────────────────────────────
   async findOne(id: string) {
     return this.prisma.accountsLedger.findUniqueOrThrow({
       where: { id },
       include: {
         customer: true,
         supplier: true,
-        booking: { select: { id: true, bookingCode: true, totalSellPrice: true } },
+        booking: { select: { id: true, bookingCode: true, pnr: true, totalSellPrice: true } },
         payments: { orderBy: { paidAt: 'desc' } },
       },
     });
   }
 
-  // ─── create: Tạo công nợ mới ─────────────────────────────────────────
   async create(dto: CreateLedgerDto, userId: string) {
     const code = await this.generateCode(dto.direction);
     return this.prisma.accountsLedger.create({
@@ -123,7 +154,6 @@ export class LedgerService {
     });
   }
 
-  // ─── update: Cập nhật thông tin công nợ ──────────────────────────────
   async update(id: string, data: Partial<CreateLedgerDto>) {
     return this.prisma.accountsLedger.update({
       where: { id },
@@ -137,122 +167,115 @@ export class LedgerService {
     });
   }
 
-  // ─── pay: Ghi nhận thanh toán công nợ ────────────────────────────────
   async pay(id: string, dto: PayLedgerDto, userId: string) {
     const ledger = await this.prisma.accountsLedger.findUniqueOrThrow({
       where: { id },
-      include: { customer: true, supplier: true, booking: { select: { bookingCode: true, pnr: true } } },
-    });
-
-    // Tạo LedgerPayment
-    await this.prisma.ledgerPayment.create({
-      data: {
-        ledgerId: id,
-        amount: dto.amount,
-        method: dto.method,
-        reference: dto.reference,
-        paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-        paidBy: userId,
-        notes: dto.notes,
+      include: {
+        customer: true,
+        supplier: true,
+        booking: { select: { bookingCode: true, pnr: true } },
       },
     });
 
-    // Cập nhật paidAmount và remaining
+    if (dto.amount > Number(ledger.remaining)) {
+      throw new BadRequestException(
+        `Sá»‘ tiá»n vÆ°á»£t quÃ¡ sá»‘ cÃ²n láº¡i (${Number(ledger.remaining).toLocaleString('vi-VN')} â‚«).`,
+      );
+    }
+
+    if (!dto.fundAccount) {
+      throw new BadRequestException('Vui lÃ²ng chá»n quá»¹ thu/chi khi ghi nháº­n thanh toÃ¡n.');
+    }
+
+    const fundAccount = dto.fundAccount as FundAccount;
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     const newPaid = Number(ledger.paidAmount) + dto.amount;
     const newRemaining = Math.max(0, Number(ledger.totalAmount) - newPaid);
     const newStatus = this.calcStatus(Number(ledger.totalAmount), newPaid, ledger.dueDate);
 
-    const updated = await this.prisma.accountsLedger.update({
-      where: { id },
-      data: { paidAmount: newPaid, remaining: newRemaining, status: newStatus as never },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const ledgerPayment = await tx.ledgerPayment.create({
+        data: {
+          ledgerId: id,
+          amount: dto.amount,
+          method: dto.method,
+          reference: dto.reference,
+          paidAt,
+          paidBy: userId,
+          notes: dto.notes,
+        },
+      });
+
+      const updatedLedger = await tx.accountsLedger.update({
+        where: { id },
+        data: {
+          paidAmount: newPaid,
+          remaining: newRemaining,
+          status: newStatus as never,
+        },
+      });
+
+      if (ledger.direction === 'RECEIVABLE' && ledger.bookingId) {
+        await tx.payment.create({
+          data: {
+            bookingId: ledger.bookingId,
+            amount: dto.amount,
+            method: dto.method,
+            fundAccount: fundAccount as Prisma.PaymentCreateInput['fundAccount'],
+            reference: dto.reference,
+            paidAt,
+            notes: dto.notes || `Thu cÃ´ng ná»£ tá»« Finance (${ledger.code})`,
+          },
+        });
+
+        await this.syncBookingPaymentStatus(tx, ledger.bookingId);
+      }
+
+      await this.cashflow.recordSystemEntry({
+        direction: ledger.direction === 'PAYABLE' ? 'OUTFLOW' : 'INFLOW',
+        category: ledger.direction === 'PAYABLE' ? 'AIRLINE_PAYMENT' : 'TICKET_PAYMENT',
+        amount: dto.amount,
+        pic: 'System',
+        description: ledger.direction === 'PAYABLE'
+          ? `Tráº£ NCC ${ledger.supplier?.name ?? ledger.customerCode ?? 'NCC'} - ${ledger.booking?.bookingCode ?? ledger.code}`
+          : `Thu cÃ´ng ná»£ KH ${ledger.customer?.fullName ?? ledger.customerCode ?? 'KH'} - ${ledger.code}`,
+        reference: dto.reference || ledger.code,
+        date: paidAt,
+        status: 'DONE',
+        fundAccount,
+        notes: dto.notes ?? `Ledger: ${ledger.code}`,
+        sourceType: CashFlowSourceType.LEDGER_PAYMENT,
+        sourceId: ledgerPayment.id,
+        isLocked: true,
+      }, tx);
+
+      if (ledger.direction === 'PAYABLE' && ledger.supplier?.type === 'AIRLINE') {
+        const deposit = await tx.airlineDeposit.findFirst({
+          where: { airline: ledger.supplier.code },
+        });
+
+        if (deposit) {
+          await tx.airlineDeposit.update({
+            where: { id: deposit.id },
+            data: { balance: { decrement: dto.amount } },
+          });
+        }
+      }
+
+      return updatedLedger;
     });
 
-    // Gửi webhook n8n thông báo thanh toán
     const partyName = ledger.customer?.fullName ?? ledger.supplier?.name ?? ledger.customerCode ?? 'N/A';
     await this.n8n.sendLedgerPaymentNotification({
       ledgerCode: ledger.code,
       amount: dto.amount,
       direction: ledger.direction,
       partyName,
-    }).catch(() => undefined); // Không block response nếu lỗi webhook
-
-    // ── AUTO CASHFLOW khi thanh toán ledger ─────────────────────
-    const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
-      : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
-      : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'N/A';
-
-    // Nếu AP (trả NCC) → ghi OUTFLOW
-    if (ledger.direction === 'PAYABLE') {
-      try {
-        const supplierName = ledger.supplier?.name ?? ledger.customerCode ?? 'NCC';
-        const bookingRef = ledger.booking?.bookingCode || ledger.code;
-
-        await this.prisma.cashFlowEntry.create({
-          data: {
-            direction: 'OUTFLOW',
-            category: 'AIRLINE_PAYMENT',
-            amount: dto.amount,
-            pic: 'System',
-            description: `Trả NCC ${supplierName} — ${bookingRef}`,
-            reference: dto.reference || ledger.code,
-            date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-            status: 'DONE',
-            fundAccount: dto.fundAccount as any,
-            notes: `Ledger: ${ledger.code}`,
-          },
-        });
-        console.log(`[OUTFLOW-AP] -${dto.amount} trả ${supplierName} từ ${fundLabel}`);
-      } catch (err) {
-        console.error('[OUTFLOW-AP] Lỗi ghi CashFlow:', err);
-      }
-
-      // Trừ Deposit nếu NCC là hãng bay
-      if (ledger.supplier?.type === 'AIRLINE') {
-        try {
-          const deposit = await this.prisma.airlineDeposit.findFirst({
-            where: { airline: ledger.supplier.code },
-          });
-          if (deposit) {
-            await this.prisma.airlineDeposit.update({
-              where: { id: deposit.id },
-              data: { balance: { decrement: dto.amount } },
-            });
-            console.log(`[DEPOSIT] Trừ ${dto.amount} deposit ${ledger.supplier.code}`);
-          }
-        } catch (err) {
-          console.error('[DEPOSIT] Lỗi trừ deposit:', err);
-        }
-      }
-    }
-
-    // Nếu AR (thu KH từ Finance) → ghi INFLOW
-    if (ledger.direction === 'RECEIVABLE') {
-      try {
-        const customerName = ledger.customer?.fullName ?? ledger.customerCode ?? 'KH';
-        await this.prisma.cashFlowEntry.create({
-          data: {
-            direction: 'INFLOW',
-            category: 'TICKET_PAYMENT',
-            amount: dto.amount,
-            pic: 'System',
-            description: `Thu công nợ KH ${customerName} — ${ledger.code}`,
-            reference: dto.reference || ledger.code,
-            date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-            status: 'DONE',
-            fundAccount: dto.fundAccount as any,
-            notes: `Ledger: ${ledger.code}`,
-          },
-        });
-        console.log(`[INFLOW-AR] +${dto.amount} thu từ ${customerName} vào ${fundLabel}`);
-      } catch (err) {
-        console.error('[INFLOW-AR] Lỗi ghi CashFlow:', err);
-      }
-    }
+    }).catch(() => undefined);
 
     return updated;
   }
 
-  // ─── getSummary: Tổng quan AR/AP ─────────────────────────────────────
   async getSummary() {
     const now = new Date();
 
@@ -283,7 +306,7 @@ export class LedgerService {
     return {
       totalReceivable,
       totalPayable,
-      netPosition: totalReceivable - totalPayable, // Dương = APG đang có lời
+      netPosition: totalReceivable - totalPayable,
       overdueReceivable: Number(arOverdue._sum.remaining ?? 0),
       overduePayable: Number(apOverdue._sum.remaining ?? 0),
       receivableCount: arData._count,
@@ -291,7 +314,6 @@ export class LedgerService {
     };
   }
 
-  // ─── getAging: Báo cáo lão hóa công nợ ──────────────────────────────
   async getAging(direction?: string) {
     const now = new Date();
     const directionFilter = direction
@@ -304,12 +326,12 @@ export class LedgerService {
     });
 
     const buckets = (dir: string) => {
-      const filtered = ledgers.filter((l) => !direction || l.direction === dir);
-      const result = { 'Chưa đến hạn': 0, '0-30': 0, '30-60': 0, '60-90': 0, '>90': 0 };
-      for (const l of filtered) {
-        const days = Math.floor((now.getTime() - l.dueDate.getTime()) / 86_400_000);
-        const amount = Number(l.remaining);
-        if (days < 0) result['Chưa đến hạn'] += amount;
+      const filtered = ledgers.filter((item) => !direction || item.direction === dir);
+      const result = { 'ChÆ°a Ä‘áº¿n háº¡n': 0, '0-30': 0, '30-60': 0, '60-90': 0, '>90': 0 };
+      for (const item of filtered) {
+        const days = Math.floor((now.getTime() - item.dueDate.getTime()) / 86_400_000);
+        const amount = Number(item.remaining);
+        if (days < 0) result['ChÆ°a Ä‘áº¿n háº¡n'] += amount;
         else if (days <= 30) result['0-30'] += amount;
         else if (days <= 60) result['30-60'] += amount;
         else if (days <= 90) result['60-90'] += amount;
@@ -319,28 +341,31 @@ export class LedgerService {
     };
 
     if (direction) {
-      return [{ direction, buckets: buckets(direction), total: ledgers.reduce((s, l) => s + Number(l.remaining), 0) }];
+      return [{
+        direction,
+        buckets: buckets(direction),
+        total: ledgers.reduce((sum, item) => sum + Number(item.remaining), 0),
+      }];
     }
+
     return [
       { direction: 'RECEIVABLE', buckets: buckets('RECEIVABLE') },
       { direction: 'PAYABLE', buckets: buckets('PAYABLE') },
     ];
   }
 
-  // ─── getOverdue: Tất cả khoản quá hạn ───────────────────────────────
   async getOverdue() {
     const now = new Date();
     return this.prisma.accountsLedger.findMany({
       where: { dueDate: { lt: now }, status: { not: 'PAID' } },
       orderBy: { dueDate: 'asc' },
       include: {
-        customer: { select: { id: true, fullName: true, phone: true } },
+        customer: { select: { id: true, fullName: true, phone: true, customerCode: true, type: true } },
         supplier: { select: { id: true, code: true, name: true } },
       },
     });
   }
 
-  // ─── getStatement: Bảng kê đối chiếu cho 1 khách hàng ───────────────
   async getStatement(customerId: string) {
     return this.prisma.accountsLedger.findMany({
       where: { customerId },

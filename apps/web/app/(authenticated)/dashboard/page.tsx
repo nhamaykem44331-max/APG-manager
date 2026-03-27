@@ -1,254 +1,293 @@
-// APG Manager RMS - Dashboard (trang chủ sau khi đăng nhập)
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import {
-  Plane, DollarSign, TrendingUp, Clock,
-  AlertTriangle, Plus, Search, RefreshCw,
-} from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import Link from 'next/link';
-import { KpiCard } from '@/components/charts/kpi-card';
-import { RevenueChart } from '@/components/charts/revenue-chart';
 import { AirlineChart } from '@/components/charts/airline-chart';
-import { PageHeader } from '@/components/ui/page-header';
+import { RevenueChart } from '@/components/charts/revenue-chart';
 import { DataTable, ColumnDef } from '@/components/ui/data-table';
-import { cn, formatVND, BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES } from '@/lib/utils';
-import { dashboardApi, bookingsApi, financeApi } from '@/lib/api';
+import { PageHeader } from '@/components/ui/page-header';
+import { dashboardApi } from '@/lib/api';
+import { BOOKING_STATUS_CLASSES, BOOKING_STATUS_LABELS, cn, formatDateTime, formatVND } from '@/lib/utils';
+import type { DashboardOverview, DashboardOverviewAlert, DashboardOverviewBooking } from '@/types';
 
-// Dữ liệu mẫu khi chưa có API
-const SAMPLE_REVENUE_DATA = [
-  { date: 'T2', revenue: 42_000_000, profit: 4_200_000 },
-  { date: 'T3', revenue: 38_000_000, profit: 3_800_000 },
-  { date: 'T4', revenue: 55_000_000, profit: 5_500_000 },
-  { date: 'T5', revenue: 47_000_000, profit: 4_700_000 },
-  { date: 'T6', revenue: 63_000_000, profit: 6_300_000 },
-  { date: 'T7', revenue: 71_000_000, profit: 7_100_000 },
-  { date: 'CN', revenue: 45_000_000, profit: 4_500_000 },
-];
+const METRIC_CARD_STYLES = {
+  amber: {
+    line: 'bg-amber-400',
+    value: 'text-amber-400',
+    glow: 'bg-amber-500/5',
+  },
+  lime: {
+    line: 'bg-lime-400',
+    value: 'text-lime-400',
+    glow: 'bg-lime-500/5',
+  },
+  violet: {
+    line: 'bg-violet-400',
+    value: 'text-violet-400',
+    glow: 'bg-violet-500/5',
+  },
+  rose: {
+    line: 'bg-rose-400',
+    value: 'text-rose-400',
+    glow: 'bg-rose-500/5',
+  },
+  red: {
+    line: 'bg-red-500',
+    value: 'text-red-500',
+    glow: 'bg-red-500/5',
+  },
+  slate: {
+    line: 'bg-slate-400',
+    value: 'text-slate-200',
+    glow: 'bg-slate-500/5',
+  },
+  emerald: {
+    line: 'bg-emerald-400',
+    value: 'text-emerald-400',
+    glow: 'bg-emerald-500/5',
+  },
+  cyan: {
+    line: 'bg-cyan-400',
+    value: 'text-cyan-400',
+    glow: 'bg-cyan-500/5',
+  },
+} as const;
 
-const SAMPLE_AIRLINE_DATA = [
-  { airline: 'VN', value: 142, percent: 40 },
-  { airline: 'VJ', value: 98,  percent: 28 },
-  { airline: 'QH', value: 71,  percent: 20 },
-  { airline: 'BL', value: 35,  percent: 10 },
-  { airline: 'VU', value: 7,   percent: 2  },
-];
+type MetricTone = keyof typeof METRIC_CARD_STYLES;
+
+function MetricCard({
+  label,
+  value,
+  helper,
+  tone,
+  loading,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+  tone: MetricTone;
+  loading?: boolean;
+}) {
+  const style = METRIC_CARD_STYLES[tone];
+
+  if (loading) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className={cn('h-1.5 animate-pulse', style.line)} />
+        <div className="space-y-3 p-4">
+          <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+          <div className="h-8 w-36 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-24 animate-pulse rounded bg-muted/70" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn('overflow-hidden rounded-xl border border-border bg-card', style.glow)}>
+      <div className={cn('h-1.5', style.line)} />
+      <div className="p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+        <p className={cn('mt-3 text-[28px] font-semibold tracking-tight', style.value)}>{value}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{helper ?? 'Số liệu realtime từ dữ liệu thật'}</p>
+      </div>
+    </div>
+  );
+}
+
+function AlertItem({ alert }: { alert: DashboardOverviewAlert }) {
+  const styles = {
+    warning: 'border-amber-500/20 bg-amber-500/10 text-amber-300',
+    error: 'border-red-500/20 bg-red-500/10 text-red-300',
+    info: 'border-blue-500/20 bg-blue-500/10 text-blue-300',
+    success: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+  } as const;
+
+  return (
+    <div className={cn('flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-[13px]', styles[alert.type])}>
+      <p className="truncate font-medium leading-snug">{alert.text}</p>
+      <span className="shrink-0 text-[11px] opacity-70">{alert.time}</span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
-  // Fetch booking gần nhất
-  const { data: bookingsData, isLoading: bookingsLoading } = useQuery({
-    queryKey: ['dashboard-bookings'],
-    queryFn: () => bookingsApi.list({ pageSize: 5, sortBy: 'createdAt', order: 'desc' }),
-    select: (res) => res.data,
+  const { data: overview, isLoading } = useQuery({
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardApi.getOverview(),
+    select: (response) => response.data as DashboardOverview,
   });
 
-  // Fetch deposit cảnh báo
-  const { data: depositsData } = useQuery({
-    queryKey: ['deposits'],
-    queryFn: () => financeApi.getDeposits(),
-    select: (res) => res.data,
-  });
+  const summary = overview?.summary;
+  const recentBookings = overview?.recentBookings ?? [];
+  const alerts = overview?.alerts ?? [];
 
-  // Fetch ledger summary (AR/AP totals)
-  const { data: ledgerSummary } = useQuery({
-    queryKey: ['ledger-summary'],
-    queryFn: () => financeApi.getLedgerSummary().then(r => r.data),
-  });
-
-  // Fetch fund balances
-  const { data: fundBalances } = useQuery({
-    queryKey: ['fund-balances'],
-    queryFn: () => financeApi.getFundBalances().then(r => r.data),
-  });
-
-  const recentBookings = bookingsData?.data ?? SAMPLE_BOOKINGS;
-  const lowDeposits = (depositsData ?? []).filter(
-    (d: { balance: number; alertThreshold: number }) => d.balance < d.alertThreshold
-  );
-
-  const columns: ColumnDef<SampleBooking>[] = [
+  const columns: ColumnDef<DashboardOverviewBooking>[] = [
     {
       header: 'Mã vé',
       accessorKey: 'pnr',
-      cell: (b) => b.pnr
-        ? <span className="font-mono font-bold text-foreground tracking-widest text-[13px]">{b.pnr}</span>
-        : <span className="text-muted-foreground text-[11px] italic">Chưa có PNR</span>,
+      cell: (booking) => booking.pnr
+        ? <span className="font-mono text-[13px] font-bold tracking-widest text-foreground">{booking.pnr}</span>
+        : <span className="text-[11px] italic text-muted-foreground">Chưa có PNR</span>,
     },
     {
       header: 'Khách hàng',
       accessorKey: 'contactName',
-      cell: (b) => <span className="font-medium text-foreground truncate max-w-[150px] inline-block align-bottom">{b.contactName}</span>,
+      cell: (booking) => (
+        <span className="inline-block max-w-[180px] truncate font-medium text-foreground">{booking.contactName}</span>
+      ),
     },
     {
       header: 'Tuyến',
       accessorKey: 'route',
-      cell: (b) => <span className="text-muted-foreground">{b.route}</span>,
+      cell: (booking) => <span className="text-muted-foreground">{booking.route}</span>,
     },
     {
       header: 'Giá trị',
       accessorKey: 'totalSellPrice',
-      cell: (b) => <span className="font-tabular font-medium">{formatVND(b.totalSellPrice)}</span>,
+      cell: (booking) => <span className="font-medium font-tabular">{formatVND(booking.totalSellPrice)}</span>,
     },
     {
       header: 'Trạng thái',
       accessorKey: 'status',
-      cell: (b) => (
-        <span className={cn('inline-flex items-center', BOOKING_STATUS_CLASSES[b.status] ?? 'badge-default')}>
-          {BOOKING_STATUS_LABELS[b.status] ?? b.status}
+      cell: (booking) => (
+        <span className={cn('inline-flex items-center', BOOKING_STATUS_CLASSES[booking.status] ?? 'badge-default')}>
+          {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
         </span>
       ),
     },
   ];
 
+  const generatedAt = overview?.generatedAt ? formatDateTime(overview.generatedAt) : '';
+
   return (
-    <div className="space-y-6 max-w-[1400px]">
+    <div className="max-w-[1500px] space-y-6">
       <PageHeader
         title="Dashboard"
-        description="Tổng quan hoạt động hôm nay"
-        actions={
-          <span className="text-[13px] text-muted-foreground px-3 py-1.5 rounded-md border border-border bg-card">
-            {new Date().toLocaleDateString('vi-VN', {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
-          </span>
-        }
+        description="Tổng quan vận hành và tài chính tháng này"
+        actions={(
+          <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-[13px] text-muted-foreground">
+            <span>{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            {generatedAt ? <span className="hidden text-xs opacity-70 md:inline">• Cập nhật {generatedAt}</span> : null}
+          </div>
+        )}
       />
 
-      {/* Row 1: KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          label="Vé xuất hôm nay"
-          value="23"
-          change={15}
-          accentColor="blue"
-        />
-        <KpiCard
-          label="Doanh thu ngày"
-          value="45.2M"
-          change={8}
-          accentColor="blue"
-        />
-        <KpiCard
-          label="Lợi nhuận ngày"
-          value="4.8M"
-          change={12}
-          accentColor="emerald"
-        />
-        <KpiCard
-          label="Booking chờ xử lý"
-          value="7"
-          accentColor="amber"
-        />
-      </div>
-
-      {/* Row 2: Financial KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          label="Công nợ phải thu"
-          value={formatVND(ledgerSummary?.totalReceivable ?? 0)}
-          accentColor="amber"
-        />
-        <KpiCard
-          label="Công nợ phải trả"
-          value={formatVND(ledgerSummary?.totalPayable ?? 0)}
-          accentColor="red"
-        />
-        {(fundBalances || []).slice(0, 2).map((f: { fund: string; label: string; balance: number }) => (
-          <KpiCard
-            key={f.fund}
-            label={f.label}
-            value={formatVND(f.balance)}
-            accentColor={f.balance >= 0 ? 'emerald' : 'red'}
+      <section className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Doanh thu tháng này"
+            value={formatVND(summary?.monthRevenue ?? 0)}
+            helper="Tổng doanh thu booking đã xuất hoặc hoàn thành"
+            tone="amber"
+            loading={isLoading}
           />
-        ))}
-      </div>
+          <MetricCard
+            label="Lợi nhuận tháng"
+            value={formatVND(summary?.monthProfit ?? 0)}
+            helper="Lợi nhuận ròng theo dữ liệu booking thực tế"
+            tone="lime"
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Tỷ suất lợi nhuận"
+            value={`${(summary?.profitMargin ?? 0).toFixed(1)}%`}
+            helper="Tỷ lệ lợi nhuận trên doanh thu tháng"
+            tone="violet"
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Tổng số vé đã bán trong tháng"
+            value={(summary?.ticketsSold ?? 0).toLocaleString('vi-VN')}
+            helper="Đếm theo vé logic: 1 PNR cho 1 khách = 1 vé"
+            tone="rose"
+            loading={isLoading}
+          />
+        </div>
 
-      {/* Row 3: Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <RevenueChart data={SAMPLE_REVENUE_DATA} />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Công nợ phải thu"
+            value={formatVND(summary?.receivable ?? 0)}
+            helper="Tổng công nợ phải thu còn lại"
+            tone="red"
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Công nợ phải trả"
+            value={formatVND(summary?.payable ?? 0)}
+            helper="Tổng công nợ phải trả còn lại"
+            tone="slate"
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Quỹ TK BIDV HTX"
+            value={formatVND(summary?.bankHtx ?? 0)}
+            helper="Số dư quỹ từ dòng tiền thực tế"
+            tone="cyan"
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Quỹ tiền mặt"
+            value={formatVND(summary?.cashOffice ?? 0)}
+            helper="Số dư quỹ tiền mặt văn phòng"
+            tone="emerald"
+            loading={isLoading}
+          />
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <RevenueChart data={overview?.timeline ?? []} />
         </div>
         <div>
-          <AirlineChart data={SAMPLE_AIRLINE_DATA} />
+          <AirlineChart data={overview?.airlines ?? []} />
         </div>
-      </div>
+      </section>
 
-      {/* Row 4: Recent bookings + Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Booking gần nhất */}
-        <div className="lg:col-span-2 flex flex-col gap-3">
-          <h3 className="text-[14px] font-medium text-foreground">Recent Bookings</h3>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="flex flex-col gap-3 xl:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[14px] font-medium text-foreground">Booking gần đây</h3>
+            {generatedAt ? <span className="text-xs text-muted-foreground">Dữ liệu thật • {generatedAt}</span> : null}
+          </div>
           <DataTable
-            columns={columns as any}
+            columns={columns}
             data={recentBookings}
-            isLoading={bookingsLoading}
-            emptyMessage="Không có booking nào gần đây."
+            isLoading={isLoading}
+            emptyMessage="Chưa có booking phát sinh gần đây."
           />
         </div>
 
-        {/* Panel cảnh báo */}
         <div className="card flex flex-col">
-          <div className="px-5 py-4 border-b border-border">
+          <div className="border-b border-border px-5 py-4">
             <h3 className="text-[13px] font-medium text-foreground">Cảnh báo hệ thống</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Chỉ hiển thị dữ liệu thật từ deposit, công nợ và booking</p>
           </div>
-          <div className="p-4 space-y-2.5">
-            {/* AR quá hạn */}
-            {(ledgerSummary?.overdueReceivable ?? 0) > 0 && (
-              <AlertItem
-                type="warning"
-                text={`Công nợ phải thu quá hạn: ${formatVND(ledgerSummary.overdueReceivable)}`}
-                time="Realtime"
-              />
-            )}
-            {/* AP quá hạn */}
-            {(ledgerSummary?.overduePayable ?? 0) > 0 && (
-              <AlertItem
-                type="error"
-                text={`Công nợ phải trả quá hạn: ${formatVND(ledgerSummary.overduePayable)}`}
-                time="Realtime"
-              />
-            )}
-            {/* Deposit thấp */}
-            {lowDeposits.length === 0 ? (
-              <AlertItem
-                type="info"
-                text="Deposit các hãng bay đều ổn"
-                time="Vừa cập nhật"
-              />
+          <div className="space-y-2.5 p-4">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="h-[42px] animate-pulse rounded-lg border border-border bg-muted/40" />
+              ))
             ) : (
-              lowDeposits.map((d: { airline: string; balance: number }) => (
-                <AlertItem
-                  key={d.airline}
-                  type="warning"
-                  text={`Deposit ${d.airline} còn ${formatVND(d.balance)}`}
-                  time="Realtime"
-                />
+              alerts.map((alert) => (
+                <AlertItem key={`${alert.type}-${alert.text}`} alert={alert} />
               ))
             )}
-
-            <AlertItem
-              type="info"
-              text="2 khách sinh nhật tuần này"
-              time="Định kỳ"
-            />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Row 4: Quick actions */}
       <div className="flex flex-wrap gap-2">
         <Link
           href="/bookings"
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
-            'bg-foreground text-background hover:opacity-90',
-            'transition-all duration-150 active:scale-[0.98] border border-transparent',
+            'flex items-center gap-2 rounded-md border border-transparent bg-foreground px-3 py-1.5 text-[13px] font-medium text-background transition-all duration-150 hover:opacity-90 active:scale-[0.98]',
           )}
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Tạo Booking mới
         </Link>
 
@@ -257,108 +296,23 @@ export default function DashboardPage() {
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
-            'bg-card border border-border text-foreground',
-            'hover:bg-accent transition-all duration-150 active:scale-[0.98]',
+            'flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground transition-all duration-150 hover:bg-accent active:scale-[0.98]',
           )}
         >
-          <Search className="w-4 h-4 text-muted-foreground" />
+          <Search className="h-4 w-4 text-muted-foreground" />
           Tra cứu giá vé
         </Link>
 
         <button
+          type="button"
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium',
-            'bg-card border border-border text-foreground',
-            'hover:bg-accent transition-all duration-150 active:scale-[0.98]',
+            'flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground transition-all duration-150 hover:bg-accent active:scale-[0.98]',
           )}
         >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          <RefreshCw className="h-4 w-4 text-muted-foreground" />
           Đối soát hôm nay
         </button>
       </div>
     </div>
   );
 }
-
-// Kiểu dữ liệu booking mẫu
-interface SampleBooking {
-  id: string;
-  bookingCode: string;
-  pnr?: string;
-  contactName: string;
-  route: string;
-  totalSellPrice: number;
-  profit: number;
-  status: string;
-  createdAt: string;
-}
-
-function AlertItem({
-  type,
-  text,
-  time,
-}: {
-  type: 'warning' | 'error' | 'info';
-  text: string;
-  time: string;
-}) {
-  const isError = type === 'error';
-  const isWarning = type === 'warning';
-  
-  return (
-    <div className={cn(
-      'px-3 py-2.5 rounded-md border text-[13px] flex items-center justify-between gap-3',
-      isError ? 'bg-destructive/10 border-destructive/20 text-destructive' :
-      isWarning ? 'bg-warning/10 border-warning/20 text-warning' :
-      'bg-accent border-border text-foreground'
-    )}>
-      <p className="font-medium leading-snug truncate">{text}</p>
-      <p className="opacity-60 text-[11px] whitespace-nowrap flex-shrink-0">{time}</p>
-    </div>
-  );
-}
-
-// Dữ liệu mẫu khi chưa có backend
-const SAMPLE_BOOKINGS: SampleBooking[] = [
-  {
-    id: '1',
-    bookingCode: 'APG-260321-023',
-    contactName: 'Nguyễn Văn Minh',
-    route: 'HAN → SGN · VN123',
-    totalSellPrice: 2_850_000,
-    profit: 285_000,
-    status: 'ISSUED',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    bookingCode: 'APG-260321-022',
-    contactName: 'Trần Thị Hoa',
-    route: 'SGN → DAD · VJ456',
-    totalSellPrice: 1_450_000,
-    profit: 145_000,
-    status: 'PENDING_PAYMENT',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    bookingCode: 'APG-260321-021',
-    contactName: 'Lê Quốc Hùng (3 khách)',
-    route: 'HAN → PQC · QH789',
-    totalSellPrice: 5_700_000,
-    profit: 570_000,
-    status: 'PROCESSING',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    bookingCode: 'APG-260321-020',
-    contactName: 'Phạm Thu Thủy',
-    route: 'DAD → HAN · VN321',
-    totalSellPrice: 1_850_000,
-    profit: 185_000,
-    status: 'NEW',
-    createdAt: new Date().toISOString(),
-  },
-];

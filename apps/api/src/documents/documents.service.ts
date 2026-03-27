@@ -74,7 +74,9 @@ export class DocumentsService {
     doc.moveDown(0.3);
 
     // Payment info
-    if (booking.payments && booking.payments.length > 0) {
+    const actualPayments = (booking.payments ?? []).filter((payment) => payment.method !== 'DEBT');
+
+    if (actualPayments.length > 0) {
       doc.moveDown(0.5);
       doc.fontSize(10).font('Helvetica-Bold').text('THANH TOAN', { align: 'left' });
       doc.moveDown(0.3);
@@ -86,7 +88,7 @@ export class DocumentsService {
         { label: 'Ma GD', width: 100 },
         { label: 'So tien', width: 100, align: 'right' as const },
       ];
-      const payRows = booking.payments.map((p, i) => [
+      const payRows = actualPayments.map((p, i) => [
         String(i + 1),
         fmtDateTime(p.paidAt),
         PAYMENT_LABELS[p.method] || p.method,
@@ -95,7 +97,7 @@ export class DocumentsService {
       ]);
       drawTable(doc, payHeaders, payRows);
 
-      const totalPaid = booking.payments.reduce((s, p) => s + Number(p.amount), 0);
+      const totalPaid = actualPayments.reduce((s, p) => s + Number(p.amount), 0);
       const remaining = totalSell - totalPaid;
       doc.fontSize(9).font('Helvetica');
       doc.text(`Da thanh toan: ${fmtVND(totalPaid)}`, { align: 'right' });

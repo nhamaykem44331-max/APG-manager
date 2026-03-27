@@ -10,7 +10,7 @@ import {
   Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap, FileText,
   ChevronDown, Check, Save, Edit3, RotateCcw, Ban, RefreshCw, Ticket, Search,
 } from 'lucide-react';
-import { bookingsApi, supplierApi, customersApi, documentsApi } from '@/lib/api';
+import { authApi, bookingsApi, supplierApi, customersApi, documentsApi, usersApi } from '@/lib/api';
 import {
   cn, formatVND, formatDateTime, formatTime,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
@@ -20,13 +20,27 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
-import type { Booking, BookingStatus, SupplierProfile, Customer } from '@/types';
+import type { Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 
 function getCustomerCodeBadgeClass(type?: string) {
   return type === 'CORPORATE'
     ? 'bg-orange-500/12 text-orange-500 border border-orange-500/20'
     : 'bg-primary/10 text-primary border border-primary/20';
+}
+
+function toDateTimeLocalValue(value?: string | Date | null) {
+  if (!value) return '';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60_000));
+  return localDate.toISOString().slice(0, 16);
+}
+
+function getUserInitial(name?: string | null) {
+  return (name?.trim().charAt(0) || 'U').toUpperCase();
 }
 
 // ────────────────────────────────────────────────────
@@ -79,6 +93,48 @@ const ALL_STATUSES: { key: BookingStatus; label: string; icon: React.ElementType
 ];
 
 // FIX 5: Đồng bộ PAYMENT_METHODS với backend enum
+type StatusAction = {
+  status: BookingStatus;
+  label: string;
+  variant: string;
+  kind?: 'forward' | 'rollback';
+};
+
+function getAvailableStatusActions(booking: Pick<Booking, 'status' | 'statusHistory'>): StatusAction[] {
+  const directActions = NEXT_ACTIONS[booking.status] ?? [];
+  const actionMap = new Map<BookingStatus, StatusAction>(
+    directActions.map((action) => [action.status, { ...action, kind: 'forward' as const }]),
+  );
+
+  const visitedStatuses = new Set<BookingStatus>();
+  for (const entry of booking.statusHistory ?? []) {
+    if (entry.fromStatus !== booking.status) {
+      visitedStatuses.add(entry.fromStatus);
+    }
+    if (entry.toStatus !== booking.status) {
+      visitedStatuses.add(entry.toStatus);
+    }
+  }
+
+  for (const status of ALL_STATUSES.map((item) => item.key)) {
+    if (status === booking.status || !visitedStatuses.has(status) || actionMap.has(status)) {
+      continue;
+    }
+
+    actionMap.set(status, {
+      status,
+      label: `Quay về ${BOOKING_STATUS_LABELS[status]}`,
+      variant: 'secondary',
+      kind: 'rollback',
+    });
+  }
+
+  return ALL_STATUSES
+    .map((item) => item.key)
+    .map((status) => actionMap.get(status))
+    .filter((action): action is StatusAction => Boolean(action));
+}
+
 const PAYMENT_METHODS = [
   { value: 'CASH',          label: 'Tiền mặt' },
   { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
@@ -546,6 +602,7 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
   const fundLabels: Record<string, string> = {
     CASH_OFFICE: 'Tiền mặt VP', BANK_HTX: 'TK BIDV HTX', BANK_PERSONAL: 'TK MB',
   };
+  const isDebtEntry = payment.method === 'DEBT';
   const fundLabel = (payment as unknown as Record<string, unknown>).fundAccount
     ? fundLabels[(payment as unknown as Record<string, unknown>).fundAccount as string] ?? ''
     : '';
@@ -566,16 +623,23 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
         <p className="text-xs text-muted-foreground">{formatDateTime(payment.paidAt)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <p className="text-sm font-bold text-emerald-500">+{formatVND(payment.amount)}</p>
-        <a
-          href={documentsApi.receiptUrl(payment.id)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-          title="In phiếu thu"
-        >
-          <FileText className="w-3 h-3" /> PT
-        </a>
+        <p className={cn(
+          'text-sm font-bold',
+          isDebtEntry ? 'text-red-400' : 'text-emerald-500',
+        )}>
+          {isDebtEntry ? '-' : '+'}{formatVND(payment.amount)}
+        </p>
+        {!isDebtEntry && (
+          <a
+            href={documentsApi.receiptUrl(payment.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+            title="In phiếu thu"
+          >
+            <FileText className="w-3 h-3" /> PT
+          </a>
+        )}
       </div>
     </div>
   );
@@ -584,6 +648,99 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
 // ────────────────────────────────────────────────────
 // Customer Search & Link Component
 // ────────────────────────────────────────────────────
+function FinancialSummaryCard({
+  booking,
+  passengerCount,
+  totalSellPrice,
+  totalNetPrice,
+  totalProfit,
+  totalPaid,
+  totalRemaining,
+  canAddPayment,
+  onAddPayment,
+}: {
+  booking: Booking;
+  passengerCount: number;
+  totalSellPrice: number;
+  totalNetPrice: number;
+  totalProfit: number;
+  totalPaid: number;
+  totalRemaining: number;
+  canAddPayment: boolean;
+  onAddPayment: () => void;
+}) {
+  const sellLabel = passengerCount > 0 ? `Giá bán (Thu khách) x ${passengerCount}` : 'Giá bán (Thu khách)';
+  const netLabel = passengerCount > 0 ? `Giá net (NCC) x ${passengerCount}` : 'Giá net (NCC)';
+
+  return (
+    <div className="card p-3.5">
+      <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
+        <h3 className="text-[13px] font-medium text-foreground">Tài chính</h3>
+      </div>
+      <div className="flex flex-col text-[13px]">
+        {[
+          { label: sellLabel, value: formatVND(totalSellPrice), green: false },
+          { label: netLabel, value: formatVND(totalNetPrice), green: false },
+          { label: 'Phí dịch vụ', value: formatVND(booking.totalFees), green: false },
+          { label: 'Lợi nhuận', value: `+${formatVND(totalProfit)}`, green: true },
+        ].map((row, idx, arr) => (
+          <div key={row.label} className={cn('flex items-center justify-between py-2', idx !== arr.length - 1 && 'border-b border-border/50')}>
+            <span className="text-muted-foreground">{row.label}</span>
+            <span className={cn('font-medium', row.green ? 'text-emerald-500' : 'text-foreground')}>
+              {row.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3.5 space-y-2.5 border-t border-border pt-3.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[13px] text-muted-foreground">Trạng thái thanh toán</span>
+          <span
+            className={cn(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-medium',
+              booking.paymentStatus === 'PAID' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+              booking.paymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+              booking.paymentStatus === 'UNPAID' && 'bg-red-500/10 text-red-600 dark:text-red-400',
+            )}
+          >
+            {booking.paymentStatus === 'PAID'
+              ? 'Đã thanh toán đủ'
+              : booking.paymentStatus === 'PARTIAL'
+                ? 'Thanh toán một phần'
+                : 'Chưa thanh toán'}
+          </span>
+        </div>
+        {totalSellPrice > 0 && (
+          <div className="flex items-center justify-between text-[13px]">
+            <span className="text-muted-foreground">Đã thu / Còn lại</span>
+            <span className="font-medium">
+              <span className="text-emerald-500">{formatVND(totalPaid)}</span>
+              {totalRemaining > 0 && <span className="text-red-400"> / -{formatVND(totalRemaining)}</span>}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {(booking.payments ?? []).length > 0 && (
+        <div className="mt-3 border-t border-border pt-2.5">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử nhận tiền</p>
+          {(booking.payments ?? []).map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+        </div>
+      )}
+
+      {canAddPayment && (
+        <button
+          onClick={onAddPayment}
+          className="mt-3.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-accent/50 text-[12px] font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <Plus className="w-3.5 h-3.5" /> Ghi nhận thanh toán mới
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CustomerSearchLink({ bookingId, contactPhone }: { bookingId: string; contactPhone: string }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -814,6 +971,7 @@ export default function BookingDetailPage() {
   const [contactEditMode, setContactEditMode] = useState<'manual' | 'search'>('manual');
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [editForm, setEditForm] = useState({ contactName: '', contactPhone: '', customerCode: '', source: '', notes: '' });
+  const [bookingMetaForm, setBookingMetaForm] = useState({ staffId: '', createdAt: '' });
 
   // Load danh sách KH gợi ý khi tìm kiếm
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -853,6 +1011,32 @@ export default function BookingDetailPage() {
     queryFn: () => bookingsApi.get(id),
     select: (r) => r.data as Booking,
   });
+  const { data: currentUser } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => authApi.me(),
+    select: (response) => response.data as AppUser,
+  });
+
+  const isAdmin = currentUser?.role === 'ADMIN';
+
+  const { data: staffOptions = [] } = useQuery({
+    enabled: isAdmin,
+    queryKey: ['booking-staff-options'],
+    queryFn: () => usersApi.list(),
+    select: (response) =>
+      ((response.data as AppUser[]) ?? [])
+        .filter((user) => user.isActive)
+        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi')),
+  });
+
+  useEffect(() => {
+    if (!booking) return;
+
+    setBookingMetaForm({
+      staffId: booking.staffId || currentUser?.id || '',
+      createdAt: toDateTimeLocalValue(booking.businessDate ?? booking.createdAt),
+    });
+  }, [booking?.id, booking?.staffId, booking?.businessDate, booking?.createdAt, currentUser?.id]);
 
   // Load danh sách NCC
   const { data: suppliers } = useQuery({
@@ -869,7 +1053,62 @@ export default function BookingDetailPage() {
   const supplierMutation = useMutation({
     mutationFn: (supplierId: string | null) =>
       bookingsApi.update(id, { supplierId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    },
+  });
+
+  // ── Global Save Button Mutation ──────────────────────────────
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const globalSaveMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        supplierId: booking?.supplierId ?? null,
+      };
+
+      const currentCreatedAt = toDateTimeLocalValue(booking?.businessDate ?? booking?.createdAt);
+      if (bookingMetaForm.createdAt && bookingMetaForm.createdAt !== currentCreatedAt) {
+        payload.createdAt = new Date(bookingMetaForm.createdAt).toISOString();
+      }
+
+      if (isAdmin && bookingMetaForm.staffId && bookingMetaForm.staffId !== booking?.staffId) {
+        payload.staffId = bookingMetaForm.staffId;
+      }
+
+      await bookingsApi.update(id, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    },
+    onError: (error) => {
+      const message =
+        (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+        || 'Không thể lưu cập nhật booking lúc này.';
+      window.alert(message);
+    },
+  });
+
+  const clearTicketsMutation = useMutation({
+    mutationFn: () => bookingsApi.clearTickets(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', id] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    },
+    onError: (error) => {
+      const message =
+        (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+        || 'Không thể xóa hành trình. Vui lòng kiểm tra lại dữ liệu liên quan.';
+      window.alert(message);
+    },
   });
 
   // Mutation tạo NCC mới
@@ -1028,7 +1267,8 @@ export default function BookingDetailPage() {
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     }
 
-    const canOpenQuickImport = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(booking.status);
+    const hasFinancialLock = (booking.payments?.length ?? 0) > 0 || (booking.ledgers?.length ?? 0) > 0;
+    const canOpenQuickImport = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(booking.status) && !hasFinancialLock;
     setQuickImportInitialized(true);
     if (canOpenQuickImport) setShowSmartImport(true);
   }, [quickImportInitialized, booking, id]);
@@ -1042,20 +1282,36 @@ export default function BookingDetailPage() {
   }
 
   const bk: Booking = booking ?? SAMPLE_BOOKING;
-  const actions = NEXT_ACTIONS[bk.status] ?? [];
+  const passengerCount = bk.tickets?.length ?? 0;
+  const totalSellPrice = passengerCount > 0
+    ? (bk.tickets ?? []).reduce((sum, ticket) => sum + Number(ticket.sellPrice || 0), 0)
+    : Number(bk.totalSellPrice);
+  const totalNetPrice = passengerCount > 0
+    ? (bk.tickets ?? []).reduce((sum, ticket) => sum + Number(ticket.netPrice || 0), 0)
+    : Number(bk.totalNetPrice);
+  const totalProfit = passengerCount > 0
+    ? (bk.tickets ?? []).reduce((sum, ticket) => sum + Number(ticket.profit || 0), 0)
+    : Number(bk.profit);
   const validPayments = (bk.payments ?? []).filter(p => p.method !== 'DEBT');
   const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0);
-  const totalRemaining = Number(bk.totalSellPrice) - totalPaid;
+  const totalRemaining = totalSellPrice - totalPaid;
+  const hasFinancialLock = (bk.payments?.length ?? 0) > 0 || (bk.ledgers?.length ?? 0) > 0;
   const canAddTicket  = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
+  const canEditItinerary = canAddTicket && !hasFinancialLock;
   const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
+  const selectedStaff =
+    staffOptions.find((user) => user.id === bookingMetaForm.staffId)
+    ?? bk.staff
+    ?? currentUser
+    ?? null;
 
   return (
-    <div className="max-w-[1200px] space-y-4">
+    <div className="max-w-[1320px] space-y-3.5">
       {/* Header */}
       <PageHeader
         title={
-          <div className="flex items-center gap-3">
-            <Link href="/bookings" className="p-1 rounded-md hover:bg-accent transition-colors -ml-1">
+          <div className="flex items-center gap-2.5">
+            <Link href="/bookings" className="-ml-1 rounded-lg p-1.5 transition-colors hover:bg-accent">
               <ArrowLeft className="w-4 h-4 text-muted-foreground" />
             </Link>
             <div className="flex flex-col gap-0">
@@ -1072,7 +1328,7 @@ export default function BookingDetailPage() {
               <button
                 onClick={() => setShowStatusDropdown(!showStatusDropdown)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all duration-150',
+                  'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10.5px] font-semibold transition-all duration-150',
                   'hover:shadow-md cursor-pointer active:scale-[0.97]',
                   BOOKING_STATUS_CLASSES[bk.status],
                   'border-current/20',
@@ -1090,8 +1346,8 @@ export default function BookingDetailPage() {
                   <div className="my-1 border-t border-border/50" />
                   {ALL_STATUSES.map((st) => {
                     const isCurrent = st.key === bk.status;
-                    const allowed = (NEXT_ACTIONS[bk.status] ?? []).some(a => a.status === st.key);
-                    const isDisabled = !isCurrent && !allowed;
+                    const allowed = !isCurrent;
+                    const isDisabled = false;
                     const Icon = st.icon;
 
                     return (
@@ -1099,10 +1355,9 @@ export default function BookingDetailPage() {
                         key={st.key}
                         disabled={isDisabled}
                         onClick={() => {
-                          if (isCurrent || isDisabled) return;
+                          if (isCurrent) return;
                           setShowStatusDropdown(false);
-                          const action = (NEXT_ACTIONS[bk.status] ?? []).find(a => a.status === st.key);
-                          if (action) setConfirmAction({ status: action.status, label: action.label });
+                          setConfirmAction({ status: st.key, label: `Chuyển sang ${st.label}` });
                         }}
                         className={cn(
                           'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors text-left',
@@ -1129,21 +1384,30 @@ export default function BookingDetailPage() {
             </div>
           </div>
         }
-        description={`${BOOKING_SOURCE_LABELS[bk.source]} · ${formatDateTime(bk.createdAt)}`}
+        description={`${BOOKING_SOURCE_LABELS[bk.source]} · ${formatDateTime(bk.businessDate ?? bk.createdAt)}`}
         actions={
-          <div className="flex gap-2 flex-wrap justify-end">
+          <div className="flex flex-wrap justify-end gap-1.5">
             {canAddTicket && (
               <>
                 <button
-                  onClick={() => setShowSmartImport(true)}
-                  className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
-                  title="Nhập vé tự động từ text/ảnh"
+                  onClick={() => {
+                    if (!canEditItinerary) return;
+                    setShowSmartImport(true);
+                  }}
+                  disabled={!canEditItinerary}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-[12px] font-medium text-secondary-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  title={canEditItinerary ? 'Nhập vé tự động từ text/ảnh' : 'Booking đã có thanh toán hoặc bút toán liên quan, không thể nhập thêm hành trình'}
                 >
                   <Zap className="w-3.5 h-3.5 text-amber-500" /> Nhập nhanh
                 </button>
                 <button
-                  onClick={() => setShowAddTicket(true)}
-                  className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+                  onClick={() => {
+                    if (!canEditItinerary) return;
+                    setShowAddTicket(true);
+                  }}
+                  disabled={!canEditItinerary}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-[12px] font-medium text-secondary-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  title={canEditItinerary ? 'Thêm vé thủ công' : 'Booking đã có thanh toán hoặc bút toán liên quan, không thể thêm hành trình'}
                 >
                   <Plus className="w-3.5 h-3.5 text-muted-foreground" /> Thêm vé
                 </button>
@@ -1155,7 +1419,7 @@ export default function BookingDetailPage() {
                   onClick={() => bk.customer ? setShowAddPayment(true) : null}
                   disabled={!bk.customer}
                   className={cn(
-                    'px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border flex items-center gap-1.5 transition-colors',
+                    'flex h-8 items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-[12px] font-medium text-secondary-foreground transition-colors',
                     bk.customer ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed',
                   )}
                 >
@@ -1173,7 +1437,7 @@ export default function BookingDetailPage() {
               href={documentsApi.quotationUrl(id)}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-[12px] font-medium text-secondary-foreground transition-colors hover:bg-accent"
               title="Tải báo giá PDF"
             >
               <FileText className="w-3.5 h-3.5 text-blue-500" /> Báo giá
@@ -1183,7 +1447,7 @@ export default function BookingDetailPage() {
                 href={documentsApi.invoiceUrl(id)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-secondary text-secondary-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors"
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-[12px] font-medium text-secondary-foreground transition-colors hover:bg-accent"
                 title="Tải hoá đơn PDF"
               >
                 <FileText className="w-3.5 h-3.5 text-emerald-500" /> Hóa đơn
@@ -1193,24 +1457,43 @@ export default function BookingDetailPage() {
             {(NEXT_ACTIONS[bk.status] ?? []).some(a => a.status === 'CANCELLED') && (
               <button
                 onClick={() => setConfirmAction({ status: 'CANCELLED' as BookingStatus, label: 'Hủy booking' })}
-                className="px-3 py-1.5 rounded-md text-[13px] font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 flex items-center gap-1.5 transition-colors"
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-destructive px-3 text-[12px] font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
               >
                 Hủy
               </button>
             )}
+            {/* GLOBAL SAVE BUTTON */}
+            <button
+              onClick={() => globalSaveMutation.mutate()}
+              disabled={globalSaveMutation.isPending}
+              className={cn(
+                'flex h-8 items-center gap-1.5 rounded-lg border px-3.5 text-[12px] font-semibold transition-all shadow-sm',
+                saveSuccess
+                  ? 'bg-emerald-500 text-white border-emerald-600'
+                  : 'bg-primary text-white border-primary hover:bg-primary/90 active:scale-[0.97]',
+              )}
+            >
+              {globalSaveMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...</>
+              ) : saveSuccess ? (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Đã lưu!</>
+              ) : (
+                <><Save className="w-3.5 h-3.5" /> Save</>
+              )}
+            </button>
           </div>
         }
       />
 
       {/* Main grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {/* Left: Details (70%) */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="flex flex-col gap-3 lg:col-span-2">
           {/* Side-by-side Contact & Supplier to save space */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="order-2 grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Contact info + Customer link — with inline edit mode */}
-            <div className="card p-4">
-              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+            <div className="card p-3.5">
+              <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
                 <h3 className="text-[13px] font-medium text-foreground">Contact Information</h3>
                 <div className="flex items-center gap-3">
                   {!isEditingContact ? (
@@ -1236,14 +1519,14 @@ export default function BookingDetailPage() {
 
               {isEditingContact ? (
                 /* ─── Inline Edit Mode ─── */
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {/* Tabs for Search vs Manual */}
-                  <div className="flex p-1 bg-muted/50 rounded-lg">
+                  <div className="flex rounded-lg bg-muted/50 p-0.5">
                     <button
                       type="button"
                       onClick={() => setContactEditMode('search')}
                       className={cn(
-                        'flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                        'flex-1 rounded-md py-1.25 text-[10.5px] font-medium transition-colors',
                         contactEditMode === 'search' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
@@ -1253,7 +1536,7 @@ export default function BookingDetailPage() {
                       type="button"
                       onClick={() => setContactEditMode('manual')}
                       className={cn(
-                        'flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                        'flex-1 rounded-md py-1.25 text-[10.5px] font-medium transition-colors',
                         contactEditMode === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
@@ -1263,7 +1546,7 @@ export default function BookingDetailPage() {
 
                   {contactEditMode === 'search' ? (
                     /* Search Customer Mode */
-                    <div className="space-y-3 pt-1" ref={customerDropdownRef}>
+                    <div className="space-y-2.5 pt-1" ref={customerDropdownRef}>
                       <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                         <input
@@ -1275,7 +1558,7 @@ export default function BookingDetailPage() {
                           }}
                           onFocus={() => setShowCustomerDropdown(true)}
                           placeholder="Tìm theo tên, SĐT hoặc mã KH..."
-                          className="w-full pl-8 pr-8 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-[12px] outline-none focus:ring-1 focus:ring-primary"
                           autoFocus
                         />
                         {contactSearchQuery && (
@@ -1292,7 +1575,7 @@ export default function BookingDetailPage() {
                       </div>
                       
                       {showCustomerDropdown && (
-                        <div className="border border-border rounded-md divide-y divide-border/50 max-h-[220px] overflow-y-auto bg-card">
+                        <div className="max-h-[220px] divide-y divide-border/50 overflow-y-auto rounded-md border border-border bg-card">
                           {isSearchingCustomers ? (
                             <p className="text-[12px] text-muted-foreground p-3 text-center flex items-center justify-center gap-1.5">
                               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang tìm...
@@ -1306,7 +1589,7 @@ export default function BookingDetailPage() {
                                 key={c.id}
                                 onClick={() => linkCustomerMutation.mutate(c)}
                                 disabled={linkCustomerMutation.isPending}
-                                className="w-full flex items-center justify-between px-3 py-2 hover:bg-accent transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                                className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                  <div>
                                    <p className="text-[13px] font-medium text-foreground">{c.fullName}</p>
@@ -1334,10 +1617,10 @@ export default function BookingDetailPage() {
                         </p>
                       )}
                       
-                      <div className="pt-2">
+                      <div className="pt-1.5">
                         <button
                           onClick={() => setIsEditingContact(false)}
-                          className="w-full h-8 border border-border rounded-md text-[12px] text-muted-foreground hover:bg-accent transition-colors"
+                          className="h-8 w-full rounded-md border border-border text-[12px] text-muted-foreground transition-colors hover:bg-accent"
                         >
                           Hủy
                         </button>
@@ -1352,7 +1635,7 @@ export default function BookingDetailPage() {
                           value={editForm.contactName}
                           onChange={e => setEditForm(p => ({ ...p, contactName: e.target.value }))}
                           placeholder="Tên khách hàng"
-                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          className="h-8 w-full rounded-md border border-border bg-background px-3 text-[12px] outline-none focus:ring-1 focus:ring-primary"
                           autoFocus
                         />
                       </div>
@@ -1362,7 +1645,7 @@ export default function BookingDetailPage() {
                           value={editForm.contactPhone}
                           onChange={e => setEditForm(p => ({ ...p, contactPhone: e.target.value }))}
                           placeholder="0901234567"
-                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          className="h-8 w-full rounded-md border border-border bg-background px-3 text-[12px] outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -1372,7 +1655,7 @@ export default function BookingDetailPage() {
                           onChange={e => setEditForm(p => ({ ...p, customerCode: e.target.value.toUpperCase() }))}
                           placeholder="KH000123"
                           disabled={!booking?.customer}
-                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background font-mono uppercase focus:ring-1 focus:ring-primary outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          className="h-8 w-full rounded-md border border-border bg-background px-3 font-mono text-[12px] uppercase outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                         />
                         <p className="text-[10px] text-muted-foreground">
                           {booking?.customer ? 'Mã này sẽ đồng bộ trực tiếp với hồ sơ khách hàng đang liên kết.' : 'Liên kết khách hàng trước để chỉnh mã khách hàng.'}
@@ -1383,7 +1666,7 @@ export default function BookingDetailPage() {
                         <select
                           value={Object.keys(BOOKING_SOURCE_LABELS).includes(editForm.source) ? editForm.source : 'OTHER'}
                           onChange={e => setEditForm(p => ({ ...p, source: e.target.value }))}
-                          className="w-full px-3 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                          className="h-8 w-full rounded-md border border-border bg-background px-3 text-[12px] outline-none focus:ring-1 focus:ring-primary"
                         >
                           {Object.entries(BOOKING_SOURCE_LABELS).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
@@ -1397,21 +1680,21 @@ export default function BookingDetailPage() {
                           onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
                           placeholder="Ghi chú về booking..."
                           rows={2}
-                          className="w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none resize-none"
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-[12px] outline-none focus:ring-1 focus:ring-primary resize-none"
                         />
                       </div>
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-1.5 pt-1">
                         <button
                           onClick={() => saveContactMutation.mutate()}
                           disabled={saveContactMutation.isPending || !editForm.contactName.trim() || !editForm.contactPhone.trim()}
-                          className="flex-1 h-9 bg-primary text-primary-foreground rounded-md text-[13px] font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                          className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                         >
                           {saveContactMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                           💾 Lưu thay đổi
                         </button>
                         <button
                           onClick={() => setIsEditingContact(false)}
-                          className="px-4 h-9 border border-border rounded-md text-[13px] text-muted-foreground hover:bg-accent transition-colors"
+                          className="h-8 rounded-md border border-border px-3 text-[12px] text-muted-foreground transition-colors hover:bg-accent"
                         >
                           Hủy
                         </button>
@@ -1427,8 +1710,8 @@ export default function BookingDetailPage() {
                 </div>
               ) : (
                 /* ─── Read-only Mode ─── */
-                <div className="flex flex-col text-[13px]">
-                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                <div className="flex flex-col text-[12.5px]">
+                  <div className="flex items-center justify-between border-b border-border/50 py-2">
                     <span className="text-muted-foreground">Tên liên hệ</span>
                     <span className="font-medium text-foreground text-right flex flex-col items-end">
                       {bk.customer ? bk.customer.fullName : bk.contactName}
@@ -1439,7 +1722,7 @@ export default function BookingDetailPage() {
                       )}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                  <div className="flex items-center justify-between border-b border-border/50 py-2">
                     <span className="text-muted-foreground">Số điện thoại</span>
                     <span className="font-medium text-foreground flex items-center gap-1">
                       <Phone className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1447,7 +1730,7 @@ export default function BookingDetailPage() {
                     </span>
                   </div>
                   {bk.customer?.customerCode && (
-                    <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                    <div className="flex items-center justify-between border-b border-border/50 py-2">
                       <span className="text-muted-foreground">Mã khách hàng</span>
                       <span className={cn('inline-flex items-center rounded-md px-2 py-1 text-[11px] font-mono font-medium', getCustomerCodeBadgeClass(bk.customer.type))}>
                         {bk.customer.customerCode}
@@ -1455,26 +1738,26 @@ export default function BookingDetailPage() {
                     </div>
                   )}
                   {bk.pnr && (
-                    <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+                    <div className="flex items-center justify-between border-b border-border/50 py-2">
                       <span className="text-muted-foreground">Mã PNR (GDS)</span>
                       <span className="font-mono font-bold text-primary">{bk.pnr}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+                  <div className="flex items-center justify-between border-b border-border/50 py-2 last:border-0">
                     <span className="text-muted-foreground">Nguồn</span>
                     <span className="text-foreground">{BOOKING_SOURCE_LABELS[bk.source] || bk.source}</span>
                   </div>
 
                   {/* Linked Customer Link */}
                   {!bk.customer && (
-                    <div className="mt-3 pt-3 border-t border-border">
+                    <div className="mt-2.5 border-t border-border pt-2.5">
                       <CustomerSearchLink bookingId={id} contactPhone={bk.contactPhone} />
                     </div>
                   )}
                 </div>
               )}
               {!isEditingContact && bk.notes && (
-                <div className="mt-4 pt-3 border-t border-border">
+                <div className="mt-3 border-t border-border pt-2.5">
                   <p className="text-[13px] text-muted-foreground mb-1">Ghi chú</p>
                   <p className="text-[13px] text-foreground">{bk.notes}</p>
                 </div>
@@ -1482,8 +1765,8 @@ export default function BookingDetailPage() {
             </div>
 
             {/* Supplier (NCC) selector */}
-            <div className="card p-4">
-              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+            <div className="card p-3.5">
+              <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
                 <h3 className="text-[13px] font-medium text-foreground">Nhà cung cấp (NCC)</h3>
                 <button
                   onClick={() => setShowNewSupplier(!showNewSupplier)}
@@ -1494,7 +1777,7 @@ export default function BookingDetailPage() {
               </div>
 
               {/* Dropdown chọn NCC */}
-              <div className="space-y-3" ref={supplierDropdownRef}>
+              <div className="space-y-2.5" ref={supplierDropdownRef}>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <input
@@ -1506,7 +1789,7 @@ export default function BookingDetailPage() {
                       setShowSupplierDropdown(true);
                     }}
                     onFocus={() => setShowSupplierDropdown(true)}
-                    className="w-full pl-8 pr-8 h-9 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none"
+                    className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-[12px] outline-none focus:ring-1 focus:ring-primary"
                   />
                   {supplierSearchQuery && (
                     <button
@@ -1522,7 +1805,7 @@ export default function BookingDetailPage() {
                   
                   {/* Dropdown Results */}
                   {showSupplierDropdown && (
-                    <div className="absolute z-50 top-full mt-1 left-0 right-0 border border-border rounded-md shadow-lg bg-card max-h-[220px] overflow-y-auto">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-y-auto rounded-md border border-border bg-card shadow-lg">
                       {/* Option to clear NCC */}
                       {bk.supplierId && (
                         <button
@@ -1591,8 +1874,8 @@ export default function BookingDetailPage() {
                 )}
 
                 {bk.supplier ? (
-                  <div className="flex items-center gap-3 px-3 py-3 bg-accent/40 rounded-lg border border-border/60">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary font-mono">
+                  <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-accent/40 px-3 py-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-[11px] font-bold text-primary font-mono">
                       {bk.supplier.code?.slice(0, 2) || 'NCC'}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1611,14 +1894,14 @@ export default function BookingDetailPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-border/70 px-3 py-3 text-[12px] text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-border/70 px-3 py-2.5 text-[12px] text-muted-foreground">
                     Chưa chọn nhà cung cấp cho booking này.
                   </div>
                 )}
 
                 {/* Inline form tạo NCC mới */}
                 {showNewSupplier && (
-                  <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border/50">
+                  <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tạo NCC mới</p>
                     <div className="grid grid-cols-2 gap-2">
                       <FormInput
@@ -1657,7 +1940,7 @@ export default function BookingDetailPage() {
                         createSupplierMutation.mutate(newSupplierForm);
                       }}
                       disabled={createSupplierMutation.isPending || !newSupplierForm.code || !newSupplierForm.name}
-                      className="w-full mt-1 py-1.5 bg-foreground text-background rounded-md text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-foreground text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
                     >
                       {createSupplierMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                       Tạo & Gán NCC
@@ -1669,23 +1952,44 @@ export default function BookingDetailPage() {
           </div>
 
           {/* Tickets */}
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div className="order-1 card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-3">
                 <h3 className="text-[13px] font-medium text-foreground">Hành trình ({bk.tickets?.length ?? 0} vé)</h3>
-                {bk.pnr && (
-                  <span className="px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded-md font-mono font-bold text-amber-600 dark:text-amber-400 text-[13px] tracking-widest">
+                {bk.pnr && (bk.tickets?.length ?? 0) > 0 && (
+                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[12px] font-bold tracking-widest text-amber-600 dark:text-amber-400">
                     {bk.pnr}
                   </span>
                 )}
               </div>
               {canAddTicket && (
-                <button
-                  onClick={() => setShowAddTicket(true)}
-                  className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground font-medium"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Thêm mới
-                </button>
+                <div className="flex items-center gap-3">
+                  {(bk.tickets?.length ?? 0) > 0 && (
+                    <button
+                      onClick={() => {
+                        if (clearTicketsMutation.isPending) return;
+                        const shouldClear = window.confirm('Xóa toàn bộ thông tin hành trình hiện tại và đưa booking về trạng thái chưa có vé?');
+                        if (shouldClear) clearTicketsMutation.mutate();
+                      }}
+                      disabled={clearTicketsMutation.isPending || !canEditItinerary}
+                      className="flex items-center gap-1 text-[12px] font-medium text-destructive/80 hover:text-destructive disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {clearTicketsMutation.isPending ? 'Đang xóa...' : 'Xóa hành trình'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (!canEditItinerary) return;
+                      setShowAddTicket(true);
+                    }}
+                    disabled={!canEditItinerary}
+                    className="flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    title={canEditItinerary ? 'Thêm hành trình thủ công' : 'Booking đã có thanh toán hoặc bút toán liên quan, không thể thêm hành trình'}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Thêm mới
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1695,8 +1999,12 @@ export default function BookingDetailPage() {
                 <p className="text-sm text-muted-foreground">Chưa có vé nào</p>
                 {canAddTicket && (
                   <button
-                    onClick={() => setShowAddTicket(true)}
-                    className="mt-3 px-4 py-2 bg-primary/10 text-primary text-xs rounded-lg hover:bg-primary/20 font-medium"
+                    onClick={() => {
+                      if (!canEditItinerary) return;
+                      setShowAddTicket(true);
+                    }}
+                    disabled={!canEditItinerary}
+                    className="mt-3 rounded-lg bg-primary/10 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     + Thêm vé đầu tiên
                   </button>
@@ -1705,8 +2013,8 @@ export default function BookingDetailPage() {
             ) : (
               <div className="divide-y divide-border">
                 {groupedFlights.map((flight, fIdx) => (
-                  <div key={fIdx} className="p-4">
-                    <div className="flex items-center justify-between mb-3 border-b border-border/50 pb-3">
+                  <div key={fIdx} className="p-3.5">
+                    <div className="mb-2.5 flex items-center justify-between border-b border-border/50 pb-2.5">
                       <div className="flex items-center gap-2">
                         <AirlineBadge code={flight.airline} showName={false} size="md" />
                         <span className="text-[13px] font-mono font-medium text-foreground mt-0.5">{flight.flightNumber}</span>
@@ -1717,7 +2025,7 @@ export default function BookingDetailPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 mb-4 max-w-sm mx-auto">
+                    <div className="mx-auto mb-3 flex max-w-md items-center gap-2.5">
                       <div className="text-center w-24">
                         <p className="text-lg font-bold text-foreground">{flight.departureCode}</p>
                         <p className="text-[10px] text-muted-foreground truncate">{getAirportName(flight.departureCode)}</p>
@@ -1735,12 +2043,15 @@ export default function BookingDetailPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 bg-muted/20 border border-border/30 rounded-lg overflow-hidden">
+                    <div className="mt-2.5 overflow-hidden rounded-lg border border-border/30 bg-muted/20">
                       <div className="grid grid-cols-1 divide-y divide-border/30">
                         {flight.tickets.map((ticket, idx) => (
-                          <div key={ticket.id || idx} className="p-2.5 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                          <div key={ticket.id || idx} className="flex items-center justify-between p-2 transition-colors hover:bg-muted/30">
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
+                                <span className="min-w-[22px] text-[10px] font-semibold text-muted-foreground">
+                                  {groupedFlights.slice(0, fIdx).reduce((sum, group) => sum + group.tickets.length, 0) + idx + 1}.
+                                </span>
                                 <span className="text-[12px] font-bold text-foreground uppercase tracking-tight">
                                   {ticket.passenger?.fullName || 'CHƯA CÓ TÊN'}
                                 </span>
@@ -1778,8 +2089,8 @@ export default function BookingDetailPage() {
           </div>
 
           {/* Financial summary */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+          <div className="hidden card p-3.5">
+            <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
               <h3 className="text-[13px] font-medium text-foreground">Tài chính</h3>
             </div>
             <div className="flex flex-col text-[13px]">
@@ -1789,7 +2100,7 @@ export default function BookingDetailPage() {
                 { label: 'Phí dịch vụ',        value: formatVND(bk.totalFees),       bold: false },
                 { label: 'Lợi nhuận',           value: `+${formatVND(bk.profit)}`,   bold: true,  green: true },
               ].map((row, idx, arr) => (
-                <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>
+                <div key={row.label} className={cn('flex items-center justify-between py-2', idx !== arr.length - 1 && 'border-b border-border/50')}>
                   <span className="text-muted-foreground">{row.label}</span>
                   <span className={cn('font-medium', row.green ? 'text-emerald-500' : 'text-foreground')}>
                     {row.value}
@@ -1799,7 +2110,7 @@ export default function BookingDetailPage() {
             </div>
 
             {/* Payment status */}
-            <div className="mt-4 pt-4 border-t border-border space-y-3">
+            <div className="mt-3.5 space-y-2.5 border-t border-border pt-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] text-muted-foreground">Trạng thái thanh toán</span>
                 <span className={cn(
@@ -1826,7 +2137,7 @@ export default function BookingDetailPage() {
 
             {/* Payments list */}
             {(bk.payments ?? []).length > 0 && (
-              <div className="mt-4 pt-3 border-t border-border">
+              <div className="mt-3 border-t border-border pt-2.5">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Lịch sử nhận tiền</p>
                 {(bk.payments ?? []).map(p => <PaymentRow key={p.id} payment={p} />)}
               </div>
@@ -1834,7 +2145,7 @@ export default function BookingDetailPage() {
             {canAddPayment && (
               <button
                 onClick={() => setShowAddPayment(true)}
-                className="mt-4 w-full py-2 border border-border bg-accent/50 rounded-lg text-xs font-medium text-foreground hover:bg-accent transition-colors flex items-center justify-center gap-1.5"
+                className="mt-3.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-accent/50 text-[12px] font-medium text-foreground transition-colors hover:bg-accent"
               >
                 <Plus className="w-3.5 h-3.5" /> Ghi nhận thanh toán mới
               </button>
@@ -1843,13 +2154,13 @@ export default function BookingDetailPage() {
 
           {/* Linked Ledgers (AR/AP) */}
           {(bk.ledgers ?? []).length > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+            <div className="order-3 card p-3.5">
+              <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
                 <h3 className="text-[13px] font-medium text-foreground">Công nợ liên kết ({bk.ledgers!.length})</h3>
               </div>
               <div className="flex flex-col text-[13px] divide-y divide-border/50">
                 {bk.ledgers!.map((l) => (
-                  <div key={l.id} className="flex items-center justify-between py-2.5">
+                  <div key={l.id} className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         'px-2 py-0.5 rounded text-[10px] font-bold',
@@ -1886,10 +2197,22 @@ export default function BookingDetailPage() {
         </div>
 
         {/* Right: Timeline + Staff */}
-        <div className="space-y-4">
+        <div className="space-y-3">
+          <FinancialSummaryCard
+            booking={bk}
+            passengerCount={passengerCount}
+            totalSellPrice={totalSellPrice}
+            totalNetPrice={totalNetPrice}
+            totalProfit={totalProfit}
+            totalPaid={totalPaid}
+            totalRemaining={totalRemaining}
+            canAddPayment={canAddPayment}
+            onAddPayment={() => setShowAddPayment(true)}
+          />
+
           {/* Status timeline */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+          <div className="card p-3.5">
+            <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5">
               <h3 className="text-[13px] font-medium text-foreground">Lịch sử & sự kiện</h3>
             </div>
             {(() => {
@@ -1913,18 +2236,18 @@ export default function BookingDetailPage() {
               ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
               return (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {events.map((ev, i) => (
-                    <div key={i} className="flex gap-3">
+                    <div key={i} className="flex gap-2.5">
                       <div className="flex flex-col items-center">
                         <div className={cn(
                           'w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
                           ev.type === 'status' ? (i === events.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40')
                             : ev.type === 'ar' ? 'bg-blue-500' : 'bg-amber-500'
                         )} />
-                        {i < events.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+                        {i < events.length - 1 && <div className="mt-1 w-px flex-1 bg-border" />}
                       </div>
-                      <div className="pb-3 min-w-0">
+                      <div className="min-w-0 pb-2.5">
                         <p className="text-xs font-medium text-foreground">{ev.label}</p>
                         {ev.detail && (
                           <p className="text-[11px] text-muted-foreground mt-0.5">{ev.detail}</p>
@@ -1939,11 +2262,53 @@ export default function BookingDetailPage() {
           </div>
 
           {/* Staff info */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
+          {/* Booking meta */}
+          <div className="card p-3.5">
+            <div className="mb-2.5 flex items-center justify-between border-b border-border pb-2.5">
               <h3 className="text-[13px] font-medium text-foreground">Nhân viên phụ trách</h3>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-muted-foreground">
+                  {getUserInitial(selectedStaff?.fullName)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-foreground">
+                    {selectedStaff?.fullName ?? 'Chưa phân công'}
+                  </p>
+                  {selectedStaff?.email && (
+                    <p className="truncate text-[11px] text-muted-foreground">{selectedStaff.email}</p>
+                  )}
+                </div>
+              </div>
+
+              {isAdmin ? (
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-muted-foreground">
+                    Chọn nhân viên phụ trách
+                  </label>
+                  <select
+                    value={bookingMetaForm.staffId}
+                    onChange={(e) => setBookingMetaForm((prev) => ({ ...prev, staffId: e.target.value }))}
+                    className={cn(
+                      'w-full rounded-md border border-border bg-background px-3 py-2 text-[12px] text-foreground',
+                      'focus:outline-none focus:ring-1 focus:ring-primary',
+                    )}
+                  >
+                    <option value="">Chọn nhân viên</option>
+                    {staffOptions.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.fullName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Mặc định booking gắn với tài khoản đang đăng nhập. Admin có thể đổi sang nhân viên phụ trách thực tế.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <div className="hidden flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                 {(bk.staff?.fullName?.[0] || 'U').toUpperCase()}
               </div>
@@ -1954,25 +2319,48 @@ export default function BookingDetailPage() {
             </div>
           </div>
 
+          <div className="card p-3.5">
+            <div className="mb-2.5 flex items-center justify-between border-b border-border pb-2.5">
+              <h3 className="text-[13px] font-medium text-foreground">Ngày tạo</h3>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Thời điểm tạo booking
+              </label>
+              <input
+                type="datetime-local"
+                value={bookingMetaForm.createdAt}
+                onChange={(e) => setBookingMetaForm((prev) => ({ ...prev, createdAt: e.target.value }))}
+                className={cn(
+                  'w-full rounded-md border border-border bg-background px-3 py-2 text-[12px] text-foreground',
+                  'focus:outline-none focus:ring-1 focus:ring-primary',
+                )}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Nếu lúc tạo booking chưa nhập ngày tạo, hệ thống sẽ tự lấy thời điểm tạo thực tế tại lúc thêm booking.
+              </p>
+            </div>
+          </div>
+
           {/* Quick stats */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+          <div className="hidden card p-3.5">
+            <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
               <h3 className="text-[13px] font-medium text-foreground">Tóm tắt</h3>
             </div>
             <div className="flex flex-col text-[13px]">
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+              <div className="flex items-center justify-between border-b border-border/50 py-2">
                 <span className="text-muted-foreground">Số vé</span>
                 <span className="font-medium text-foreground">{bk.tickets?.length ?? 0}</span>
               </div>
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+              <div className="flex items-center justify-between border-b border-border/50 py-2">
                 <span className="text-muted-foreground">Tổng thu</span>
                 <span className="font-medium font-tabular text-foreground">{formatVND(bk.totalSellPrice)}</span>
               </div>
-              <div className="flex items-center justify-between py-2.5 border-b border-border/50">
+              <div className="flex items-center justify-between border-b border-border/50 py-2">
                 <span className="text-muted-foreground">Lợi nhuận</span>
                 <span className="font-medium font-tabular text-emerald-500">+{formatVND(bk.profit)}</span>
               </div>
-              <div className="flex items-center justify-between py-2.5">
+              <div className="flex items-center justify-between py-2">
                 <span className="text-muted-foreground">Đã thu</span>
                 <span className={cn('font-medium font-tabular', totalPaid >= Number(bk.totalSellPrice) ? 'text-emerald-500' : 'text-amber-500')}>
                   {formatVND(totalPaid)}
@@ -2040,7 +2428,7 @@ export default function BookingDetailPage() {
       {showAddPayment && (
         <AddPaymentModal
           bookingId={bk.id}
-          totalSellPrice={Number(bk.totalSellPrice)}
+          totalSellPrice={totalSellPrice}
           hasCustomer={!!bk.customer}
           onClose={() => setShowAddPayment(false)}
         />

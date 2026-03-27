@@ -8,10 +8,10 @@ const apiClient = axios.create({
   },
 });
 
-// Gemini AI calls can take 30-60s for large multi-pax PNRs — needs longer timeout
+// Groq Vision calls can take 30-60s for large multi-pax PNRs — needs longer timeout
 const parserClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '/api/v1',
-  timeout: 90_000, // 90 seconds for Gemini processing
+  timeout: 90_000, // 90 seconds for Groq processing
   headers: {
     'Content-Type': 'application/json',
   },
@@ -136,11 +136,20 @@ export const authApi = {
   login: (email: string, password: string) =>
     apiClient.post('/auth/login', { email, password }),
   me: () => apiClient.get('/auth/me'),
+  updateProfile: (data: { fullName?: string; email?: string; phone?: string }) =>
+    apiClient.put('/auth/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     apiClient.put('/auth/change-password', data),
 };
 
+export const usersApi = {
+  list: () => apiClient.get('/users'),
+  create: (data: unknown) => apiClient.post('/users', data),
+  update: (id: string, data: unknown) => apiClient.patch(`/users/${id}`, data),
+};
+
 export const dashboardApi = {
+  getOverview: () => apiClient.get('/reports/dashboard-overview'),
   getStats: () => apiClient.get('/reports/daily'),
   getRevenueChart: (days = 7) =>
     apiClient.get(`/reports/revenue-chart?days=${days}`),
@@ -175,6 +184,8 @@ export const bookingsApi = {
     apiClient.patch(`/bookings/${id}/status`, { toStatus, reason }),
   addTicket: (id: string, data: unknown) =>
     apiClient.post(`/bookings/${id}/tickets`, data),
+  clearTickets: (id: string) =>
+    apiClient.delete(`/bookings/${id}/tickets`),
   addPayment: (id: string, data: unknown) =>
     apiClient.post(`/bookings/${id}/payments`, data),
 };
@@ -185,6 +196,7 @@ export const customersApi = {
   get: (id: string) => apiClient.get(`/customers/${id}`),
   create: (data: unknown) => apiClient.post('/customers', data),
   update: (id: string, data: unknown) => apiClient.patch(`/customers/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/customers/${id}`),
   getStats: (id: string) => apiClient.get(`/customers/${id}/stats`),
   searchByPhone: (phone: string) =>
     apiClient.get(`/customers?search=${phone}&pageSize=1`),
@@ -196,12 +208,105 @@ export const financeApi = {
     apiClient.get('/finance/debts', { params }),
   getDebtAging: () => apiClient.get('/finance/debts/aging'),
   getDeposits: () => apiClient.get('/finance/deposits'),
-  updateDeposit: (id: string, data: { amount: number; notes?: string }) =>
+  updateDeposit: (
+    id: string,
+    data: {
+      amount: number;
+      notes?: string;
+      fundAccount?: string;
+      reference?: string;
+      date?: string;
+      pic?: string;
+    },
+  ) =>
     apiClient.patch(`/finance/deposits/${id}`, data),
   createDeposit: (data: { airline: string; alertThreshold?: number }) =>
     apiClient.post('/finance/deposits', data),
   getLedgerSummary: () => apiClient.get('/finance/ledger/summary'),
   getFundBalances: () => apiClient.get('/finance/cashflow/fund-balances'),
+};
+
+export const invoiceApi = {
+  getSummary: () => apiClient.get('/finance/invoices/summary'),
+  getCoverage: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/invoices/coverage', { params }),
+  list: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/invoices', { params }),
+  getDebtStatement: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/invoices/debt-statement', { params }),
+  get: (id: string) => apiClient.get(`/finance/invoices/${id}`),
+  create: (data: unknown) => apiClient.post('/finance/invoices', data),
+  createIncomingFromBookings: (data: {
+    bookingIds: string[];
+    invoiceDate?: string;
+    periodFrom?: string;
+    periodTo?: string;
+    notes?: string;
+    tags?: string[];
+  }) => apiClient.post('/finance/invoices/incoming-from-bookings', data),
+  createOutgoingFromBookings: (data: {
+    bookingIds: string[];
+    invoiceDate?: string;
+    periodFrom?: string;
+    periodTo?: string;
+    notes?: string;
+    tags?: string[];
+  }) => apiClient.post('/finance/invoices/outgoing-from-bookings', data),
+  update: (id: string, data: unknown) => apiClient.patch(`/finance/invoices/${id}`, data),
+  addAttachment: (id: string, data: unknown) =>
+    apiClient.post(`/finance/invoices/${id}/attachments`, data),
+  getImportBatches: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/invoices/import-batches', { params }),
+  getImportBatch: (id: string) => apiClient.get(`/finance/invoices/import-batches/${id}`),
+  uploadImportBatch: (data: {
+    file: File;
+    supplierId?: string;
+    notes?: string;
+    externalUrl?: string;
+  }) => {
+    const formData = new FormData();
+    formData.append('file', data.file);
+    if (data.supplierId) {
+      formData.append('supplierId', data.supplierId);
+    }
+    if (data.notes) {
+      formData.append('notes', data.notes);
+    }
+    if (data.externalUrl) {
+      formData.append('externalUrl', data.externalUrl);
+    }
+    return apiClient.post('/finance/invoices/import-batches/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  reviewImportBatch: (id: string, data: unknown) =>
+    apiClient.patch(`/finance/invoices/import-batches/${id}/review`, data),
+  commitImportBatch: (id: string) =>
+    apiClient.post(`/finance/invoices/import-batches/${id}/commit`, {}),
+  getExportBatches: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/invoices/export-batches', { params }),
+  createDebtStatementExport: (data: { customerId: string; dateFrom: string; dateTo: string }) =>
+    apiClient.post('/finance/invoices/export-batches/debt-statement', data),
+  createOutgoingRequestExport: (data: { invoiceId: string }) =>
+    apiClient.post('/finance/invoices/export-batches/outgoing-request', data),
+  downloadExportBatch: (id: string) =>
+    apiClient.get(`/finance/invoices/export-batches/${id}/download`, {
+      responseType: 'blob',
+    }),
+};
+
+export const fundsApi = {
+  getSummary: () => apiClient.get('/finance/funds/summary'),
+  listLedger: (params?: Record<string, string | number>) =>
+    apiClient.get('/finance/funds/ledger', { params }),
+  createEntry: (data: unknown) => apiClient.post('/finance/funds/entry', data),
+  updateEntry: (id: string, data: unknown) => apiClient.patch(`/finance/funds/entry/${id}`, data),
+  removeEntry: (id: string) => apiClient.delete(`/finance/funds/entry/${id}`),
+  adjustBalance: (data: unknown) => apiClient.post('/finance/funds/adjust', data),
+  transfer: (data: unknown) => apiClient.post('/finance/funds/transfer', data),
+  updateTransfer: (id: string, data: unknown) => apiClient.patch(`/finance/funds/transfer/${id}`, data),
 };
 
 export const customerIntelligenceApi = {
@@ -324,12 +429,33 @@ export const sheetSyncApi = {
     apiClient.get('/sheet-sync/preview', { params: { startRow, maxRows } }),
   importRows: (rowIndices: number[]) =>
     apiClient.post('/sheet-sync/import', { rowIndices }),
+  previewExcel: (file: File, startRow?: number, maxRows?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post('/sheet-sync/excel/preview', formData, {
+      params: { startRow, maxRows },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  importExcel: (file: File, rowIndices: number[]) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('rowIndices', JSON.stringify(rowIndices));
+    return apiClient.post('/sheet-sync/excel/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   exportUrl: (from?: string, to?: string) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     return `${apiClient.defaults.baseURL || 'http://localhost:3001/api/v1'}/sheet-sync/export?${params}`;
   },
+};
+
+export const systemApi = {
+  resetOperationalData: (data: { adminEmail: string; adminPassword: string }) =>
+    apiClient.post('/system/data/reset-operational', data, { timeout: 60_000 }),
 };
 
 // ==========================================

@@ -6,7 +6,7 @@ export class ListLedgerDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   page?: number;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000)
   pageSize?: number;
 
   @IsOptional() @IsIn(['RECEIVABLE', 'PAYABLE'])

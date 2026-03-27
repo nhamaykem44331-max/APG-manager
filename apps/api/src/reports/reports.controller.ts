@@ -2,7 +2,49 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PrismaService } from '../common/prisma.service';
+import {
+  addReportDays,
+  buildBusinessDateFilter,
+  getBookingBusinessDate,
+  getReportDateKey,
+  getReportDateLabel,
+  getStartOfReportDay,
+  getStartOfReportMonth,
+} from '../common/reporting-date.util';
 import { MonthlySummaryAccumulator, RouteAccumulator } from './reports.types';
+
+const DASHBOARD_BOOKING_STATUSES = ['ISSUED', 'COMPLETED'] as const;
+const ACTIVE_LEDGER_STATUSES = ['ACTIVE', 'PARTIAL_PAID', 'OVERDUE'] as const;
+const ACTIVE_PROCESSING_STATUSES = ['NEW', 'PROCESSING', 'QUOTED', 'PENDING_PAYMENT'] as const;
+
+function createTimelineDebtDeltaStore() {
+  return new Map<string, { receivable: number; payable: number }>();
+}
+
+function pushDebtDelta(
+  store: Map<string, { receivable: number; payable: number }>,
+  date: Date,
+  direction: 'RECEIVABLE' | 'PAYABLE',
+  amount: number,
+) {
+  const dateKey = getReportDateKey(date);
+  const current = store.get(dateKey) ?? { receivable: 0, payable: 0 };
+
+  if (direction === 'RECEIVABLE') {
+    current.receivable += amount;
+  } else {
+    current.payable += amount;
+  }
+
+  store.set(dateKey, current);
+}
+
+function getLedgerTimelineDate(ledger: {
+  issueDate: Date;
+  booking?: { businessDate: Date | null; createdAt: Date | null } | null;
+}) {
+  return getBookingBusinessDate(ledger.booking ?? {}) ?? ledger.issueDate;
+}
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard)
@@ -13,19 +55,23 @@ export class ReportsController {
   @Get('daily')
   async getDaily() {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+    const todayStart = getStartOfReportDay(now);
+    const tomorrowStart = addReportDays(todayStart, 1);
+    const yesterdayStart = addReportDays(todayStart, -1);
 
     const [today, yesterday] = await Promise.all([
       this.prisma.booking.aggregate({
-        where: { status: { in: ['ISSUED', 'COMPLETED'] }, createdAt: { gte: todayStart } },
+        where: {
+          status: { in: ['ISSUED', 'COMPLETED'] },
+          ...buildBusinessDateFilter(todayStart, tomorrowStart),
+        },
         _sum: { totalSellPrice: true, profit: true },
         _count: { id: true },
       }),
       this.prisma.booking.aggregate({
         where: {
           status: { in: ['ISSUED', 'COMPLETED'] },
-          createdAt: { gte: yesterdayStart, lt: todayStart },
+          ...buildBusinessDateFilter(yesterdayStart, todayStart),
         },
         _sum: { totalSellPrice: true, profit: true },
         _count: { id: true },
@@ -57,41 +103,462 @@ export class ReportsController {
     };
   }
 
+  @Get('dashboard-overview')
+  async getDashboardOverview() {
+    const now = new Date();
+    const startOfMonth = getStartOfReportMonth(now);
+    const endOfRange = addReportDays(getStartOfReportDay(now), 1);
+    const bookingDateFilter = buildBusinessDateFilter(startOfMonth, endOfRange);
+
+    const monthBookingWhere = {
+      deletedAt: null,
+      status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+      ...bookingDateFilter,
+    };
+
+    const [
+      monthBookings,
+      receivableSummary,
+      payableSummary,
+      fundEntries,
+      lowDepositCandidates,
+      overdueReceivable,
+      overduePayable,
+      pendingBookings,
+      recentBookingsRaw,
+      timelineLedgers,
+    ] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: monthBookingWhere,
+        select: {
+          id: true,
+          pnr: true,
+          totalSellPrice: true,
+          profit: true,
+          businessDate: true,
+          createdAt: true,
+          tickets: {
+            where: { status: 'ACTIVE' },
+            select: {
+              id: true,
+              passengerId: true,
+              airline: true,
+              airlineBookingCode: true,
+            },
+          },
+        },
+      }),
+      this.prisma.accountsLedger.aggregate({
+        where: {
+          direction: 'RECEIVABLE',
+          status: { in: [...ACTIVE_LEDGER_STATUSES] },
+        },
+        _sum: { remaining: true },
+      }),
+      this.prisma.accountsLedger.aggregate({
+        where: {
+          direction: 'PAYABLE',
+          status: { in: [...ACTIVE_LEDGER_STATUSES] },
+        },
+        _sum: { remaining: true },
+      }),
+      this.prisma.cashFlowEntry.findMany({
+        where: {
+          status: 'DONE',
+          fundAccount: { in: ['BANK_HTX', 'CASH_OFFICE'] },
+        },
+        select: { fundAccount: true, direction: true, amount: true },
+      }),
+      this.prisma.airlineDeposit.findMany(),
+      this.prisma.accountsLedger.aggregate({
+        where: {
+          direction: 'RECEIVABLE',
+          status: { in: [...ACTIVE_LEDGER_STATUSES] },
+          dueDate: { lt: now },
+        },
+        _sum: { remaining: true },
+      }),
+      this.prisma.accountsLedger.aggregate({
+        where: {
+          direction: 'PAYABLE',
+          status: { in: [...ACTIVE_LEDGER_STATUSES] },
+          dueDate: { lt: now },
+        },
+        _sum: { remaining: true },
+      }),
+      this.prisma.booking.count({
+        where: {
+          deletedAt: null,
+          status: { in: [...ACTIVE_PROCESSING_STATUSES] },
+        },
+      }),
+      this.prisma.booking.findMany({
+        where: { deletedAt: null },
+        orderBy: { businessDate: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          bookingCode: true,
+          pnr: true,
+          contactName: true,
+          totalSellPrice: true,
+          status: true,
+          businessDate: true,
+          createdAt: true,
+          tickets: {
+            where: { status: 'ACTIVE' },
+            orderBy: { departureTime: 'asc' },
+            select: {
+              departureCode: true,
+              arrivalCode: true,
+            },
+          },
+        },
+      }),
+      this.prisma.accountsLedger.findMany({
+        where: {
+          direction: { in: ['RECEIVABLE', 'PAYABLE'] },
+          OR: [
+            { bookingId: null, issueDate: { lt: endOfRange } },
+            {
+              booking: {
+                deletedAt: null,
+                OR: [
+                  { businessDate: { lt: endOfRange } },
+                  { businessDate: null, createdAt: { lt: endOfRange } },
+                ],
+              },
+            },
+          ],
+        },
+        select: {
+          direction: true,
+          issueDate: true,
+          totalAmount: true,
+          booking: {
+            select: {
+              businessDate: true,
+              createdAt: true,
+            },
+          },
+          payments: {
+            where: { paidAt: { lt: endOfRange } },
+            select: {
+              paidAt: true,
+              amount: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const monthRevenue = monthBookings.reduce((sum, booking) => sum + Number(booking.totalSellPrice ?? 0), 0);
+    const monthProfit = monthBookings.reduce((sum, booking) => sum + Number(booking.profit ?? 0), 0);
+
+    const logicalTicketMap = new Map<string, { airline: string }>();
+    for (const booking of monthBookings) {
+      for (const ticket of booking.tickets) {
+        const logicalCode = ticket.airlineBookingCode || booking.pnr;
+        const logicalKey = logicalCode
+          ? `${booking.id}|${ticket.passengerId}|${logicalCode}`
+          : ticket.id;
+
+        if (!logicalTicketMap.has(logicalKey)) {
+          logicalTicketMap.set(logicalKey, { airline: ticket.airline || 'OTHER' });
+        }
+      }
+    }
+
+    const airlineCounts = Array.from(logicalTicketMap.values()).reduce((acc, ticket) => {
+      const airline = ticket.airline || 'OTHER';
+      acc[airline] = (acc[airline] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const totalLogicalTickets = logicalTicketMap.size;
+    const airlines = Object.entries(airlineCounts)
+      .map(([airline, count]) => ({
+        airline,
+        value: count,
+        percent: totalLogicalTickets > 0 ? (count / totalLogicalTickets) * 100 : 0,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    const fundBalances = fundEntries.reduce((acc, entry) => {
+      const fund = entry.fundAccount ?? 'UNKNOWN';
+      if (!acc[fund]) {
+        acc[fund] = 0;
+      }
+
+      const amount = Number(entry.amount ?? 0);
+      acc[fund] += entry.direction === 'INFLOW' ? amount : -amount;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const timelineSeed = new Map<string, { date: string; revenue: number; profit: number; receivable: number; payable: number }>();
+    for (let cursor = new Date(startOfMonth); cursor < endOfRange; cursor = addReportDays(cursor, 1)) {
+      const day = new Date(cursor);
+      const dateKey = getReportDateKey(day);
+      timelineSeed.set(dateKey, {
+        date: getReportDateLabel(day),
+        revenue: 0,
+        profit: 0,
+        receivable: 0,
+        payable: 0,
+      });
+    }
+
+    for (const booking of monthBookings) {
+      const businessDate = getBookingBusinessDate(booking);
+      const bucket = businessDate ? timelineSeed.get(getReportDateKey(businessDate)) : undefined;
+      if (!bucket) {
+        continue;
+      }
+
+      bucket.revenue += Number(booking.totalSellPrice ?? 0);
+      bucket.profit += Number(booking.profit ?? 0);
+    }
+
+    const timelineDebtChanges = createTimelineDebtDeltaStore();
+    let openingReceivable = 0;
+    let openingPayable = 0;
+
+    for (const ledger of timelineLedgers) {
+      const effectiveIssueDate = getLedgerTimelineDate(ledger);
+      const totalAmount = Number(ledger.totalAmount ?? 0);
+      const paidBeforeMonth = ledger.payments
+        .filter((payment) => payment.paidAt < startOfMonth)
+        .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+
+      if (effectiveIssueDate < startOfMonth) {
+        const openingBalance = Math.max(totalAmount - paidBeforeMonth, 0);
+        if (ledger.direction === 'RECEIVABLE') {
+          openingReceivable += openingBalance;
+        } else {
+          openingPayable += openingBalance;
+        }
+      } else {
+        pushDebtDelta(timelineDebtChanges, effectiveIssueDate, ledger.direction, totalAmount);
+      }
+
+      for (const payment of ledger.payments) {
+        if (payment.paidAt < startOfMonth) {
+          continue;
+        }
+
+        pushDebtDelta(timelineDebtChanges, payment.paidAt, ledger.direction, -Number(payment.amount ?? 0));
+      }
+    }
+
+    let runningReceivable = Math.max(openingReceivable, 0);
+    let runningPayable = Math.max(openingPayable, 0);
+
+    for (const [dateKey, bucket] of timelineSeed.entries()) {
+      const dailyDelta = timelineDebtChanges.get(dateKey);
+      if (dailyDelta) {
+        runningReceivable = Math.max(runningReceivable + dailyDelta.receivable, 0);
+        runningPayable = Math.max(runningPayable + dailyDelta.payable, 0);
+      }
+
+      bucket.receivable = runningReceivable;
+      bucket.payable = runningPayable;
+    }
+
+    const alerts = [];
+    const lowDeposits = lowDepositCandidates.filter((deposit) => Number(deposit.balance) < Number(deposit.alertThreshold));
+    const overdueReceivableAmount = Number(overdueReceivable._sum.remaining ?? 0);
+    const overduePayableAmount = Number(overduePayable._sum.remaining ?? 0);
+
+    if (overdueReceivableAmount > 0) {
+      alerts.push({
+        type: 'warning',
+        text: `Công nợ phải thu quá hạn ${overdueReceivableAmount.toLocaleString('vi-VN')} đ`,
+        time: 'Realtime',
+      });
+    }
+
+    if (overduePayableAmount > 0) {
+      alerts.push({
+        type: 'error',
+        text: `Công nợ phải trả quá hạn ${overduePayableAmount.toLocaleString('vi-VN')} đ`,
+        time: 'Realtime',
+      });
+    }
+
+    for (const deposit of lowDeposits) {
+      alerts.push({
+        type: 'warning',
+        text: `Deposit ${deposit.airline} còn ${Number(deposit.balance).toLocaleString('vi-VN')} đ`,
+        time: 'Realtime',
+      });
+    }
+
+    if (pendingBookings > 0) {
+      alerts.push({
+        type: 'info',
+        text: `${pendingBookings} booking đang chờ xử lý`,
+        time: 'Realtime',
+      });
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        type: 'success',
+        text: 'Không có cảnh báo hệ thống cần xử lý',
+        time: 'Realtime',
+      });
+    }
+
+    return {
+      summary: {
+        monthRevenue,
+        monthProfit,
+        profitMargin: monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0,
+        ticketsSold: totalLogicalTickets,
+        receivable: Number(receivableSummary._sum.remaining ?? 0),
+        payable: Number(payableSummary._sum.remaining ?? 0),
+        bankHtx: fundBalances.BANK_HTX ?? 0,
+        cashOffice: fundBalances.CASH_OFFICE ?? 0,
+      },
+      timeline: Array.from(timelineSeed.values()),
+      airlines,
+      recentBookings: recentBookingsRaw.map((booking) => ({
+        id: booking.id,
+        bookingCode: booking.bookingCode,
+        pnr: booking.pnr,
+        contactName: booking.contactName,
+        totalSellPrice: Number(booking.totalSellPrice ?? 0),
+        status: booking.status,
+        createdAt: getBookingBusinessDate(booking) ?? booking.createdAt,
+        route: booking.tickets.length > 0
+          ? `${booking.tickets[0]?.departureCode} → ${booking.tickets[booking.tickets.length - 1]?.arrivalCode}`
+          : 'Chưa có hành trình',
+      })),
+      alerts,
+      generatedAt: now.toISOString(),
+    };
+  }
+
   // GET /reports/revenue-chart - Biểu đồ doanh thu 7 ngày (Tối ưu N+1 query)
   @Get('revenue-chart')
   async getRevenueChart(@Query('days') daysString = '7') {
     const days = parseInt(daysString, 10) || 7;
     const result = [];
     const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1);
+    const endExclusive = addReportDays(getStartOfReportDay(now), 1);
+    const startDate = addReportDays(endExclusive, -days);
 
     // Lấy tất cả booking trong khoảng thời gian bằng 1 query
-    const bookings = await this.prisma.booking.findMany({
-      where: {
-        status: { in: ['ISSUED', 'COMPLETED'] },
-        createdAt: { gte: startDate },
-      },
-      select: { createdAt: true, totalSellPrice: true, profit: true },
-    });
+    const [bookings, ledgers] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          deletedAt: null,
+          status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+          ...buildBusinessDateFilter(startDate, endExclusive),
+        },
+        select: { businessDate: true, createdAt: true, totalSellPrice: true, profit: true },
+      }),
+      this.prisma.accountsLedger.findMany({
+        where: {
+          direction: { in: ['RECEIVABLE', 'PAYABLE'] },
+          OR: [
+            {
+              bookingId: null,
+              issueDate: { lt: endExclusive },
+            },
+            {
+              booking: {
+                deletedAt: null,
+                OR: [
+                  { businessDate: { lt: endExclusive } },
+                  { businessDate: null, createdAt: { lt: endExclusive } },
+                ],
+              },
+            },
+          ],
+        },
+        select: {
+          issueDate: true,
+          direction: true,
+          totalAmount: true,
+          booking: {
+            select: {
+              businessDate: true,
+              createdAt: true,
+            },
+          },
+          payments: {
+            where: { paidAt: { lt: endExclusive } },
+            select: { paidAt: true, amount: true },
+          },
+        },
+      }),
+    ]);
 
     // Gom nhóm trên bộ nhớ
     const grouped = bookings.reduce((acc, b) => {
-      const dateStr = b.createdAt.toLocaleDateString('vi-VN', { weekday: 'short', month: 'numeric', day: 'numeric' });
-      if (!acc[dateStr]) acc[dateStr] = { revenue: 0, profit: 0, tickets: 0 };
-      acc[dateStr].revenue += Number(b.totalSellPrice);
-      acc[dateStr].profit += Number(b.profit);
-      acc[dateStr].tickets += 1;
+      const businessDate = getBookingBusinessDate(b);
+      if (!businessDate) {
+        return acc;
+      }
+      const dateKey = getReportDateKey(businessDate);
+      if (!acc[dateKey]) acc[dateKey] = { revenue: 0, profit: 0, tickets: 0, receivable: 0, payable: 0 };
+      acc[dateKey].revenue += Number(b.totalSellPrice);
+      acc[dateKey].profit += Number(b.profit);
+      acc[dateKey].tickets += 1;
       return acc;
-    }, {} as Record<string, { revenue: number; profit: number; tickets: number }>);
+    }, {} as Record<string, { revenue: number; profit: number; tickets: number; receivable: number; payable: number }>);
 
-    for (let i = days - 1; i >= 0; i--) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-      const dateStr = day.toLocaleDateString('vi-VN', { weekday: 'short', month: 'numeric', day: 'numeric' });
+    const groupedDebtChanges = new Map<string, { receivable: number; payable: number }>();
+    let openingReceivable = 0;
+    let openingPayable = 0;
+
+    ledgers.forEach((ledger) => {
+      const effectiveIssueDate = getLedgerTimelineDate(ledger);
+      const totalAmount = Number(ledger.totalAmount ?? 0);
+      const paidBeforeRange = ledger.payments
+        .filter((payment) => payment.paidAt < startDate)
+        .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+
+      if (effectiveIssueDate < startDate) {
+        const openingBalance = Math.max(totalAmount - paidBeforeRange, 0);
+        if (ledger.direction === 'RECEIVABLE') {
+          openingReceivable += openingBalance;
+        } else {
+          openingPayable += openingBalance;
+        }
+      } else {
+        pushDebtDelta(groupedDebtChanges, effectiveIssueDate, ledger.direction, totalAmount);
+      }
+
+      ledger.payments.forEach((payment) => {
+        if (payment.paidAt < startDate) {
+          return;
+        }
+
+        pushDebtDelta(groupedDebtChanges, payment.paidAt, ledger.direction, -Number(payment.amount ?? 0));
+      });
+    });
+
+    let runningReceivable = Math.max(openingReceivable, 0);
+    let runningPayable = Math.max(openingPayable, 0);
+
+    for (let cursor = new Date(startDate); cursor < endExclusive; cursor = addReportDays(cursor, 1)) {
+      const day = new Date(cursor);
+      const dateKey = getReportDateKey(day);
+      const dailyDelta = groupedDebtChanges.get(dateKey);
+      if (dailyDelta) {
+        runningReceivable = Math.max(runningReceivable + dailyDelta.receivable, 0);
+        runningPayable = Math.max(runningPayable + dailyDelta.payable, 0);
+      }
+
       result.push({
-        date: dateStr,
-        revenue: grouped[dateStr]?.revenue || 0,
-        profit: grouped[dateStr]?.profit || 0,
-        tickets: grouped[dateStr]?.tickets || 0,
+        date: getReportDateLabel(day),
+        revenue: grouped[dateKey]?.revenue || 0,
+        profit: grouped[dateKey]?.profit || 0,
+        tickets: grouped[dateKey]?.tickets || 0,
+        receivable: runningReceivable,
+        payable: runningPayable,
       });
     }
 

@@ -47,8 +47,9 @@ export class BookingsController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateBookingDto,
+    @CurrentUser() user: User,
   ) {
-    return this.bookingsService.update(id, dto);
+    return this.bookingsService.update(id, dto, user);
   }
 
   // PATCH /bookings/:id/status - Chuyển trạng thái
@@ -69,6 +70,12 @@ export class BookingsController {
     @Body() dto: AddTicketDto,
   ) {
     return this.bookingsService.addTicket(id, dto);
+  }
+
+  // DELETE /bookings/:id/tickets - Xóa toàn bộ hành trình/vé của booking
+  @Delete(':id/tickets')
+  async clearTickets(@Param('id') id: string) {
+    return this.bookingsService.clearTickets(id);
   }
 
   // POST /bookings/:id/payments - Ghi nhận thanh toán

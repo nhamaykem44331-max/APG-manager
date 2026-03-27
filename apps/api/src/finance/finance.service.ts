@@ -1,28 +1,54 @@
 // APG Manager RMS - Finance Service (tài chính, đối soát, công nợ)
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CashFlowSourceType, FundAccount, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
+import {
+  addReportDays,
+  addReportMonths,
+  buildBusinessDateFilter,
+  getBookingBusinessDate,
+  getReportMonthKey,
+  getReportMonthLabel,
+  getStartOfReportDay,
+  getStartOfReportMonth,
+} from '../common/reporting-date.util';
+import { CashFlowService } from './cashflow.service';
+
+const DASHBOARD_BOOKING_STATUSES = ['ISSUED', 'COMPLETED'] as const;
+const ACTIVE_LEDGER_STATUSES = ['ACTIVE', 'PARTIAL_PAID', 'OVERDUE'] as const;
 
 @Injectable()
 export class FinanceService {
   constructor(
     private prisma: PrismaService,
     private n8n: N8nService,
+    private cashflow: CashFlowService,
   ) {}
 
   // Tổng quan tài chính realtime
   async getDashboard() {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = getStartOfReportMonth(now);
+    const startOfDay = getStartOfReportDay(now);
+    const endOfDay = addReportDays(startOfDay, 1);
+    const timelineStart = addReportMonths(startOfMonth, -5);
+    const timelineEnd = addReportMonths(startOfMonth, 1);
 
-    const [monthStats, dayStats, deposits, activeDebts] = await Promise.all([
+    const [
+      monthStats,
+      dayStats,
+      deposits,
+      activeLedgerSummary,
+      timelineBookings,
+      monthTickets,
+    ] = await Promise.all([
       // Thống kê tháng
       this.prisma.booking.aggregate({
         where: {
-          status: { in: ['ISSUED', 'COMPLETED'] },
-          createdAt: { gte: startOfMonth },
+          deletedAt: null,
+          status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+          ...buildBusinessDateFilter(startOfMonth, endOfDay),
         },
         _sum: { totalSellPrice: true, profit: true },
         _count: true,
@@ -30,21 +56,90 @@ export class FinanceService {
       // Thống kê ngày
       this.prisma.booking.aggregate({
         where: {
-          status: { in: ['ISSUED', 'COMPLETED'] },
-          createdAt: { gte: startOfDay },
+          deletedAt: null,
+          status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+          ...buildBusinessDateFilter(startOfDay, endOfDay),
         },
         _sum: { totalSellPrice: true, profit: true },
         _count: true,
       }),
       // Số dư deposit
       this.prisma.airlineDeposit.findMany(),
-      // Tổng công nợ active
-      this.prisma.debt.aggregate({
-        where: { status: { in: ['ACTIVE', 'OVERDUE', 'PARTIAL_PAID'] } },
+      // Tổng công nợ active thực tế từ ledger
+      this.prisma.accountsLedger.aggregate({
+        where: { status: { in: [...ACTIVE_LEDGER_STATUSES] } },
         _sum: { remaining: true },
-        _count: true,
+        _count: { id: true },
+      }),
+      // Timeline doanh thu/lợi nhuận theo tháng
+      this.prisma.booking.findMany({
+        where: {
+          deletedAt: null,
+          status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+          ...buildBusinessDateFilter(timelineStart, timelineEnd),
+        },
+        select: {
+          businessDate: true,
+          createdAt: true,
+          totalSellPrice: true,
+          profit: true,
+        },
+      }),
+      // Doanh thu theo hãng bay tháng hiện tại
+      this.prisma.ticket.findMany({
+        where: {
+          status: 'ACTIVE',
+          booking: {
+            deletedAt: null,
+            status: { in: [...DASHBOARD_BOOKING_STATUSES] },
+            ...buildBusinessDateFilter(startOfMonth, endOfDay),
+          },
+        },
+        select: {
+          airline: true,
+          sellPrice: true,
+        },
       }),
     ]);
+
+    const timelineSeed = new Map<string, { date: string; revenue: number; profit: number }>();
+    for (let cursor = new Date(timelineStart); cursor < timelineEnd; cursor = addReportMonths(cursor, 1)) {
+      const monthDate = new Date(cursor);
+      timelineSeed.set(getReportMonthKey(monthDate), {
+        date: getReportMonthLabel(monthDate),
+        revenue: 0,
+        profit: 0,
+      });
+    }
+
+    for (const booking of timelineBookings) {
+      const businessDate = getBookingBusinessDate(booking);
+      if (!businessDate) {
+        continue;
+      }
+      const bucket = timelineSeed.get(getReportMonthKey(businessDate));
+      if (!bucket) {
+        continue;
+      }
+
+      bucket.revenue += Number(booking.totalSellPrice ?? 0);
+      bucket.profit += Number(booking.profit ?? 0);
+    }
+
+    const airlineRevenueMap = monthTickets.reduce((acc, ticket) => {
+      const airline = ticket.airline || 'OTHER';
+      acc[airline] = (acc[airline] ?? 0) + Number(ticket.sellPrice ?? 0);
+      return acc;
+    }, {} as Record<string, number>);
+
+    const totalAirlineRevenue = Object.values(airlineRevenueMap).reduce((sum, value) => sum + value, 0);
+    const airlines = Object.entries(airlineRevenueMap)
+      .map(([airline, revenue]) => ({
+        airline,
+        revenue,
+        pct: totalAirlineRevenue > 0 ? Math.round((revenue / totalAirlineRevenue) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
     return {
       month: {
@@ -64,9 +159,11 @@ export class FinanceService {
         isLow: Number(d.balance) < Number(d.alertThreshold),
       })),
       debt: {
-        total: Number(activeDebts._sum.remaining ?? 0),
-        count: activeDebts._count,
+        total: Number(activeLedgerSummary._sum.remaining ?? 0),
+        count: activeLedgerSummary._count.id,
       },
+      timeline: Array.from(timelineSeed.values()),
+      airlines,
     };
   }
 
@@ -123,18 +220,61 @@ export class FinanceService {
   }
 
   // Nạp tiền / cập nhật deposit
-  async updateDeposit(id: string, amount: number, notes?: string) {
+  async updateDeposit(
+    id: string,
+    input: {
+      amount: number;
+      notes?: string;
+      fundAccount?: string;
+      reference?: string;
+      date?: string;
+      pic?: string;
+      userId?: string;
+    },
+  ) {
     const deposit = await this.prisma.airlineDeposit.findUnique({ where: { id } });
     if (!deposit) return null;
 
-    return this.prisma.airlineDeposit.update({
-      where: { id },
-      data: {
-        balance: { increment: amount },
-        lastTopUp: amount,
-        lastTopUpAt: new Date(),
-        notes,
-      },
+    if (input.amount <= 0) {
+      throw new BadRequestException('Sá»‘ tiá»n náº¡p deposit pháº£i lá»›n hÆ¡n 0.');
+    }
+
+    if (!input.fundAccount) {
+      throw new BadRequestException('Vui lÃ²ng chá»n quá»¹ xuáº¥t tiá»n Ä‘á»ƒ náº¡p deposit.');
+    }
+
+    const fundAccount = input.fundAccount as FundAccount;
+    const topUpAt = input.date ? new Date(input.date) : new Date();
+    const sourceId = `deposit-topup:${id}:${topUpAt.getTime()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedDeposit = await tx.airlineDeposit.update({
+        where: { id },
+        data: {
+          balance: { increment: input.amount },
+          lastTopUp: input.amount,
+          lastTopUpAt: topUpAt,
+          notes: input.notes,
+        },
+      });
+
+      await this.cashflow.recordSystemEntry({
+        direction: 'OUTFLOW',
+        category: 'AIRLINE_PAYMENT',
+        amount: input.amount,
+        pic: input.pic ?? 'Finance',
+        description: `Náº¡p deposit ${deposit.airline}`,
+        reference: input.reference ?? `DEPOSIT-${deposit.airline}`,
+        date: topUpAt,
+        status: 'DONE',
+        notes: input.notes ?? `Deposit airline ${deposit.airline}`,
+        fundAccount,
+        sourceType: CashFlowSourceType.DEPOSIT_TOPUP,
+        sourceId,
+        isLocked: true,
+      }, tx);
+
+      return updatedDeposit;
     });
   }
 

@@ -1,6 +1,6 @@
 // APG Manager RMS - Customers Controller
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
 import { CustomersService, CreateCustomerDto, ListCustomersDto } from './customers.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -39,5 +39,10 @@ export class CustomersController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: Partial<CreateCustomerDto>) {
     return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.service.remove(id);
   }
 }

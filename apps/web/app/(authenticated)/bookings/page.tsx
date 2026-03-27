@@ -1,19 +1,15 @@
 // APG Manager RMS - Danh sách Booking
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import Link from 'next/link';
 import {
-  Plus, Download, Search, Filter, ChevronLeft, ChevronRight, FileText, Loader2, Plane
+  ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, Download, FileText, Filter, Loader2, Plane, Plus, X
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
-  cn, formatVND, formatDateTime,
-  BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
-  BOOKING_SOURCE_LABELS,
+  cn, formatVND, formatDate, formatTime,
 } from '@/lib/utils';
-import { getAirlineName } from '@/lib/airline-utils';
 import { AirlineBadge } from '@/components/ui/airline-badge';
 import type { Booking } from '@/types';
 import { PageHeader } from '@/components/ui/page-header';
@@ -33,13 +29,98 @@ const STATUS_TABS = [
   { key: 'CANCELLED', label: 'Đã hủy' },
 ];
 
+const PAYMENT_STATUS_LABELS: Record<Booking['paymentStatus'], string> = {
+  PAID: 'Đã thanh toán',
+  PARTIAL: 'Một phần',
+  UNPAID: 'Đang nợ',
+  REFUNDED: 'Hoàn tiền',
+};
+
+const PAYMENT_STATUS_CLASSES: Record<Booking['paymentStatus'], string> = {
+  PAID: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  PARTIAL: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  UNPAID: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  REFUNDED: 'bg-slate-500/10 text-slate-400 dark:text-slate-300',
+};
+
+function getCustomerCodeBadgeClass(type?: string) {
+  return type === 'CORPORATE'
+    ? 'bg-orange-500/12 text-orange-500 border border-orange-500/20'
+    : 'bg-primary/10 text-primary border border-primary/20';
+}
+
+function getPrimaryTicket(booking: Booking) {
+  return (booking.tickets ?? [])[0];
+}
+
+function getLastTicket(booking: Booking) {
+  const tickets = booking.tickets ?? [];
+  return tickets[tickets.length - 1];
+}
+
+function formatProfit(value: number) {
+  const amount = Number(value ?? 0);
+
+  if (amount > 0) return `+${formatVND(amount)}`;
+  if (amount < 0) return `-${formatVND(Math.abs(amount))}`;
+
+  return formatVND(0);
+}
+
+type BookingSortField = 'createdAt' | 'departureTime';
+type BookingSortOrder = 'asc' | 'desc';
+type BookingPeriodFilter = 'all' | 'day' | 'month' | 'year';
+
+function buildCreatedDateRange(type: BookingPeriodFilter, value: string) {
+  if (!value || type === 'all') {
+    return { dateFrom: undefined, dateTo: undefined };
+  }
+
+  if (type === 'day') {
+    return { dateFrom: value, dateTo: value };
+  }
+
+  if (type === 'month') {
+    const [year, month] = value.split('-').map(Number);
+    if (!year || !month) return { dateFrom: undefined, dateTo: undefined };
+    const lastDay = new Date(year, month, 0).getDate();
+    return {
+      dateFrom: `${year}-${String(month).padStart(2, '0')}-01`,
+      dateTo: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+    };
+  }
+
+  if (value.length !== 4) {
+    return { dateFrom: undefined, dateTo: undefined };
+  }
+
+  const year = Number(value);
+  if (!year) {
+    return { dateFrom: undefined, dateTo: undefined };
+  }
+
+  return {
+    dateFrom: `${year}-01-01`,
+    dateTo: `${year}-12-31`,
+  };
+}
+
 export default function BookingsPage() {
   const router = useRouter();
   const [activeStatus, setActiveStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<BookingSortField>('createdAt');
+  const [sortOrder, setSortOrder] = useState<BookingSortOrder>('desc');
+  const [periodFilterType, setPeriodFilterType] = useState<BookingPeriodFilter>('all');
+  const [periodFilterValue, setPeriodFilterValue] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
+
+  const { dateFrom, dateTo } = useMemo(
+    () => buildCreatedDateRange(periodFilterType, periodFilterValue),
+    [periodFilterType, periodFilterValue],
+  );
 
   // Tạo booking nhanh -> vào thẳng trang chi tiết và mở modal nhập nhanh
   // FIX 2 frontend: quick-create không gửi contactPhone rỗng
@@ -62,10 +143,14 @@ export default function BookingsPage() {
 
   // Fetch danh sách booking
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['bookings', activeStatus, searchTerm, page],
+    queryKey: ['bookings', activeStatus, searchTerm, sortBy, sortOrder, dateFrom, dateTo, page],
     queryFn: () => bookingsApi.list({
       status: activeStatus || undefined,
       search: searchTerm || undefined,
+      sortBy,
+      order: sortOrder,
+      dateFrom,
+      dateTo,
       page,
       pageSize,
     } as Record<string, string | number>),
@@ -77,6 +162,40 @@ export default function BookingsPage() {
   const total: number = data?.total ?? 0;
   const showEmptyState = !isLoading && bookings.length === 0;
   const totalPages = Math.ceil(total / pageSize);
+
+  const toggleSort = (field: BookingSortField) => {
+    setPage(1);
+    if (sortBy === field) {
+      setSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortBy(field);
+    setSortOrder(field === 'departureTime' ? 'asc' : 'desc');
+  };
+
+  const renderSortHeader = (label: string, field: BookingSortField) => {
+    const isActive = sortBy === field;
+    const Icon = !isActive ? ArrowUpDown : sortOrder === 'asc' ? ArrowUp : ArrowDown;
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(field)}
+        className={cn(
+          'inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+          isActive && 'text-foreground',
+        )}
+        title={
+          field === 'departureTime'
+            ? (sortOrder === 'asc' && isActive ? 'Đang xếp ngày bay gần nhất trước' : 'Sắp xếp theo ngày bay')
+            : (sortOrder === 'desc' && isActive ? 'Đang xếp ngày tạo gần nhất trước' : 'Sắp xếp theo ngày tạo')
+        }
+      >
+        <span>{label}</span>
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    );
+  };
 
   if (isError) {
     return (
@@ -95,76 +214,147 @@ export default function BookingsPage() {
   const columns: ColumnDef<Booking>[] = [
     {
       header: 'PNR',
+      className: 'w-[92px]',
       cell: (b) => b.pnr
-        ? <span className="font-mono font-bold text-foreground tracking-widest text-[14px]">{b.pnr}</span>
+        ? <span className="font-mono font-bold text-[13px] text-foreground tracking-[0.18em]">{b.pnr}</span>
         : <span className="text-muted-foreground text-[11px] italic">Chưa có PNR</span>,
     },
     {
-      header: 'Khách hàng',
+      header: 'Tên đại diện',
+      className: 'w-[168px]',
       cell: (b) => (
         <div className="flex flex-col gap-0.5">
-          <span className="font-medium text-foreground truncate max-w-[150px]">{b.contactName}</span>
-          <span className="text-xs text-muted-foreground mt-0.5">
+          <span className="max-w-[148px] truncate font-medium text-foreground">{b.contactName}</span>
+          <span className="max-w-[148px] truncate text-[11px] text-muted-foreground">
             {b.contactPhone}
           </span>
         </div>
       ),
     },
     {
-      header: 'Chuyến bay',
-      cell: (b) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="text-foreground">
-            {b.tickets?.[0]
-              ? `${b.tickets[0].departureCode} → ${b.tickets[0].arrivalCode}`
-              : '—'
-            }
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {b.tickets?.[0]
-              ? <AirlineBadge code={b.tickets[0].airline} size="sm" />
-              : BOOKING_SOURCE_LABELS[b.source]
-            }
-          </span>
-        </div>
-      ),
+      header: 'Hành trình',
+      className: 'w-[164px]',
+      cell: (b) => {
+        const firstTicket = getPrimaryTicket(b);
+        const lastTicket = getLastTicket(b);
+        const segmentCount = b.tickets?.length ?? 0;
+
+        if (!firstTicket || !lastTicket) {
+          return <span className="text-[11px] text-muted-foreground italic">Chưa có hành trình</span>;
+        }
+
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="truncate font-medium text-foreground whitespace-nowrap">
+              {`${firstTicket.departureCode} → ${lastTicket.arrivalCode}`}
+            </span>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10.5px] text-muted-foreground">
+              <AirlineBadge code={firstTicket.airline} size="sm" showName={false} />
+              {firstTicket.flightNumber && <span className="font-mono">{firstTicket.flightNumber}</span>}
+              {segmentCount > 1 && <span>{`+${segmentCount - 1} chặng`}</span>}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      header: renderSortHeader('Khởi hành', 'departureTime'),
+      className: 'w-[108px]',
+      cell: (b) => {
+        const firstTicket = getPrimaryTicket(b);
+
+        if (!firstTicket?.departureTime) {
+          return <span className="text-[11px] text-muted-foreground italic">Chưa có lịch bay</span>;
+        }
+
+        return (
+          <div className="flex flex-col gap-0.5 whitespace-nowrap">
+            <span className="font-medium text-foreground">{formatDate(firstTicket.departureTime)}</span>
+            <span className="text-[10.5px] text-muted-foreground">{formatTime(firstTicket.departureTime)}</span>
+          </div>
+        );
+      },
     },
     {
       header: 'Giá bán',
+      className: 'w-[112px] text-right',
       cell: (b) => <span className="font-medium font-tabular text-foreground">{formatVND(b.totalSellPrice)}</span>,
     },
     {
       header: 'Lãi/Lỗ',
+      className: 'w-[108px] text-right',
+      cell: (b) => {
+        const profit = Number(b.profit ?? 0);
+
+        return (
+          <span
+            className={cn(
+              'font-medium font-tabular',
+              profit > 0 && 'text-emerald-500',
+              profit < 0 && 'text-rose-500',
+              profit === 0 && 'text-muted-foreground',
+            )}
+          >
+            {formatProfit(profit)}
+          </span>
+        );
+      },
+    },
+    {
+      header: 'Mã khách hàng',
+      className: 'w-[108px]',
       cell: (b) => (
-        <span className="font-medium font-tabular text-emerald-500 text-xs">
-          +{formatVND(b.profit)}
-        </span>
+        b.customer?.customerCode ? (
+          <span
+            className={cn(
+              'inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-mono font-medium',
+              getCustomerCodeBadgeClass(b.customer.type),
+            )}
+          >
+            {b.customer.customerCode}
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground italic">Đang cấp mã</span>
+        )
       ),
     },
     {
       header: 'Trạng thái',
+      className: 'w-[100px]',
       cell: (b) => (
-        <span className={cn(
-          'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium',
-          BOOKING_STATUS_CLASSES[b.status] ?? 'badge-default',
-        )}>
-          {BOOKING_STATUS_LABELS[b.status]}
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium',
+            PAYMENT_STATUS_CLASSES[b.paymentStatus],
+          )}
+        >
+          {PAYMENT_STATUS_LABELS[b.paymentStatus]}
         </span>
       ),
     },
     {
-      header: 'Nhân viên',
-      cell: (b) => <span className="text-muted-foreground">{b.staff?.fullName?.split(' ').pop() ?? '—'}</span>,
+      header: renderSortHeader('Ngày tạo', 'createdAt'),
+      className: 'w-[98px]',
+      cell: (b) => (
+        <div className="flex flex-col gap-0.5 whitespace-nowrap">
+          <span className="font-medium text-foreground">{formatDate(b.businessDate ?? b.createdAt)}</span>
+          <span className="text-[10.5px] text-muted-foreground">{formatTime(b.businessDate ?? b.createdAt)}</span>
+        </div>
+      ),
     },
     {
-      header: 'Ngày tạo',
-      cell: (b) => <span className="text-muted-foreground whitespace-nowrap">{formatDateTime(b.createdAt)}</span>,
-      className: 'text-right',
+      header: 'Phụ trách',
+      className: 'w-[118px]',
+      cell: (b) => (
+        <span className={cn('block max-w-[102px] truncate font-medium', !b.staff?.fullName && 'text-muted-foreground font-normal')}>
+          {b.staff?.fullName ?? 'Chưa phân công'}
+        </span>
+      ),
     },
   ];
 
   return (
-    <div className="space-y-6 max-w-[1400px]">
+    <div className="w-full max-w-none space-y-6">
       {/* Header */}
       <PageHeader
         title="Đặt vé & Booking"
@@ -227,17 +417,91 @@ export default function BookingsPage() {
         </div>
 
         <FilterBar
-          searchPlaceholder="Search by booking code, name, phone..."
+          searchPlaceholder="Tìm theo mã booking, PNR, tên, số điện thoại..."
           searchValue={searchTerm}
           onSearchChange={(v) => { setSearchTerm(v); setPage(1); }}
           filters={
-            <button className={cn(
-              'flex items-center gap-1.5 px-3 h-[32px] rounded-md text-[13px] font-medium',
-              'border border-border text-muted-foreground hover:bg-accent bg-background',
-            )}>
-              <Filter className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Filters</span>
-            </button>
+            <>
+              <div className={cn(
+                'flex h-[32px] items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[12px] font-medium text-muted-foreground',
+              )}>
+                <Filter className="h-3.5 w-3.5" />
+                <span>Lọc ngày tạo</span>
+              </div>
+
+              <select
+                value={periodFilterType}
+                onChange={(e) => {
+                  setPeriodFilterType(e.target.value as BookingPeriodFilter);
+                  setPeriodFilterValue('');
+                  setPage(1);
+                }}
+                className="h-[32px] rounded-md border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">Tất cả thời gian</option>
+                <option value="day">Theo ngày</option>
+                <option value="month">Theo tháng</option>
+                <option value="year">Theo năm</option>
+              </select>
+
+              {periodFilterType === 'day' && (
+                <input
+                  type="date"
+                  value={periodFilterValue}
+                  onChange={(e) => {
+                    setPeriodFilterValue(e.target.value);
+                    setPage(1);
+                  }}
+                  className="h-[32px] rounded-md border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              )}
+
+              {periodFilterType === 'month' && (
+                <input
+                  type="month"
+                  value={periodFilterValue}
+                  onChange={(e) => {
+                    setPeriodFilterValue(e.target.value);
+                    setPage(1);
+                  }}
+                  className="h-[32px] rounded-md border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              )}
+
+              {periodFilterType === 'year' && (
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={2000}
+                    max={2100}
+                    placeholder="2026"
+                    value={periodFilterValue}
+                    onChange={(e) => {
+                      setPeriodFilterValue(e.target.value.slice(0, 4));
+                      setPage(1);
+                    }}
+                    className="h-[32px] w-[110px] rounded-md border border-border bg-background pl-8 pr-3 text-[12px] text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              )}
+
+              {periodFilterType !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPeriodFilterType('all');
+                    setPeriodFilterValue('');
+                    setPage(1);
+                  }}
+                  className="flex h-[32px] items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span>Xóa lọc</span>
+                </button>
+              )}
+            </>
           }
         />
 
@@ -259,6 +523,8 @@ export default function BookingsPage() {
               columns={columns}
               data={bookings}
               isLoading={isLoading}
+              compact
+              tableClassName="table-fixed"
               onRowClick={(row) => router.push(`/bookings/${row.id}`)}
               pageIndex={page - 1}
               pageCount={totalPages}

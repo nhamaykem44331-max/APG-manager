@@ -1,55 +1,83 @@
-// APG Manager RMS — Groq AI Engine
-// Thay thế hoàn toàn Gemini Vision
-// Text PNR  → llama-3.1-8b-instant   (~200ms, 14,400 req/ngày miễn phí)
-// Image/PDF → llama-3.2-11b-vision-preview (vision model)
 import Groq from 'groq-sdk';
 import { ConfigService } from '@nestjs/config';
 import { ParseResult, ParsedTicketData } from '../dto/parsed-ticket.dto';
+import { parsePNRText } from './pnr-regex.engine';
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia phân tích vé máy bay GDS (Amadeus, Sabre). 
-Nhiệm vụ: Trích xuất TOÀN BỘ thông tin vé từ dữ liệu PNR/ảnh e-ticket và trả về JSON.
+function stripDiacritics(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0111/g, 'd')
+    .replace(/\u0110/g, 'D')
+    .toUpperCase()
+    .trim();
+}
 
-QUY TẮC QUAN TRỌNG:
-1. Tên hành khách: VIẾT HOA TOÀN BỘ, không dấu kiểu NGUYEN VAN A, VU THI DIEP.
-2. Gộp chặng bay: Nếu 1 hành khách có nhiều chặng (multi-segment), GỘP thành 1 ticket:
-   - flightNumber: "EK248 / EK394" (nối bằng " / ")
-   - departureCode: "EZE / DXB" (nối bằng " / ")  
-   - arrivalCode: "DXB / HAN" (nối bằng " / ")
-   - departureTime: giờ cất cánh chặng ĐẦU TIÊN
-   - arrivalTime: giờ hạ cánh chặng CUỐI CÙNG
-3. Mã sân bay: IATA 3 ký tự (HAN, SGN, DXB, EZE...)
-4. Mã hãng bay: IATA 2 ký tự (VN, EK, QH, VJ...)
-5. Ngày giờ: ISO 8601 format (2026-03-29T22:40:00+07:00)
-6. PNR: 5-6 ký tự in hoa từ dòng đầu tiên của PNR text
-7. Số vé (eTicketNumber): chuỗi 13 chữ số (ví dụ: 1766901714496)
-8. passengerType: ADT (người lớn), CHD (trẻ em), INF (em bé)
+const SYSTEM_PROMPT = `Ban la chuyen gia phan tich ve may bay GDS (Amadeus, Sabre).
+Nhiem vu: trich xuat toan bo thong tin ve tu du lieu PNR/anh e-ticket va tra ve JSON hop le.
 
-CÁC FORMAT PNR AMADEUS THƯỜNG GẶP:
-- Tên: "1.1NGUYEN/VAN A" → NGUYEN VAN A (ADT)
-- Chặng: "1 EK 248Q 29MAR 7 EZEDXB HK9 2240 0030 31MAR" → EK248, EZE→DXB, Q class
-- E-ticket: "1.TE 1766901714496-VN" hoặc chỉ "1766901714496"
-- Hành lý: "2PC" = 2 pieces, "23K" = 23kg
+QUY TAC QUAN TRONG:
+1. passengerName phai chep dung tu nguon, viet hoa, khong tu y doi ky tu.
+2. passengerType chi nhan ADT, CHD, INF.
+3. flightNumber dung dinh dang nhu VN6150 hoac EK248 / EK394.
+4. departureCode va arrivalCode la ma IATA 3 ky tu.
+5. departureTime va arrivalTime phai la ISO 8601.
+6. pnr la ma 5-6 ky tu in hoa.
+7. eTicketNumber neu co phai la chuoi 13 chu so.
+8. Neu mot hanh khach co nhieu chang, gop thanh 1 ticket.
 
-LUÔN TRẢ VỀ JSON HỢP LỆ, không có text nào khác ngoài JSON:
+Chi tra ve JSON:
 {
-  "pnr": "HURMDW",
+  "pnr": "ABC123",
   "tickets": [
     {
       "passengerName": "NGUYEN VAN A",
       "passengerType": "ADT",
-      "airline": "EK",
-      "flightNumber": "EK248 / EK394",
-      "fareClass": "Q",
-      "departureCode": "EZE / DXB",
-      "arrivalCode": "DXB / HAN",
-      "departureTime": "2026-03-29T22:40:00+07:00",
-      "arrivalTime": "2026-03-31T13:15:00+07:00",
+      "airline": "VN",
+      "flightNumber": "VN6150",
+      "fareClass": "L",
+      "departureCode": "SGN",
+      "arrivalCode": "CXR",
+      "departureTime": "2026-04-01T19:10:00+07:00",
+      "arrivalTime": "2026-04-01T20:20:00+07:00",
       "seatClass": "Economy",
-      "eTicketNumber": "1766901714487",
-      "baggageAllowance": "2PC"
+      "eTicketNumber": "7382319890424",
+      "baggageAllowance": "23KG"
     }
   ]
 }`;
+
+function normalizePassengerName(value: string): string {
+  return stripDiacritics(
+    value
+      .replace(/\b(MR|MRS|MS|MISS|MSTR|ADT|CHD|INF)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
+}
+
+function extractPassengerNamesFromRawText(rawInput: string): string[] {
+  if (!rawInput.trim()) {
+    return [];
+  }
+
+  const structuredNames = rawInput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^[-=]{3,}$/.test(line))
+    .filter((line) => !/^(code|pnr|hanh trinh|ngay di|thoi gian bay|so hieu cb|hang hang khong|thoi gian giu cho)\s*:/i.test(line))
+    .map((line) => line.match(/^(?:MR|MRS|MS|MSTR|ADT|CHD|INF)\s+(.+)$/i)?.[1] ?? '')
+    .map((line) => normalizePassengerName(line))
+    .filter(Boolean);
+
+  if (structuredNames.length > 0) {
+    return structuredNames;
+  }
+
+  const regexResult = parsePNRText(rawInput);
+  return regexResult.tickets.map((ticket) => normalizePassengerName(ticket.passengerName));
+}
 
 export class GroqEngine {
   private client: Groq;
@@ -62,14 +90,13 @@ export class GroqEngine {
     });
   }
 
-  // Parse PNR text (ultra-fast ~200ms)
   async parseText(text: string): Promise<ParseResult> {
     try {
       const completion = await this.client.chat.completions.create({
         model: this.textModel,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `Phân tích PNR sau:\n\n${text.trim()}` },
+          { role: 'user', content: `Phan tich PNR sau:\n\n${text.trim()}` },
         ],
         temperature: 0.1,
         max_tokens: 4096,
@@ -79,13 +106,21 @@ export class GroqEngine {
       const raw = completion.choices[0]?.message?.content ?? '{}';
       return this.buildResult(raw, text);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[GroqEngine] parseText error:', msg);
-      return { success: false, method: 'GEMINI_VISION', pnr: null, passengerCount: 0, segmentCount: 0, totalTickets: 0, tickets: [], error: msg };
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[GroqEngine] parseText error:', message);
+      return {
+        success: false,
+        method: 'GROQ_AI',
+        pnr: null,
+        passengerCount: 0,
+        segmentCount: 0,
+        totalTickets: 0,
+        tickets: [],
+        error: message,
+      };
     }
   }
 
-  // Parse image/PDF via Groq Vision
   async parseImage(imageBuffer: Buffer, mimeType: string): Promise<ParseResult> {
     try {
       const base64 = imageBuffer.toString('base64');
@@ -95,7 +130,7 @@ export class GroqEngine {
           {
             role: 'user',
             content: [
-              { type: 'text', text: SYSTEM_PROMPT + '\n\nPhân tích ảnh/tài liệu e-ticket sau:' },
+              { type: 'text', text: `${SYSTEM_PROMPT}\n\nPhan tich anh/tai lieu e-ticket sau:` },
               { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
             ],
           },
@@ -105,53 +140,89 @@ export class GroqEngine {
       });
 
       const raw = completion.choices[0]?.message?.content ?? '{}';
-      // Extract JSON from response (vision model may add extra text)
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       return this.buildResult(jsonMatch ? jsonMatch[0] : raw, '');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[GroqEngine] parseImage error:', msg);
-      return { success: false, method: 'GEMINI_VISION', pnr: null, passengerCount: 0, segmentCount: 0, totalTickets: 0, tickets: [], error: msg };
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[GroqEngine] parseImage error:', message);
+      return {
+        success: false,
+        method: 'GROQ_AI',
+        pnr: null,
+        passengerCount: 0,
+        segmentCount: 0,
+        totalTickets: 0,
+        tickets: [],
+        error: message,
+      };
     }
   }
 
   private buildResult(jsonStr: string, rawInput: string): ParseResult {
     try {
       const parsed = JSON.parse(jsonStr);
-      const tickets: ParsedTicketData[] = (parsed.tickets ?? []).map((t: any) => ({
-        passengerName: t.passengerName ?? '',
-        passengerType: t.passengerType ?? 'ADT',
-        airline: t.airline ?? '',
-        flightNumber: t.flightNumber ?? '',
-        fareClass: t.fareClass ?? '',
-        departureCode: t.departureCode ?? '',
-        arrivalCode: t.arrivalCode ?? '',
-        departureTime: t.departureTime ?? '',
-        arrivalTime: t.arrivalTime ?? '',
-        seatClass: t.seatClass ?? 'Economy',
-        eTicketNumber: t.eTicketNumber || undefined,
-        baggageAllowance: t.baggageAllowance || undefined,
+      let tickets: ParsedTicketData[] = (parsed.tickets ?? []).map((ticket: any) => ({
+        passengerName: normalizePassengerName(ticket.passengerName ?? ''),
+        passengerType: ticket.passengerType ?? 'ADT',
+        airline: ticket.airline ?? '',
+        flightNumber: ticket.flightNumber ?? '',
+        fareClass: ticket.fareClass ?? '',
+        departureCode: ticket.departureCode ?? '',
+        arrivalCode: ticket.arrivalCode ?? '',
+        departureTime: ticket.departureTime ?? '',
+        arrivalTime: ticket.arrivalTime ?? '',
+        seatClass: ticket.seatClass ?? 'Economy',
+        eTicketNumber: ticket.eTicketNumber || undefined,
+        baggageAllowance: ticket.baggageAllowance || undefined,
       }));
 
-      const pnr = parsed.pnr || null;
-      const uniquePassengers = new Set(tickets.map(t => t.passengerName)).size;
-      const uniqueSegments = new Set(tickets.map(t => t.flightNumber)).size;
+      const regexResult = rawInput.trim() ? parsePNRText(rawInput) : null;
+      const regexTickets = regexResult?.tickets ?? [];
+      const rawPassengerNames = extractPassengerNamesFromRawText(rawInput);
+
+      if (rawPassengerNames.length === tickets.length) {
+        tickets = tickets.map((ticket, index) => ({
+          ...ticket,
+          passengerName: rawPassengerNames[index],
+        }));
+      }
+
+      if (regexTickets.length >= tickets.length && regexTickets.length > 0) {
+        const byName = new Map(
+          tickets.map((ticket) => [normalizePassengerName(ticket.passengerName), ticket] as const),
+        );
+        const baseTicket = tickets[0] ?? regexTickets[0];
+        tickets = regexTickets.map((regexTicket) => {
+          const existing = byName.get(normalizePassengerName(regexTicket.passengerName));
+          const source = existing ?? baseTicket;
+          return {
+            ...source,
+            passengerName: normalizePassengerName(regexTicket.passengerName),
+            passengerType: regexTicket.passengerType,
+            eTicketNumber: regexTicket.eTicketNumber ?? existing?.eTicketNumber,
+          };
+        });
+      }
+
+      const pnr = parsed.pnr || regexResult?.pnr || null;
+      const uniquePassengers = new Set(tickets.map((ticket) => ticket.passengerName)).size;
+      const uniqueSegments = new Set(tickets.map((ticket) => ticket.flightNumber)).size;
 
       return {
         success: tickets.length > 0,
-        method: 'GEMINI_VISION', // Keep for frontend compatibility
+        method: 'GROQ_AI',
         pnr,
         passengerCount: uniquePassengers,
         segmentCount: uniqueSegments,
         totalTickets: tickets.length,
         tickets,
         raw: rawInput.substring(0, 200),
-        error: tickets.length === 0 ? 'Groq không trích xuất được thông tin vé' : undefined,
+        error: tickets.length === 0 ? 'Groq khong trich xuat duoc thong tin ve' : undefined,
       };
     } catch (parseErr) {
       return {
         success: false,
-        method: 'GEMINI_VISION',
+        method: 'GROQ_AI',
         pnr: null,
         passengerCount: 0,
         segmentCount: 0,

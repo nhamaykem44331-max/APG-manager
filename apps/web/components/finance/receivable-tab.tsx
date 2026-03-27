@@ -1,145 +1,451 @@
 'use client';
-// APG Manager RMS - ReceivableTab: Tab Phải thu (AR)
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowDownCircle, AlertTriangle, Search, User, Building2 } from 'lucide-react';
-import { ledgerApi } from '@/lib/api';
-import { cn, formatVND, formatDate, LEDGER_PARTY_LABELS, DEBT_STATUS_LABELS, DEBT_STATUS_CLASSES } from '@/lib/utils';
-import { PaymentModal } from './payment-modal';
-import type { AccountsLedger } from '@/types';
 
-const SUB_TABS = [
-  { key: '', label: 'Tất cả' },
-  { key: 'CUSTOMER_INDIVIDUAL', label: 'Khách lẻ' },
-  { key: 'CUSTOMER_CORPORATE', label: 'Khách DN' },
-  { key: 'OVERDUE', label: '🔴 Quá hạn' },
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, Building2, Search, User } from 'lucide-react';
+import { ledgerApi } from '@/lib/api';
+import {
+  cn,
+  DEBT_STATUS_CLASSES,
+  DEBT_STATUS_LABELS,
+  formatDate,
+  formatTime,
+  formatVND,
+  LEDGER_PARTY_LABELS,
+} from '@/lib/utils';
+import { PaymentModal } from './payment-modal';
+import {
+  getLedgerBookingRef,
+  getLedgerGroupMetrics,
+  matchesLedgerSearch,
+  sortLedgerRows,
+  type LedgerGroupMetrics,
+  type LedgerSortKey,
+} from './ledger-tab-helpers';
+import type { AccountsLedger, DebtStatus, LedgerPartyType } from '@/types';
+
+type ViewMode = 'PNR' | 'CUSTOMER';
+
+interface PartyOption {
+  key: string;
+  label: string;
+  remaining: number;
+}
+
+interface ReceivablePnrRow extends LedgerGroupMetrics {
+  key: string;
+  bookingRef: string;
+  customerKey: string;
+  customerName: string;
+  customerCode?: string | null;
+  partyType: LedgerPartyType;
+  paymentTarget?: AccountsLedger | null;
+}
+
+interface ReceivableCustomerRow extends LedgerGroupMetrics {
+  key: string;
+  customerName: string;
+  customerCode?: string | null;
+  partyType: LedgerPartyType;
+  pnrCount: number;
+}
+
+const VIEW_TABS: Array<{ key: ViewMode; label: string }> = [
+  { key: 'PNR', label: 'Theo PNR' },
+  { key: 'CUSTOMER', label: 'Theo khách hàng' },
 ];
 
+const SORT_OPTIONS: Array<{ key: LedgerSortKey; label: string }> = [
+  { key: 'remaining:desc', label: 'Nợ nhiều nhất' },
+  { key: 'remaining:asc', label: 'Nợ ít nhất' },
+  { key: 'dueDate:asc', label: 'Sắp đến hạn' },
+  { key: 'createdAt:desc', label: 'Mới nhất' },
+];
+
+function getReceivablePartyKey(ledger: AccountsLedger) {
+  return ledger.customerId ?? ledger.customerCode ?? ledger.customer?.id ?? ledger.customer?.fullName ?? 'unknown-customer';
+}
+
+function getReceivablePartyCode(ledger: AccountsLedger) {
+  return ledger.customer?.customerCode ?? ledger.customerCode ?? null;
+}
+
+function getReceivablePartyName(ledger: AccountsLedger) {
+  return ledger.customer?.fullName ?? ledger.customerCode ?? ledger.supplier?.name ?? 'Khách chưa xác định';
+}
+
+function getCustomerCodeBadgeClass(partyType?: LedgerPartyType) {
+  return partyType === 'CUSTOMER_CORPORATE'
+    ? 'bg-orange-500/12 text-orange-500 border border-orange-500/20'
+    : 'bg-primary/10 text-primary border border-primary/20';
+}
+
+function getGroupStatusClass(status: DebtStatus) {
+  return cn('text-[10px] px-2 py-0.5 rounded-full font-medium', DEBT_STATUS_CLASSES[status]);
+}
+
 export function ReceivableTab() {
-  const [subTab, setSubTab] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('PNR');
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('dueDate:asc');
+  const [sort, setSort] = useState<LedgerSortKey>('remaining:desc');
+  const [customerFilter, setCustomerFilter] = useState('ALL');
   const [paying, setPaying] = useState<AccountsLedger | null>(null);
 
-  const [sortBy, sortOrder] = sort.split(':');
-  const params: Record<string, string> = { direction: 'RECEIVABLE', pageSize: '50', sortBy, sortOrder };
-  if (subTab === 'OVERDUE') params.status = 'OVERDUE';
-  else if (subTab) params.partyType = subTab;
-  if (search) params.search = search;
-
   const { data, isLoading } = useQuery({
-    queryKey: ['ledger', 'RECEIVABLE', subTab, search, sort],
-    queryFn: () => ledgerApi.list(params).then((r) => r.data),
+    queryKey: ['ledger', 'RECEIVABLE', 'full-list'],
+    queryFn: () =>
+      ledgerApi
+        .list({ direction: 'RECEIVABLE', pageSize: '1000', sortBy: 'createdAt', sortOrder: 'desc' })
+        .then((response) => response.data),
   });
 
   const ledgers: AccountsLedger[] = data?.data ?? [];
-  const totalAR = ledgers.reduce((s, l) => s + Number(l.remaining), 0);
-  const overdueAR = ledgers.filter((l) => l.status === 'OVERDUE').reduce((s, l) => s + Number(l.remaining), 0);
+  const outstandingLedgers = useMemo(
+    () => ledgers.filter((ledger) => Number(ledger.remaining) > 0),
+    [ledgers],
+  );
+
+  const customerOptions = useMemo<PartyOption[]>(() => {
+    const groups = new Map<string, { label: string; remaining: number }>();
+
+    for (const ledger of outstandingLedgers) {
+      const key = getReceivablePartyKey(ledger);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.remaining += Number(ledger.remaining);
+      } else {
+        const customerCode = getReceivablePartyCode(ledger);
+        groups.set(key, {
+          label: customerCode
+            ? `${getReceivablePartyName(ledger)} (${customerCode})`
+            : getReceivablePartyName(ledger),
+          remaining: Number(ledger.remaining),
+        });
+      }
+    }
+
+    return [...groups.entries()]
+      .map(([key, value]) => ({ key, label: value.label, remaining: value.remaining }))
+      .sort((a, b) => b.remaining - a.remaining);
+  }, [outstandingLedgers]);
+
+  const filteredLedgers = useMemo(
+    () =>
+      ledgers.filter((ledger) => {
+        if (customerFilter !== 'ALL' && getReceivablePartyKey(ledger) !== customerFilter) {
+          return false;
+        }
+        return matchesLedgerSearch(ledger, search);
+      }),
+    [ledgers, search, customerFilter],
+  );
+
+  const pnrRows = useMemo<ReceivablePnrRow[]>(() => {
+    const groups = new Map<string, AccountsLedger[]>();
+
+    for (const ledger of filteredLedgers) {
+      const key = getLedgerBookingRef(ledger);
+      const bucket = groups.get(key) ?? [];
+      bucket.push(ledger);
+      groups.set(key, bucket);
+    }
+
+    const rows = [...groups.entries()].map(([key, bucket]) => {
+      const first = bucket[0];
+      const metrics = getLedgerGroupMetrics(bucket);
+      const openLedgers = bucket.filter(
+        (ledger) =>
+          Number(ledger.remaining) > 0 &&
+          ledger.status !== 'PAID' &&
+          ledger.status !== 'WRITTEN_OFF',
+      );
+
+        return {
+          key,
+          bookingRef: key,
+          customerKey: getReceivablePartyKey(first),
+          customerName: getReceivablePartyName(first),
+          customerCode: getReceivablePartyCode(first),
+          partyType: first.partyType,
+          paymentTarget: openLedgers.length === 1 ? openLedgers[0] : null,
+          ...metrics,
+      };
+    });
+
+    return sortLedgerRows(rows, sort);
+  }, [filteredLedgers, sort]);
+
+  const customerRows = useMemo<ReceivableCustomerRow[]>(() => {
+    const groups = new Map<string, AccountsLedger[]>();
+
+    for (const ledger of filteredLedgers) {
+      const key = getReceivablePartyKey(ledger);
+      const bucket = groups.get(key) ?? [];
+      bucket.push(ledger);
+      groups.set(key, bucket);
+    }
+
+    const rows = [...groups.entries()].map(([key, bucket]) => {
+      const first = bucket[0];
+      const metrics = getLedgerGroupMetrics(bucket);
+      const pnrCount = new Set(bucket.map((ledger) => getLedgerBookingRef(ledger))).size;
+
+      return {
+        key,
+        customerName: getReceivablePartyName(first),
+        customerCode: getReceivablePartyCode(first),
+        partyType: first.partyType,
+        pnrCount,
+        ...metrics,
+      };
+    });
+
+    return sortLedgerRows(rows, sort);
+  }, [filteredLedgers, sort]);
+
+  const totalAR = outstandingLedgers.reduce((sum, ledger) => sum + Number(ledger.remaining), 0);
+  const overdueAR = outstandingLedgers
+    .filter(
+      (ledger) =>
+        ledger.status === 'OVERDUE' || new Date(ledger.dueDate).getTime() < Date.now(),
+    )
+    .reduce((sum, ledger) => sum + Number(ledger.remaining), 0);
+  const activeCustomerCount = new Set(outstandingLedgers.map((ledger) => getReceivablePartyKey(ledger))).size;
+  const activePnrCount = new Set(outstandingLedgers.map((ledger) => getLedgerBookingRef(ledger))).size;
+  const activeRows = viewMode === 'PNR' ? pnrRows : customerRows;
 
   return (
     <div className="space-y-4">
-      {/* KPI */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Tổng phải thu', value: formatVND(totalAR), color: 'text-blue-500' },
           { label: 'Quá hạn', value: formatVND(overdueAR), color: 'text-red-500' },
-          { label: 'Khách lẻ', value: String(ledgers.filter(l => l.partyType === 'CUSTOMER_INDIVIDUAL').length) + ' KH', color: 'text-foreground' },
-          { label: 'Khách DN', value: String(ledgers.filter(l => l.partyType === 'CUSTOMER_CORPORATE').length) + ' DN', color: 'text-foreground' },
-        ].map((k) => (
-          <div key={k.label} className="card p-4">
-            <p className="text-xs text-muted-foreground">{k.label}</p>
-            <p className={cn('text-lg font-bold mt-1', k.color)}>{k.value}</p>
+          { label: 'Khách hàng đang nợ', value: `${activeCustomerCount} khách`, color: 'text-foreground' },
+          { label: 'PNR đang nợ', value: `${activePnrCount} PNR`, color: 'text-foreground' },
+        ].map((kpi) => (
+          <div key={kpi.label} className="card p-4">
+            <p className="text-xs text-muted-foreground">{kpi.label}</p>
+            <p className={cn('text-lg font-bold mt-1', kpi.color)}>{kpi.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Sub-tabs + Search */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-4 border-b border-border w-full sm:w-auto">
-          {SUB_TABS.map((t) => (
-            <button key={t.key} onClick={() => setSubTab(t.key)}
-              className={cn('pb-3 pt-1 text-[13px] font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
-                subTab === t.key
-                  ? 'border-foreground text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-              )}
-            >{t.label}</button>
-          ))}
+      <div className="card p-4 space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                className={cn(
+                  'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  viewMode === tab.key
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row xl:min-w-[620px]">
+            <select
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+              className="h-10 min-w-[240px] rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="ALL">Tất cả khách hàng</option>
+              {customerOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label} · {formatVND(option.remaining)}
+                </option>
+              ))}
+            </select>
+
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder={
+                  viewMode === 'PNR'
+                    ? 'Tìm PNR, mã booking, khách hàng...'
+                    : 'Tìm khách hàng, mã khách hàng, mã công nợ...'
+                }
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
         </div>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input type="text" placeholder="Tìm mã, tên KH, mã booking..."
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-xs text-muted-foreground">
+            {viewMode === 'PNR'
+              ? 'Danh sách nợ chia theo từng PNR để thu tiền trực tiếp.'
+              : 'Công nợ được gộp theo từng khách hàng để xem tổng số phải thu.'}
+          </p>
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            {SORT_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                onClick={() => setSort(option.key)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 font-medium transition-colors',
+                  sort === option.key
+                    ? 'bg-foreground text-background'
+                    : 'bg-accent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Sort */}
-      <div className="flex gap-2 text-xs">
-        {[
-          { key: 'remaining:desc', label: 'Nợ nhiều nhất' },
-          { key: 'remaining:asc', label: 'Nợ ít nhất' },
-          { key: 'dueDate:asc', label: 'Sắp đến hạn' },
-          { key: 'createdAt:desc', label: 'Mới nhất' },
-        ].map((s) => (
-          <button key={s.key} onClick={() => setSort(s.key)}
-            className={cn('px-2.5 py-1 rounded-md font-medium transition-colors',
-              sort === s.key ? 'bg-foreground text-background' : 'bg-accent text-muted-foreground hover:text-foreground'
-            )}
-          >{s.label}</button>
-        ))}
-      </div>
-
-      {/* Table */}
       <div className="card overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Đang tải...</div>
-        ) : ledgers.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Không có dữ liệu</div>
+        ) : activeRows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">Không có dữ liệu phải thu phù hợp</div>
+        ) : viewMode === 'PNR' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  {['PNR / Booking', 'Khách hàng', 'Loại', 'Tổng nợ', 'Đã thu', 'Ngày thanh toán', 'Còn lại', 'Hạn', 'Trạng thái', ''].map((header) => (
+                    <th key={header} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pnrRows.map((row) => {
+                  const isOverdue = row.status === 'OVERDUE';
+                  return (
+                    <tr key={row.key} className={cn('transition-colors hover:bg-muted/30', isOverdue && 'bg-red-500/5')}>
+                      <td className="px-4 py-2.5 font-mono text-xs font-semibold text-primary">{row.bookingRef}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          {row.partyType === 'CUSTOMER_INDIVIDUAL' ? (
+                            <User className="h-3 w-3 text-muted-foreground" />
+                          ) : (
+                            <Building2 className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          <span className="text-xs font-medium text-foreground">{row.customerName}</span>
+                        </div>
+                        {row.customerCode && (
+                          <span
+                            className={cn(
+                              'mt-1 inline-flex min-w-[88px] items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-medium font-mono',
+                              getCustomerCodeBadgeClass(row.partyType),
+                            )}
+                          >
+                            {row.customerCode}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</td>
+                      <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{formatVND(row.totalAmount)}</td>
+                      <td className="px-4 py-2.5 text-xs text-emerald-600">{formatVND(row.paidAmount)}</td>
+                      <td className="px-4 py-2.5 text-xs">
+                        {row.latestPaymentAt ? (
+                          <div className="whitespace-nowrap">
+                            <p className="font-medium text-foreground">{formatDate(row.latestPaymentAt)}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatTime(row.latestPaymentAt)}</p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs font-bold text-red-500">{formatVND(row.remaining)}</td>
+                      <td className={cn('px-4 py-2.5 text-xs', isOverdue && 'font-semibold text-red-500')}>
+                        {isOverdue && <AlertTriangle className="mr-1 inline h-3 w-3" />}
+                        {formatDate(row.dueDate)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={getGroupStatusClass(row.status)}>{DEBT_STATUS_LABELS[row.status]}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {row.paymentTarget ? (
+                          <button
+                            onClick={() => setPaying(row.paymentTarget ?? null)}
+                            className="whitespace-nowrap rounded-md bg-emerald-600 px-2.5 py-1 text-[10px] text-white hover:bg-emerald-700"
+                          >
+                            Ghi TT
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['Mã CN', 'Khách hàng', 'Loại', 'Tổng nợ', 'Đã trả', 'Còn lại', 'Hạn', 'Trạng thái', ''].map((h) => (
-                    <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-2.5 whitespace-nowrap">{h}</th>
+                  {['Khách hàng', 'Loại', 'PNR', 'Tổng nợ', 'Đã thu', 'Còn lại', 'Thanh toán gần nhất', 'Trạng thái', ''].map((header) => (
+                    <th key={header} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                      {header}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {ledgers.map((l) => {
-                  const isOverdue = l.status === 'OVERDUE';
-                  const partyName = l.customer?.fullName ?? l.supplier?.name ?? l.customerCode ?? '—';
+                {customerRows.map((row) => {
+                  const isOverdue = row.status === 'OVERDUE';
                   return (
-                    <tr key={l.id} className={cn('hover:bg-muted/30 transition-colors', isOverdue && 'bg-red-500/5')}>
-                      <td className="px-4 py-2.5 font-mono text-xs text-primary">{l.code}</td>
+                    <tr key={row.key} className={cn('transition-colors hover:bg-muted/30', isOverdue && 'bg-red-500/5')}>
                       <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          {l.partyType === 'CUSTOMER_INDIVIDUAL' ? <User className="w-3 h-3 text-muted-foreground" /> : <Building2 className="w-3 h-3 text-muted-foreground" />}
-                          <span className="font-medium text-foreground text-xs">{partyName}</span>
-                        </div>
-                        {l.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[150px]">{l.description}</p>}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{LEDGER_PARTY_LABELS[l.partyType]}</td>
-                      <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{formatVND(l.totalAmount)}</td>
-                      <td className="px-4 py-2.5 text-xs text-emerald-600">{formatVND(l.paidAmount)}</td>
-                      <td className="px-4 py-2.5 text-xs font-bold text-red-500">{formatVND(l.remaining)}</td>
-                      <td className={cn('px-4 py-2.5 text-xs', isOverdue && 'text-red-500 font-semibold')}>
-                        {isOverdue && <AlertTriangle className="w-3 h-3 inline mr-1" />}
-                        {formatDate(l.dueDate)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', DEBT_STATUS_CLASSES[l.status])}>
-                          {DEBT_STATUS_LABELS[l.status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {l.status !== 'PAID' && l.status !== 'WRITTEN_OFF' && (
-                          <button onClick={() => setPaying(l)}
-                            className="px-2.5 py-1 text-[10px] bg-emerald-600 text-white rounded-md hover:bg-emerald-700 whitespace-nowrap"
-                          >Ghi TT</button>
+                        <p className="text-xs font-medium text-foreground">{row.customerName}</p>
+                        {row.customerCode && (
+                          <span
+                            className={cn(
+                              'mt-1 inline-flex min-w-[88px] items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-medium font-mono',
+                              getCustomerCodeBadgeClass(row.partyType),
+                            )}
+                          >
+                            {row.customerCode}
+                          </span>
                         )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{row.pnrCount} PNR</td>
+                      <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{formatVND(row.totalAmount)}</td>
+                      <td className="px-4 py-2.5 text-xs text-emerald-600">{formatVND(row.paidAmount)}</td>
+                      <td className="px-4 py-2.5 text-xs font-bold text-red-500">{formatVND(row.remaining)}</td>
+                      <td className="px-4 py-2.5 text-xs">
+                        {row.latestPaymentAt ? (
+                          <div className="whitespace-nowrap">
+                            <p className="font-medium text-foreground">{formatDate(row.latestPaymentAt)}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatTime(row.latestPaymentAt)}</p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={getGroupStatusClass(row.status)}>{DEBT_STATUS_LABELS[row.status]}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => {
+                            setViewMode('PNR');
+                            setCustomerFilter(row.key);
+                          }}
+                          className="whitespace-nowrap rounded-md border border-border px-2.5 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                        >
+                          Xem PNR
+                        </button>
                       </td>
                     </tr>
                   );

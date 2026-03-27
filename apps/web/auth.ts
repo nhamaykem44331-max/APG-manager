@@ -60,18 +60,30 @@ export const {
   ],
 
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id           = user.id;
         token.role         = (user as { role: string }).role;
         token.accessToken  = (user as { accessToken: string }).accessToken;
         token.refreshToken = (user as { refreshToken: string }).refreshToken;
+        token.name         = user.name;
+        token.email        = user.email;
+      }
+
+      if (trigger === 'update' && session) {
+        const updatedUser = 'user' in session && session.user ? session.user : session;
+        token.name = (updatedUser as { name?: string | null }).name ?? token.name;
+        token.email = (updatedUser as { email?: string | null }).email ?? token.email;
+        token.role = (updatedUser as { role?: string }).role ?? token.role;
+        token.accessToken = (updatedUser as { accessToken?: string }).accessToken ?? token.accessToken;
       }
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.user.id          = token.id as string;
+        session.user.name        = (token.name as string | undefined) ?? session.user.name;
+        session.user.email       = (token.email as string | undefined) ?? session.user.email;
         session.user.role        = token.role as string;
         session.user.accessToken = token.accessToken as string;
       }

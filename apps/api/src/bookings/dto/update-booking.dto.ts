@@ -1,6 +1,6 @@
 // APG Manager RMS - DTO cập nhật booking
 import {
-  IsString, IsOptional, IsEnum,
+  IsString, IsOptional, IsEnum, IsISO8601,
 } from 'class-validator';
 import { PaymentMethod } from '@prisma/client';
 
@@ -40,4 +40,12 @@ export class UpdateBookingDto {
   @IsOptional()
   @IsString()
   customerId?: string;
+
+  @IsOptional()
+  @IsString()
+  staffId?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  createdAt?: string;
 }

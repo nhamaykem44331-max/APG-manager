@@ -42,6 +42,37 @@ export class N8nService {
     }
   }
 
+  async requestWebhookJson<T = Record<string, unknown>>(
+    path: string,
+    data: Record<string, unknown>,
+    timeoutMs = 30000,
+  ): Promise<T> {
+    const url = `${this.n8nBaseUrl}${path}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          timestamp: new Date().toISOString(),
+          source: 'apg-manager',
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`n8n webhook ${path} tra ve ${response.status}${body ? `: ${body}` : ''}`);
+      }
+
+      return await response.json() as T;
+    } catch (error) {
+      this.logger.error(`❌ n8n webhook request that bai: ${path}`, error);
+      throw error;
+    }
+  }
+
   // Gửi báo cáo ngày qua n8n
   async sendDailyReport(reportData: Record<string, unknown>): Promise<void> {
     await this.triggerWebhook('/daily-report', reportData);

@@ -3,6 +3,25 @@
 // ===== ENUMS =====
 
 export type UserRole = 'ADMIN' | 'MANAGER' | 'SALES' | 'ACCOUNTANT';
+export type UserPermissionModule =
+  | 'dashboard'
+  | 'bookings'
+  | 'customers'
+  | 'finance'
+  | 'reports'
+  | 'sales'
+  | 'priceLookup'
+  | 'settings';
+
+export type UserPermissionAction =
+  | 'view'
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'approve'
+  | 'export';
+
+export type UserPermissions = Record<UserPermissionModule, Record<UserPermissionAction, boolean>>;
 
 export type BookingStatus =
   | 'NEW'
@@ -24,6 +43,30 @@ export type PaymentMethod =
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'UNPAID' | 'REFUNDED';
 
 export type CustomerType = 'INDIVIDUAL' | 'CORPORATE';
+export type InvoiceDirection = 'INCOMING' | 'OUTGOING';
+export type InvoiceSourceType = 'MANUAL' | 'BOOKING_BATCH' | 'OCR_IMPORT' | 'MISA_IMPORT';
+export type InvoiceStatus =
+  | 'ELIGIBLE'
+  | 'DRAFT'
+  | 'READY_FOR_EXPORT'
+  | 'EXPORTED_TO_MISA'
+  | 'ISSUED_IN_MISA'
+  | 'SENT_TO_CUSTOMER'
+  | 'VIEWED'
+  | 'PAID'
+  | 'PARTIAL_PAID'
+  | 'CANCELLED'
+  | 'ADJUSTED'
+  | 'OCR_PENDING'
+  | 'NEED_REVIEW'
+  | 'VERIFIED'
+  | 'MATCHED'
+  | 'INVALID'
+  | 'REJECTED'
+  | 'NOT_REQUESTED';
+export type InvoiceAttachmentType = 'IMAGE' | 'PDF' | 'XML' | 'EXCEL' | 'OTHER';
+export type InvoiceImportStatus = 'OCR_PENDING' | 'NEED_REVIEW' | 'VERIFIED' | 'IMPORTED' | 'FAILED';
+export type InvoiceExportType = 'DEBT_STATEMENT' | 'OUTGOING_REQUEST';
 
 export type VipTier = 'NORMAL' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
@@ -39,6 +82,7 @@ export interface User {
   fullName: string;
   phone?: string;
   role: UserRole;
+  permissions?: UserPermissions;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
@@ -87,6 +131,7 @@ export interface Booking {
   notes?: string;
   internalNotes?: string;
   createdAt: string;
+  businessDate?: string;
   updatedAt: string;
   issuedAt?: string;
   // Relations
@@ -200,11 +245,64 @@ export interface DashboardStats {
   pendingBookings: number;
 }
 
+export interface DashboardOverviewMetric {
+  monthRevenue: number;
+  monthProfit: number;
+  profitMargin: number;
+  ticketsSold: number;
+  receivable: number;
+  payable: number;
+  bankHtx: number;
+  cashOffice: number;
+}
+
+export interface DashboardOverviewTimelinePoint {
+  date: string;
+  revenue: number;
+  profit: number;
+  receivable: number;
+  payable: number;
+}
+
+export interface DashboardOverviewAirline {
+  airline: string;
+  value: number;
+  percent: number;
+}
+
+export interface DashboardOverviewBooking {
+  id: string;
+  bookingCode: string;
+  pnr?: string | null;
+  contactName: string;
+  route: string;
+  totalSellPrice: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface DashboardOverviewAlert {
+  type: 'warning' | 'error' | 'info' | 'success';
+  text: string;
+  time: string;
+}
+
+export interface DashboardOverview {
+  summary: DashboardOverviewMetric;
+  timeline: DashboardOverviewTimelinePoint[];
+  airlines: DashboardOverviewAirline[];
+  recentBookings: DashboardOverviewBooking[];
+  alerts: DashboardOverviewAlert[];
+  generatedAt: string;
+}
+
 export interface RevenueChartData {
   date: string;
   revenue: number;
   profit: number;
   tickets: number;
+  receivable?: number;
+  payable?: number;
 }
 
 export interface AirlineChartData {
@@ -400,9 +498,9 @@ export interface AccountsLedger {
   notes?: string;
   createdAt: string;
   updatedAt: string;
-  customer?: Pick<Customer, 'id' | 'fullName' | 'phone' | 'type'>;
+  customer?: Pick<Customer, 'id' | 'fullName' | 'phone' | 'type' | 'customerCode'>;
   supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type'>;
-  booking?: { id: string; bookingCode: string; totalSellPrice: number };
+  booking?: { id: string; bookingCode: string; pnr?: string | null; totalSellPrice: number };
   payments?: LedgerPayment[];
 }
 
@@ -456,9 +554,334 @@ export interface LedgerAging {
   total: number;
 }
 
+export interface InvoiceLineItem {
+  id: string;
+  invoiceId: string;
+  lineNo: number;
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  pnr?: string | null;
+  ticketIds: string[];
+  description: string;
+  passengerName?: string | null;
+  passengerType?: string | null;
+  route?: string | null;
+  quantity: number;
+  unitName?: string | null;
+  currencyCode: string;
+  unitPrice: number;
+  amountBeforeVat: number;
+  vatRate: number;
+  vatAmount: number;
+  amount: number;
+  serviceFee: number;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceAttachment {
+  id: string;
+  invoiceId: string;
+  type: InvoiceAttachmentType;
+  fileName: string;
+  mimeType?: string | null;
+  storagePath?: string | null;
+  externalUrl?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface InvoiceReviewLog {
+  id: string;
+  invoiceId: string;
+  action: string;
+  fromStatus?: InvoiceStatus | null;
+  toStatus?: InvoiceStatus | null;
+  payload?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export type InvoicePaymentState = 'NO_LEDGER' | 'UNPAID' | 'PARTIAL' | 'PAID' | 'OVERDUE';
+
+export interface InvoiceLedgerPreview {
+  id: string;
+  code: string;
+  direction: LedgerDirection;
+  status: DebtStatus;
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  invoiceNumber?: string | null;
+  totalAmount: number;
+  paidAmount: number;
+  remaining: number;
+  dueDate: string;
+}
+
+export interface InvoiceLedgerSummary {
+  ledgerCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  overdueAmount: number;
+  overdueCount: number;
+  paymentStatus: InvoicePaymentState;
+  ledgers: InvoiceLedgerPreview[];
+}
+
+export interface InvoiceLinkedBooking {
+  id: string;
+  bookingCode: string;
+  pnr?: string | null;
+  status: BookingStatus;
+  issuedAt?: string | null;
+  paymentStatus: PaymentStatus;
+  route: string;
+  passengerSummary: string;
+  customerId: string;
+  customerName: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  totalSellPrice: number;
+  totalNetPrice: number;
+}
+
+export interface InvoiceBusinessLinkage {
+  linkedBookingCount: number;
+  unmatchedLineCount: number;
+  duplicatePnrCount: number;
+  counterpartyMatched: boolean;
+  counterpartyMismatchCount: number;
+}
+
+export interface InvoiceRecord {
+  id: string;
+  code: string;
+  direction: InvoiceDirection;
+  sourceType: InvoiceSourceType;
+  status: InvoiceStatus;
+  invoiceDate: string;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+  currencyCode: string;
+  paymentMethod?: string | null;
+  customerId?: string | null;
+  supplierId?: string | null;
+  buyerType?: CustomerType | null;
+  invoiceNumber?: string | null;
+  invoiceSeries?: string | null;
+  invoiceTemplateNo?: string | null;
+  transactionId?: string | null;
+  lookupUrl?: string | null;
+  sellerLegalName?: string | null;
+  sellerTaxCode?: string | null;
+  sellerAddress?: string | null;
+  sellerEmail?: string | null;
+  sellerPhone?: string | null;
+  sellerBankAccount?: string | null;
+  sellerBankName?: string | null;
+  buyerLegalName?: string | null;
+  buyerTaxCode?: string | null;
+  buyerAddress?: string | null;
+  buyerEmail?: string | null;
+  buyerPhone?: string | null;
+  buyerFullName?: string | null;
+  supplierLegalName?: string | null;
+  supplierTaxCode?: string | null;
+  supplierAddress?: string | null;
+  supplierEmail?: string | null;
+  supplierPhone?: string | null;
+  supplierBankAccount?: string | null;
+  supplierBankName?: string | null;
+  subtotal: number;
+  vatAmount: number;
+  totalAmount: number;
+  tags: string[];
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customer?: Pick<Customer, 'id' | 'fullName' | 'phone' | 'email' | 'type' | 'companyName' | 'companyTaxId' | 'customerCode'> | null;
+  supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type' | 'taxId' | 'contactName' | 'contactPhone' | 'contactEmail' | 'bankAccount' | 'bankName'> | null;
+  lines: InvoiceLineItem[];
+  attachments: InvoiceAttachment[];
+  reviews: InvoiceReviewLog[];
+  linkedBookings?: InvoiceLinkedBooking[];
+  paymentSummary?: InvoiceLedgerSummary & {
+    ledgerDirection: LedgerDirection;
+  };
+  businessLinkage?: InvoiceBusinessLinkage;
+}
+
+export interface InvoiceSummary {
+  incomingCount: number;
+  incomingTotal: number;
+  outgoingCount: number;
+  outgoingTotal: number;
+  reviewQueueCount: number;
+  readyForExportCount: number;
+  eligibleBookingCount: number;
+  missingSupplierCount: number;
+  missingIncomingCount: number;
+  missingOutgoingCount: number;
+  receivableOutstandingCount: number;
+  receivableOutstandingAmount: number;
+  payableOutstandingCount: number;
+  payableOutstandingAmount: number;
+  receivableOverdueAmount: number;
+  payableOverdueAmount: number;
+}
+
+export type InvoiceCoverageStatus = 'READY' | 'MISSING' | 'MISSING_SUPPLIER';
+
+export interface InvoiceCoveragePreview {
+  id: string;
+  code: string;
+  direction: InvoiceDirection;
+  status: InvoiceStatus;
+  invoiceNumber?: string | null;
+  invoiceDate: string;
+}
+
+export interface InvoiceCoverageItem {
+  bookingId: string;
+  bookingCode: string;
+  pnr?: string | null;
+  bookingStatus: BookingStatus;
+  issuedAt?: string | null;
+  paymentStatus: PaymentStatus;
+  route: string;
+  passengerSummary: string;
+  customerId: string;
+  customerType?: CustomerType | null;
+  customerName: string;
+  customerTaxCode?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
+  totalSellPrice: number;
+  totalNetPrice: number;
+  incomingStatus: InvoiceCoverageStatus;
+  outgoingStatus: Exclude<InvoiceCoverageStatus, 'MISSING_SUPPLIER'>;
+  incomingInvoices: InvoiceCoveragePreview[];
+  outgoingInvoices: InvoiceCoveragePreview[];
+  receivableSummary: InvoiceLedgerSummary;
+  payableSummary: InvoiceLedgerSummary;
+}
+
+export interface InvoiceDebtStatementRow {
+  rowNo: number;
+  bookingId: string;
+  bookingCode: string;
+  pnr: string;
+  issuedAt: string;
+  route: string;
+  passengerSummary: string;
+  currencyCode: string;
+  ticketQuantity: number;
+  unitPrice: number;
+  vatAmount: number;
+  totalAmount: number;
+  notes?: string | null;
+  paymentMethod: PaymentMethod;
+  bookingPaymentStatus: PaymentStatus;
+  outgoingInvoice?: {
+    id: string;
+    code: string;
+    status: InvoiceStatus;
+    invoiceNumber?: string | null;
+    invoiceDate: string;
+  } | null;
+  receivableSummary: InvoiceLedgerSummary;
+}
+
+export interface InvoiceDebtStatement {
+  generatedAt: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  seller: {
+    sellerLegalName: string;
+    sellerTaxCode: string;
+    sellerAddress: string;
+    sellerEmail: string;
+    sellerPhone: string;
+    sellerBankAccount: string;
+    sellerBankName: string;
+  };
+  customer?: Pick<Customer, 'id' | 'fullName' | 'phone' | 'email' | 'type' | 'companyName' | 'companyTaxId' | 'customerCode'> | null;
+  rows: InvoiceDebtStatementRow[];
+  summary: {
+    bookingCount: number;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+    overdueAmount: number;
+    paymentMethods: PaymentMethod[];
+  };
+}
+
+export interface InvoiceImportBatchInvoicePreview {
+  id: string;
+  code: string;
+  direction: InvoiceDirection;
+  status: InvoiceStatus;
+  invoiceNumber?: string | null;
+  invoiceDate: string;
+}
+
+export interface InvoiceImportBatch {
+  id: string;
+  status: InvoiceImportStatus;
+  supplierId?: string | null;
+  invoiceId?: string | null;
+  fileName: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  storagePath?: string | null;
+  externalUrl?: string | null;
+  ocrProvider?: string | null;
+  errorMessage?: string | null;
+  extractedData?: Record<string, unknown> | null;
+  reviewedData?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'taxId'> | null;
+  invoice?: InvoiceImportBatchInvoicePreview | null;
+}
+
+export interface InvoiceExportBatch {
+  id: string;
+  type: InvoiceExportType;
+  invoiceId?: string | null;
+  customerId?: string | null;
+  fileName: string;
+  filePath: string;
+  mimeType: string;
+  rowCount: number;
+  filters?: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+  customer?: Pick<Customer, 'id' | 'fullName' | 'companyName' | 'customerCode' | 'companyTaxId'> | null;
+  invoice?: InvoiceImportBatchInvoicePreview | null;
+}
+
 // ===== PHASE B: DÒNG TIỀN + CHI PHÍ VẬN HÀNH =====
 
 export type CashFlowDirection = 'INFLOW' | 'OUTFLOW';
+export type FundAccount = 'CASH_OFFICE' | 'BANK_HTX' | 'BANK_PERSONAL';
+export type CashFlowSourceType =
+  | 'MANUAL'
+  | 'BOOKING_PAYMENT'
+  | 'LEDGER_PAYMENT'
+  | 'OPERATING_EXPENSE'
+  | 'FUND_TRANSFER'
+  | 'FUND_ADJUSTMENT'
+  | 'DEPOSIT_TOPUP';
 
 export type CashFlowCategory =
   | 'TICKET_PAYMENT' | 'TICKET_REFUND' | 'PARTNER_FEEDBACK'
@@ -471,12 +894,25 @@ export interface CashFlowEntry {
   direction: CashFlowDirection;
   category: CashFlowCategory;
   amount: number;
+  fundAccount?: FundAccount | null;
+  counterpartyFundAccount?: FundAccount | null;
   pic: string;
   description: string;
   reference?: string;
   date: string;
   status: string;
   notes?: string;
+  reason?: string | null;
+  sourceType?: CashFlowSourceType | null;
+  sourceId?: string | null;
+  transferGroupId?: string | null;
+  isLocked?: boolean;
+  updatedAt?: string;
+  balanceAfter?: number;
+  signedAmount?: number;
+  fundLabel?: string;
+  counterpartyFundLabel?: string;
+  sourceLabel?: string;
   createdAt: string;
 }
 
@@ -488,6 +924,7 @@ export interface OperatingExpense {
   date: string;
   status: string;
   notes?: string;
+  fundAccount?: FundAccount | null;
   createdAt: string;
 }
 
@@ -505,6 +942,38 @@ export interface MonthlyFlow {
   outflow?: number;
   net?: number;
   total?: number;
+}
+
+export interface FundBalanceSummary {
+  fund: FundAccount;
+  label: string;
+  inflow: number;
+  outflow: number;
+  balance: number;
+  lastTransactionAt?: string | null;
+  movementCount: number;
+}
+
+export interface FundsOverview {
+  totalBalance: number;
+  funds: FundBalanceSummary[];
+  recentEntries: CashFlowEntry[];
+  meta: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+
+export interface FundLedgerResponse {
+  data: CashFlowEntry[];
+  meta: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
 }
 
 // ===== PHASE D: CRM NÂNG CAO + SALES PIPELINE =====
@@ -567,14 +1036,19 @@ export interface ParsedTicketData {
   pnr?: string;
 }
 
+export type ParseTripType = 'ONE_WAY' | 'ROUND_TRIP' | 'MULTI_CITY' | 'UNKNOWN';
+
 export interface ParseResult {
   success: boolean;
-  method: 'REGEX_PNR' | 'GEMINI_VISION';
+  method: 'REGEX_PNR' | 'GROQ_AI' | 'N8N_WEBHOOK';
   pnr: string | null;
+  tripType?: ParseTripType;
   passengerCount: number;
   segmentCount: number;
   totalTickets: number;
   tickets: ParsedTicketData[];
+  warnings?: string[];
+  raw?: string;
   error?: string;
 }
 
@@ -586,6 +1060,9 @@ export interface SheetInfo {
   title: string;
   rowCount: number;
   url: string;
+  columnCount: number;
+  templateVersion: string;
+  headers: string[];
 }
 
 export interface SyncResult {
@@ -598,8 +1075,12 @@ export interface SyncResult {
 
 export interface ImportPreviewRow {
   rowIndex: number;
+  syncKey: string;
+  bookingId: string;
+  bookingCode: string;
   pnr: string;
   contactName: string;
+  contactPhone: string;
   route: string;
   flightDate: string;
   paxCount: number;
@@ -610,6 +1091,11 @@ export interface ImportPreviewRow {
   profit: number;
   note: string;
   customerCode: string;
+  bookingStatus: string;
+  paymentStatus: string;
+  staffName: string;
+  templateVersion: string;
+  hasStructuredSnapshot: boolean;
   existsInDb: boolean;
   existingBookingId?: string;
   existingBookingCode?: string;
@@ -621,5 +1107,34 @@ export interface ImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+}
+
+export interface ResetOperationalDataResult {
+  success: boolean;
+  message: string;
+  confirmedBy: string;
+  deleted: {
+    auditLogs: number;
+    customers: number;
+    bookings: number;
+    tickets: number;
+    passengers: number;
+    payments: number;
+    debts: number;
+    bookingStatusLogs: number;
+    customerInteractions: number;
+    customerNotes: number;
+    communicationLogs: number;
+    ledgers: number;
+    ledgerPayments: number;
+    cashFlowEntries: number;
+    operatingExpenses: number;
+    dailyReconciliations: number;
+  };
+  preserved: {
+    users: number;
+    supplierProfiles: number;
+    airlineDeposits: number;
+  };
 }
 

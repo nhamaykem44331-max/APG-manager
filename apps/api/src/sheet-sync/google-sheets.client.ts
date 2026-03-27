@@ -1,17 +1,23 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, sheets_v4 } from 'googleapis';
+import {
+  BOOKING_SHEET_HEADERS,
+  BOOKING_SHEET_TEMPLATE_VERSION,
+  columnIndexToLetter,
+} from './sheet-template.util';
+import { SheetInfo } from './dto/sheet-row.dto';
 
 @Injectable()
 export class GoogleSheetsClient implements OnModuleInit {
-  private sheets: sheets_v4.Sheets;
+  private sheets!: sheets_v4.Sheets;
   private sheetId: string;
   private sheetName: string;
   private logger = new Logger(GoogleSheetsClient.name);
 
   constructor(private config: ConfigService) {
     this.sheetId = config.get('GOOGLE_SHEET_ID') ?? '';
-    this.sheetName = config.get('GOOGLE_SHEET_NAME') ?? 'Thống kê Vé FIT';
+    this.sheetName = config.get('GOOGLE_SHEET_NAME') ?? 'Thong ke Ve FIT';
   }
 
   async onModuleInit() {
@@ -25,69 +31,105 @@ export class GoogleSheetsClient implements OnModuleInit {
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
       this.sheets = google.sheets({ version: 'v4', auth });
-      this.logger.log('Google Sheets Client Initialized successfully.');
+      this.logger.log('Google Sheets Client initialized successfully.');
     } catch (error) {
-      this.logger.error('Failed to initialize Google Sheets logic', error);
+      this.logger.error('Failed to initialize Google Sheets client.', error);
     }
   }
 
-  // Lấy dữ liệu hiện trường (vd để check diff sau này)
   async readSheet(range?: string): Promise<string[][]> {
-    const r = range ?? `'${this.sheetName}'!A1:P5000`;
-    const res = await this.sheets.spreadsheets.values.get({
+    const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.sheetId,
-      range: r,
+      range: range ?? `'${this.sheetName}'`,
     });
-    return (res.data.values ?? []) as string[][];
+
+    return (response.data.values ?? []) as string[][];
   }
 
-  // Bắn data mới xuống bot sheet (không chèn chồng)
   async appendRows(rows: (string | number)[][]): Promise<number> {
-    const res = await this.sheets.spreadsheets.values.append({
+    await this.ensureHeaderRow();
+
+    const response = await this.sheets.spreadsheets.values.append({
       spreadsheetId: this.sheetId,
       range: `'${this.sheetName}'!A1`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: rows },
     });
-    return res.data.updates?.updatedRows ?? 0;
+
+    return response.data.updates?.updatedRows ?? 0;
   }
 
-  // Phá hủy data cũ và nhồi lại (giữ lại header row 1)
   async clearAndWriteAll(rows: (string | number)[][]): Promise<number> {
+    await this.ensureHeaderRow();
+
     await this.sheets.spreadsheets.values.clear({
       spreadsheetId: this.sheetId,
-      range: `'${this.sheetName}'!A2:P50000`,
+      range: `'${this.sheetName}'!A2:${this.lastColumnLetter}50000`,
     });
-    if (rows.length === 0) return 0;
-    const res = await this.sheets.spreadsheets.values.update({
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const response = await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.sheetId,
       range: `'${this.sheetName}'!A2`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: rows },
     });
-    return res.data.updatedRows ?? 0;
+
+    return response.data.updatedRows ?? 0;
   }
 
-  async getSheetInfo() {
+  async ensureHeaderRow() {
+    const existingHeader = (await this.readSheet(`'${this.sheetName}'!1:1`))[0] ?? [];
+    const shouldRewriteHeader =
+      existingHeader.length < BOOKING_SHEET_HEADERS.length
+      || BOOKING_SHEET_HEADERS.some((header, index) => String(existingHeader[index] ?? '').trim() !== header);
+
+    if (!shouldRewriteHeader) {
+      return;
+    }
+
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: this.sheetId,
+      range: `'${this.sheetName}'!A1`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [BOOKING_SHEET_HEADERS],
+      },
+    });
+  }
+
+  async getSheetInfo(): Promise<SheetInfo> {
     try {
-      const res = await this.sheets.spreadsheets.get({
+      const response = await this.sheets.spreadsheets.get({
         spreadsheetId: this.sheetId,
       });
-      const sheet = res.data.sheets?.find(
-        (s) => s.properties?.title === this.sheetName
+
+      const sheet = response.data.sheets?.find(
+        (candidate) => candidate.properties?.title === this.sheetName,
       );
+
       return {
-        title: sheet?.properties?.title,
-        rowCount: sheet?.properties?.gridProperties?.rowCount,
+        title: sheet?.properties?.title ?? this.sheetName,
+        rowCount: sheet?.properties?.gridProperties?.rowCount ?? 0,
         url: this.spreadsheetUrl,
+        columnCount: BOOKING_SHEET_HEADERS.length,
+        templateVersion: BOOKING_SHEET_TEMPLATE_VERSION,
+        headers: BOOKING_SHEET_HEADERS,
       };
-    } catch (e) {
-      this.logger.error('Could not fetch sheet info. Verify privileges.', e);
-      throw e;
+    } catch (error) {
+      this.logger.error('Could not fetch Google Sheet info.', error);
+      throw error;
     }
   }
 
   get spreadsheetUrl(): string {
     return `https://docs.google.com/spreadsheets/d/${this.sheetId}/edit`;
+  }
+
+  private get lastColumnLetter() {
+    return columnIndexToLetter(BOOKING_SHEET_HEADERS.length - 1);
   }
 }

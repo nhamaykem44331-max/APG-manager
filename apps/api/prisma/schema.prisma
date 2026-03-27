@@ -74,6 +74,60 @@ enum CustomerType {
   CORPORATE  // Khách doanh nghiệp
 }
 
+enum InvoiceDirection {
+  INCOMING
+  OUTGOING
+}
+
+enum InvoiceSourceType {
+  MANUAL
+  BOOKING_BATCH
+  OCR_IMPORT
+  MISA_IMPORT
+}
+
+enum InvoiceStatus {
+  ELIGIBLE
+  DRAFT
+  READY_FOR_EXPORT
+  EXPORTED_TO_MISA
+  ISSUED_IN_MISA
+  SENT_TO_CUSTOMER
+  VIEWED
+  PAID
+  PARTIAL_PAID
+  CANCELLED
+  ADJUSTED
+  OCR_PENDING
+  NEED_REVIEW
+  VERIFIED
+  MATCHED
+  INVALID
+  REJECTED
+  NOT_REQUESTED
+}
+
+enum InvoiceAttachmentType {
+  IMAGE
+  PDF
+  XML
+  EXCEL
+  OTHER
+}
+
+enum InvoiceImportStatus {
+  OCR_PENDING
+  NEED_REVIEW
+  VERIFIED
+  IMPORTED
+  FAILED
+}
+
+enum InvoiceExportType {
+  DEBT_STATEMENT
+  OUTGOING_REQUEST
+}
+
 enum VipTier {
   NORMAL
   SILVER   // > 10 triệu/năm
@@ -136,6 +190,16 @@ enum CashFlowCategory {
   OTHER                // Khác
 }
 
+enum CashFlowSourceType {
+  MANUAL
+  BOOKING_PAYMENT
+  LEDGER_PAYMENT
+  OPERATING_EXPENSE
+  FUND_TRANSFER
+  FUND_ADJUSTMENT
+  DEPOSIT_TOPUP
+}
+
 // Phase D: CRM Sales Pipeline
 enum LeadStatus {
   NEW           // Mới tiếp cận
@@ -176,6 +240,7 @@ model User {
   fullName    String    @map("full_name")
   phone       String?
   role        UserRole  @default(SALES)
+  permissions Json?
   isActive    Boolean   @default(true)  @map("is_active")
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -214,6 +279,8 @@ model Customer {
   passengers     Passenger[]
   debts          Debt[]
   ledgers        AccountsLedger[] @relation("CustomerLedger")
+  invoiceRecords InvoiceRecord[]
+  invoiceExportBatches InvoiceExportBatch[]
   interactions   CustomerInteraction[]
   customerNotes  CustomerNote[]
   communications CommunicationLog[]
@@ -250,10 +317,11 @@ model Booking {
   notes        String?
   internalNotes String? @map("internal_notes")
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt      @map("updated_at")
-  issuedAt  DateTime? @map("issued_at")
-  deletedAt DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  businessDate DateTime? @map("business_date")
+  updatedAt    DateTime  @updatedAt      @map("updated_at")
+  issuedAt     DateTime? @map("issued_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   customer      Customer           @relation(fields: [customerId], references: [id])
   staff         User               @relation(fields: [staffId], references: [id])
@@ -261,11 +329,13 @@ model Booking {
   payments      Payment[]
   statusHistory BookingStatusLog[]
   ledgers       AccountsLedger[]
+  invoiceLineItems InvoiceLineItem[]
 
   @@index([customerId])
   @@index([staffId])
   @@index([status])
   @@index([createdAt])
+  @@index([businessDate])
   @@index([deletedAt])
   @@index([paymentStatus])
   @@index([source, createdAt])  // PERF 4: Reports - source analysis + monthly grouping
@@ -518,8 +588,194 @@ model SupplierProfile {
 
   ledgers       AccountsLedger[]
   bookings      Booking[]     @relation("BookingSupplier")
+  invoiceRecords InvoiceRecord[]
+  invoiceImportBatches InvoiceImportBatch[]
 
   @@map("supplier_profiles")
+}
+
+model InvoiceRecord {
+  id                  String            @id @default(uuid())
+  code                String            @unique
+  direction           InvoiceDirection
+  sourceType          InvoiceSourceType @default(MANUAL) @map("source_type")
+  status              InvoiceStatus     @default(DRAFT)
+  invoiceDate         DateTime          @default(now()) @map("invoice_date")
+  periodFrom          DateTime?         @map("period_from")
+  periodTo            DateTime?         @map("period_to")
+  currencyCode        String            @default("VND") @map("currency_code")
+  paymentMethod       String?           @map("payment_method")
+  customerId          String?           @map("customer_id")
+  supplierId          String?           @map("supplier_id")
+  buyerType           CustomerType?     @map("buyer_type")
+  invoiceNumber       String?           @map("invoice_number")
+  invoiceSeries       String?           @map("invoice_series")
+  invoiceTemplateNo   String?           @map("invoice_template_no")
+  transactionId       String?           @map("transaction_id")
+  lookupUrl           String?           @map("lookup_url")
+  sellerLegalName     String?           @map("seller_legal_name")
+  sellerTaxCode       String?           @map("seller_tax_code")
+  sellerAddress       String?           @map("seller_address")
+  sellerEmail         String?           @map("seller_email")
+  sellerPhone         String?           @map("seller_phone")
+  sellerBankAccount   String?           @map("seller_bank_account")
+  sellerBankName      String?           @map("seller_bank_name")
+  buyerLegalName      String?           @map("buyer_legal_name")
+  buyerTaxCode        String?           @map("buyer_tax_code")
+  buyerAddress        String?           @map("buyer_address")
+  buyerEmail          String?           @map("buyer_email")
+  buyerPhone          String?           @map("buyer_phone")
+  buyerFullName       String?           @map("buyer_full_name")
+  supplierLegalName   String?           @map("supplier_legal_name")
+  supplierTaxCode     String?           @map("supplier_tax_code")
+  supplierAddress     String?           @map("supplier_address")
+  supplierEmail       String?           @map("supplier_email")
+  supplierPhone       String?           @map("supplier_phone")
+  supplierBankAccount String?           @map("supplier_bank_account")
+  supplierBankName    String?           @map("supplier_bank_name")
+  subtotal            Decimal           @default(0)
+  vatAmount           Decimal           @default(0) @map("vat_amount")
+  totalAmount         Decimal           @default(0) @map("total_amount")
+  tags                String[]          @default([])
+  notes               String?
+  metadata            Json?
+  createdBy           String?           @map("created_by")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  customer    Customer?          @relation(fields: [customerId], references: [id])
+  supplier    SupplierProfile?   @relation(fields: [supplierId], references: [id])
+  lines       InvoiceLineItem[]
+  attachments InvoiceAttachment[]
+  reviews     InvoiceReviewLog[]
+  importBatches InvoiceImportBatch[]
+  exportBatches InvoiceExportBatch[]
+
+  @@index([direction, status])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([invoiceDate])
+  @@index([invoiceNumber])
+  @@map("invoice_records")
+}
+
+model InvoiceLineItem {
+  id              String    @id @default(uuid())
+  invoiceId       String    @map("invoice_id")
+  lineNo          Int       @map("line_no")
+  bookingId       String?   @map("booking_id")
+  bookingCode     String?   @map("booking_code")
+  pnr             String?
+  ticketIds       String[]  @default([]) @map("ticket_ids")
+  description     String
+  passengerName   String?   @map("passenger_name")
+  passengerType   String?   @map("passenger_type")
+  route           String?
+  quantity        Decimal   @default(1)
+  unitName        String?   @default("Ve") @map("unit_name")
+  currencyCode    String    @default("VND") @map("currency_code")
+  unitPrice       Decimal   @default(0) @map("unit_price")
+  amountBeforeVat Decimal   @default(0) @map("amount_before_vat")
+  vatRate         Decimal   @default(0) @map("vat_rate")
+  vatAmount       Decimal   @default(0) @map("vat_amount")
+  amount          Decimal   @default(0)
+  serviceFee      Decimal   @default(0) @map("service_fee")
+  notes           String?
+  snapshot        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  invoice InvoiceRecord @relation(fields: [invoiceId], references: [id])
+  booking Booking?      @relation(fields: [bookingId], references: [id])
+
+  @@index([invoiceId, lineNo])
+  @@index([bookingId])
+  @@index([pnr])
+  @@map("invoice_line_items")
+}
+
+model InvoiceAttachment {
+  id          String                @id @default(uuid())
+  invoiceId   String                @map("invoice_id")
+  type        InvoiceAttachmentType @default(OTHER)
+  fileName    String                @map("file_name")
+  mimeType    String?               @map("mime_type")
+  storagePath String?               @map("storage_path")
+  externalUrl String?               @map("external_url")
+  notes       String?
+  createdBy   String?               @map("created_by")
+  createdAt   DateTime              @default(now()) @map("created_at")
+
+  invoice InvoiceRecord @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_attachments")
+}
+
+model InvoiceReviewLog {
+  id         String         @id @default(uuid())
+  invoiceId  String         @map("invoice_id")
+  action     String
+  fromStatus InvoiceStatus? @map("from_status")
+  toStatus   InvoiceStatus? @map("to_status")
+  payload    Json?
+  createdBy  String?        @map("created_by")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  invoice InvoiceRecord @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@index([createdAt])
+  @@map("invoice_review_logs")
+}
+
+model InvoiceImportBatch {
+  id          String              @id @default(uuid())
+  status      InvoiceImportStatus @default(OCR_PENDING)
+  supplierId  String?             @map("supplier_id")
+  invoiceId   String?             @unique @map("invoice_id")
+  fileName    String              @map("file_name")
+  mimeType    String?             @map("mime_type")
+  fileSize    Int?                @map("file_size")
+  storagePath String?             @map("storage_path")
+  externalUrl String?             @map("external_url")
+  ocrProvider String?             @map("ocr_provider")
+  errorMessage String?            @map("error_message")
+  extractedData Json?             @map("extracted_data")
+  reviewedData Json?              @map("reviewed_data")
+  createdBy   String?             @map("created_by")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  supplier SupplierProfile? @relation(fields: [supplierId], references: [id])
+  invoice  InvoiceRecord?   @relation(fields: [invoiceId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([supplierId])
+  @@map("invoice_import_batches")
+}
+
+model InvoiceExportBatch {
+  id        String            @id @default(uuid())
+  type      InvoiceExportType
+  invoiceId String?           @map("invoice_id")
+  customerId String?          @map("customer_id")
+  fileName  String            @map("file_name")
+  filePath  String            @map("file_path")
+  mimeType  String            @default("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") @map("mime_type")
+  rowCount  Int               @default(0) @map("row_count")
+  filters   Json?
+  payload   Json?
+  createdBy String?           @map("created_by")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  invoice  InvoiceRecord? @relation(fields: [invoiceId], references: [id])
+  customer Customer?      @relation(fields: [customerId], references: [id])
+
+  @@index([type, createdAt])
+  @@index([invoiceId])
+  @@index([customerId])
+  @@map("invoice_export_batches")
 }
 
 // S\u1ed5 c\u00e1i c\u00f4ng n\u1ee3 2 chi\u1ec1u (Ph\u1ea3i thu AR + Ph\u1ea3i tr\u1ea3 AP)
@@ -605,6 +861,12 @@ model CashFlowEntry {
   status        String            @default("DONE") // DONE, PENDING
   notes         String?
   fundAccount   FundAccount?      @map("fund_account")
+  counterpartyFundAccount FundAccount? @map("counterparty_fund_account")
+  sourceType    CashFlowSourceType? @map("source_type")
+  sourceId      String?           @map("source_id")
+  transferGroupId String?         @map("transfer_group_id")
+  reason        String?
+  isLocked      Boolean           @default(false) @map("is_locked")
   createdBy     String?           @map("created_by")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
@@ -613,6 +875,9 @@ model CashFlowEntry {
   @@index([category])
   @@index([date])
   @@index([pic])
+  @@index([fundAccount, date])
+  @@index([sourceType, sourceId])
+  @@index([transferGroupId])
   @@map("cash_flow_entries")
 }
 
@@ -625,6 +890,7 @@ model OperatingExpense {
   date          DateTime
   status        String           @default("DONE") // DONE, PENDING
   notes         String?
+  fundAccount   FundAccount?     @map("fund_account")
   createdBy     String?          @map("created_by")
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")

@@ -16,6 +16,8 @@ import { SheetSyncModule } from './sheet-sync/sheet-sync.module';
 import { FlightsModule } from './flights/flights.module';
 import { AirportsModule } from './airports/airports.module';
 import { DocumentsModule } from './documents/documents.module';
+import { SystemModule } from './system/system.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { DocumentsModule } from './documents/documents.module';
     FlightsModule, // FIX 10: Đăng ký Flights Module (airports data + search endpoint)
     AirportsModule, // Airports search + distance API (Cách 2 & 3)
     DocumentsModule, // PDF: Hóa đơn, báo giá, phiếu thu/chi
+    SystemModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,2 @@
+-- This migration folder was present in the repo without SQL content.
+-- Keep it as a no-op so Prisma can continue the migration chain cleanly.

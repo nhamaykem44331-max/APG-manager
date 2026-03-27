@@ -1,6 +1,6 @@
 // APG Manager RMS - DTO thêm vé vào booking (với validation)
 import {
-  IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Length,
+  IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Length, IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -63,4 +63,7 @@ export class AddTicketDto {
 
   @IsOptional() @IsString()
   baggageAllowance?: string;
+
+  @IsOptional() @IsBoolean()
+  replaceExistingPnr?: boolean;
 }

@@ -1,3 +1,5 @@
+export type ParseTripType = 'ONE_WAY' | 'ROUND_TRIP' | 'MULTI_CITY' | 'UNKNOWN';
+
 // Output chung mà cả 2 engine đều trả về
 export interface ParsedTicketData {
   passengerName: string;
@@ -17,12 +19,14 @@ export interface ParsedTicketData {
 
 export interface ParseResult {
   success: boolean;
-  method: 'REGEX_PNR' | 'GEMINI_VISION';
+  method: 'REGEX_PNR' | 'GROQ_AI' | 'N8N_WEBHOOK';
   pnr: string | null;
+  tripType?: ParseTripType;
   passengerCount: number;
   segmentCount: number;
   totalTickets: number;     // pax × segments
   tickets: ParsedTicketData[];
+  warnings?: string[];
   raw?: string;             // input gốc (debug)
   error?: string;
 }

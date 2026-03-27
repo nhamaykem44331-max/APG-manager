@@ -31,7 +31,7 @@ export class ListBookingsDto {
   search?: string;
 
   @IsOptional()
-  @IsIn(['createdAt', 'updatedAt', 'totalSellPrice', 'profit'])
+  @IsIn(['createdAt', 'updatedAt', 'totalSellPrice', 'profit', 'departureTime'])
   sortBy?: string;
 
   @IsOptional()

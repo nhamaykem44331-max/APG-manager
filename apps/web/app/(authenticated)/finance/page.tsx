@@ -37,21 +37,11 @@ const TABS = [
 ];
 
 // Revenue chart data mẫu
-const SAMPLE_CHART = [
-  { date: 'T2', revenue: 42_000_000, profit: 4_200_000 },
-  { date: 'T3', revenue: 38_000_000, profit: 3_800_000 },
-  { date: 'T4', revenue: 55_000_000, profit: 5_500_000 },
-  { date: 'T5', revenue: 47_000_000, profit: 4_700_000 },
-  { date: 'T6', revenue: 63_000_000, profit: 6_300_000 },
-  { date: 'T7', revenue: 71_000_000, profit: 7_100_000 },
-  { date: 'CN', revenue: 45_000_000, profit: 4_500_000 },
-];
-
 export default function FinancePage() {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="space-y-6 max-w-[1400px]">
+    <div className="max-w-[1400px] space-y-5">
       {/* Header */}
       <PageHeader
         title="Tài chính"
@@ -59,16 +49,16 @@ export default function FinancePage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border overflow-x-auto scroller">
+      <div className="flex gap-1 overflow-x-auto rounded-lg border border-border/80 bg-card/70 p-1 scroller">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 pb-3 pt-2 min-w-max text-[13px] font-medium transition-colors border-b-2 -mb-px',
+              'flex min-w-max items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
               activeTab === tab.key
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
             )}
           >
             <tab.icon className="w-3.5 h-3.5" />
@@ -107,16 +97,19 @@ function OverviewTab() {
   });
 
   const stats = data ?? {
-    month: { revenue: 1_200_000_000, profit: 120_000_000, bookings: 380 },
-    today: { revenue: 45_200_000, profit: 4_800_000, bookings: 23 },
+    month: { revenue: 0, profit: 0, bookings: 0 },
+    today: { revenue: 0, profit: 0, bookings: 0 },
     deposits: [],
-    debt: { total: 350_000_000, count: 8 },
+    debt: { total: 0, count: 0 },
+    timeline: [],
+    airlines: [],
   };
+  const airlineRows = stats.airlines as Array<{ airline: string; revenue: number; pct: number }>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* KPI 4 ô cũ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
             label: 'Doanh thu tháng', value: formatVND(stats.month.revenue),
@@ -124,7 +117,7 @@ function OverviewTab() {
           },
           {
             label: 'Lợi nhuận tháng', value: formatVND(stats.month.profit),
-            sub: `${((stats.month.profit / stats.month.revenue) * 100).toFixed(1)}% margin`,
+            sub: `${stats.month.revenue > 0 ? ((stats.month.profit / stats.month.revenue) * 100).toFixed(1) : '0.0'}% margin`,
             icon: Wallet, color: 'text-emerald-500',
           },
           {
@@ -136,15 +129,15 @@ function OverviewTab() {
             sub: `LN: ${formatVND(stats.today.profit)}`, icon: ArrowUpCircle, color: 'text-purple-500',
           },
         ].map((card) => (
-          <div key={card.label} className={cn('card p-4 flex flex-col justify-between min-h-[100px]', isLoading && 'animate-pulse')}>
+          <div key={card.label} className={cn('card flex min-h-[88px] flex-col justify-between p-3.5', isLoading && 'animate-pulse')}>
             <div className="flex items-start justify-between">
-              <p className="text-[13px] font-medium text-muted-foreground">{card.label}</p>
-              <div className="w-6 h-6 rounded flex items-center justify-center bg-accent/50">
-                <card.icon className={cn('w-3.5 h-3.5', card.color)} />
+              <p className="text-[12px] font-medium text-muted-foreground">{card.label}</p>
+              <div className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/50">
+                <card.icon className={cn('h-3 w-3', card.color)} />
               </div>
             </div>
-            <div className="mt-2">
-              <p className="text-2xl font-bold font-tabular tracking-tight text-foreground">{card.value}</p>
+            <div className="mt-1.5">
+              <p className="font-tabular text-[28px] font-bold tracking-tight text-foreground">{card.value}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">{card.sub}</p>
             </div>
           </div>
@@ -153,26 +146,26 @@ function OverviewTab() {
 
       {/* KPI AR/AP từ AccountsLedger */}
       {ledgerSummary && (
-        <div className="card p-5">
-          <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
+        <div className="card p-4">
+          <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
             <h3 className="text-[13px] font-medium text-foreground">Trạng thái công nợ (AR / AP)</h3>
           </div>
           <div className="flex flex-col text-[13px]">
-            <div className="flex items-center justify-between py-3 border-b border-border/50">
+            <div className="flex items-center justify-between border-b border-border/50 py-2.5">
               <span className="text-muted-foreground flex items-center gap-2"><ArrowDownCircle className="w-4 h-4 text-blue-500" /> Tổng phải thu (AR)</span>
               <div className="text-right">
                 <span className="font-medium font-tabular text-foreground block">{formatVND(ledgerSummary.totalReceivable)}</span>
                 <span className="text-[11px] text-red-500">Quá hạn: {formatVND(ledgerSummary.overdueReceivable)}</span>
               </div>
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-border/50">
+            <div className="flex items-center justify-between border-b border-border/50 py-2.5">
               <span className="text-muted-foreground flex items-center gap-2"><ArrowUpCircle className="w-4 h-4 text-orange-500" /> Tổng phải trả (AP)</span>
               <div className="text-right">
                 <span className="font-medium font-tabular text-foreground block">{formatVND(ledgerSummary.totalPayable)}</span>
                 <span className="text-[11px] text-red-500">Quá hạn: {formatVND(ledgerSummary.overduePayable)}</span>
               </div>
             </div>
-            <div className="flex items-center justify-between py-3">
+            <div className="flex items-center justify-between py-2.5">
               <span className="text-muted-foreground flex items-center gap-2">⚖️ Vị thế ròng</span>
               <div className="text-right">
                 <span className={cn('font-medium font-tabular block', ledgerSummary.netPosition >= 0 ? 'text-emerald-500' : 'text-red-500')}>
@@ -186,21 +179,19 @@ function OverviewTab() {
       )}
 
       {/* Chart */}
-      <RevenueChart data={SAMPLE_CHART} />
+      <RevenueChart
+        data={stats.timeline}
+        title="Doanh thu & Lợi nhuận theo tháng"
+        subtitle="Theo tháng trong 6 tháng gần nhất"
+      />
 
       {/* Lợi nhuận theo hãng - bar list */}
-      <div className="card p-5">
+      <div className="card p-4">
         <h3 className="text-[13px] font-semibold text-foreground mb-4">Doanh thu theo hãng bay (tháng này)</h3>
-        <div className="space-y-4">
-          {[
-            { airline: 'VN', revenue: 580_000_000, pct: 48 },
-            { airline: 'VJ', revenue: 360_000_000, pct: 30 },
-            { airline: 'QH', revenue: 168_000_000, pct: 14 },
-            { airline: 'BL', revenue: 72_000_000, pct: 6 },
-            { airline: 'VU', revenue: 24_000_000, pct: 2 },
-          ].map((row) => (
+        <div className="space-y-3">
+          {airlineRows.map((row) => (
             <div key={row.airline} className="space-y-1.5">
-              <div className="flex items-center justify-between text-[13px]">
+              <div className="flex items-center justify-between text-[12.5px]">
                 <span className="flex items-center gap-2">
                   <img
                     src={`https://images.kiwi.com/airlines/32/${row.airline}.png`}
@@ -214,7 +205,7 @@ function OverviewTab() {
                 </span>
                 <span className="text-muted-foreground font-tabular">{formatVND(row.revenue)} · {row.pct}%</span>
               </div>
-              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{ width: `${row.pct}%`, backgroundColor: AIRLINE_COLORS[row.airline] || '#6B7280' }}
@@ -233,6 +224,7 @@ function DepositsTab() {
   const queryClient = useQueryClient();
   const [topupAirline, setTopupAirline] = useState<string | null>(null);
   const [topupAmount, setTopupAmount] = useState('');
+  const [topupFundAccount, setTopupFundAccount] = useState('BANK_HTX');
 
   const { data: deposits, isLoading } = useQuery({
     queryKey: ['deposits'],
@@ -241,12 +233,14 @@ function DepositsTab() {
   });
 
   const topupMutation = useMutation({
-    mutationFn: ({ id, amount }: { id: string; amount: number }) =>
-      financeApi.updateDeposit(id, { amount }),
+    mutationFn: ({ id, amount, fundAccount }: { id: string; amount: number; fundAccount: string }) =>
+      financeApi.updateDeposit(id, { amount, fundAccount }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      queryClient.invalidateQueries({ queryKey: ['funds'] });
       setTopupAirline(null);
       setTopupAmount('');
+      setTopupFundAccount('BANK_HTX');
     },
   });
 
@@ -318,7 +312,17 @@ function DepositsTab() {
 
               {/* Top-up form */}
               {topupAirline === d.id ? (
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 space-y-2">
+                  <select
+                    value={topupFundAccount}
+                    onChange={(e) => setTopupFundAccount(e.target.value)}
+                    className="w-full px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="CASH_OFFICE">Quy tien mat VP</option>
+                    <option value="BANK_HTX">TK BIDV HTX</option>
+                    <option value="BANK_PERSONAL">TK MB ca nhan</option>
+                  </select>
+                  <div className="flex gap-2">
                   <input
                     type="number"
                     placeholder="Số tiền (VND)"
@@ -327,7 +331,7 @@ function DepositsTab() {
                     className="flex-1 px-3 h-9 text-[13px] rounded-md bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   <button
-                    onClick={() => topupMutation.mutate({ id: d.id, amount: Number(topupAmount) })}
+                    onClick={() => topupMutation.mutate({ id: d.id, amount: Number(topupAmount), fundAccount: topupFundAccount })}
                     disabled={topupMutation.isPending || !topupAmount}
                     className="px-3 h-9 text-[13px] font-medium bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50 flex items-center justify-center transition-all"
                   >
@@ -339,6 +343,7 @@ function DepositsTab() {
                   >
                     Hủy
                   </button>
+                </div>
                 </div>
               ) : (
                 <button

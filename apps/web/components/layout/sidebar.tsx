@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   LayoutDashboard, Plane, Users, Wallet,
-  Search as SearchIcon, BarChart3, Settings,
+  Search as SearchIcon, BarChart3, Settings, Files,
   LogOut, Target, ChevronDown, ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ const TOP_ITEMS = [
   { href: '/bookings', label: 'Bookings', icon: Plane },
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/finance', label: 'Finance', icon: Wallet },
+  { href: '/invoice', label: 'Invoice', icon: Files },
 ];
 
 const ANALYTICS_ITEMS = [

@@ -18,24 +18,30 @@ export function FilterBar({
   ...props
 }: FilterBarProps) {
   return (
-    <div className={cn('flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap mb-4', className)} {...props}>
+    <div
+      className={cn(
+        'mb-3 flex flex-col flex-wrap items-start gap-1.5 sm:flex-row sm:items-center',
+        className,
+      )}
+      {...props}
+    >
       {/* Search Input */}
       {onSearchChange !== undefined && (
-        <div className="relative w-full sm:w-64 flex-shrink-0">
+        <div className="relative w-full flex-shrink-0 sm:w-[280px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input
             type="text"
             placeholder={searchPlaceholder}
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-8 pl-8 pr-3 text-[13px] rounded-md border border-border bg-transparent outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all placeholder:text-muted-foreground"
+            className="h-[34px] w-full rounded-lg border border-border/80 bg-card/60 pl-8 pr-3 text-[12px] outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
           />
         </div>
       )}
 
       {/* Additional Filters */}
       {filters && (
-        <div className="flex items-center gap-2 flex-wrap flex-1">
+        <div className="flex flex-1 flex-wrap items-center gap-1.5">
           {filters}
         </div>
       )}

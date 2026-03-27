@@ -1,6 +1,6 @@
 // APG Manager RMS - DTO tạo booking mới
 import {
-  IsString, IsOptional, IsEnum,
+  IsString, IsOptional, IsEnum, IsISO8601,
 } from 'class-validator';
 import { PaymentMethod } from '@prisma/client';
 
@@ -42,4 +42,8 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   supplierId?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  createdAt?: string;
 }

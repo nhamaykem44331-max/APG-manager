@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CashFlowDirection, CashFlowCategory } from '@prisma/client';
+import { CashFlowDirection, CashFlowCategory, CashFlowSourceType, FundAccount } from '@prisma/client';
 
 export class CreateCashFlowDto {
   @IsEnum(CashFlowDirection)
@@ -29,6 +29,27 @@ export class CreateCashFlowDto {
 
   @IsOptional() @IsString()
   notes?: string;
+
+  @IsOptional() @IsEnum(FundAccount)
+  fundAccount?: FundAccount;
+
+  @IsOptional() @IsEnum(FundAccount)
+  counterpartyFundAccount?: FundAccount;
+
+  @IsOptional() @IsString()
+  reason?: string;
+
+  @IsOptional() @IsEnum(CashFlowSourceType)
+  sourceType?: CashFlowSourceType;
+
+  @IsOptional() @IsString()
+  sourceId?: string;
+
+  @IsOptional() @IsString()
+  transferGroupId?: string;
+
+  @IsOptional()
+  isLocked?: boolean;
 }
 
 export class ListCashFlowDto {
@@ -41,4 +62,6 @@ export class ListCashFlowDto {
   @IsOptional() @IsString() dateFrom?: string;
   @IsOptional() @IsString() dateTo?: string;
   @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() fundAccount?: string;
+  @IsOptional() @IsString() sourceType?: string;
 }

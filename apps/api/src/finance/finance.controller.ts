@@ -1,12 +1,18 @@
 // APG Manager RMS - Finance Controller (Phase A: Ledger/Supplier + Phase B: CashFlow/Expense)
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, Res, StreamableFile,
+  UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { SupplierService } from './supplier.service';
 import { CashFlowService } from './cashflow.service';
 import { ExpenseService } from './expense.service';
+import { InvoiceService } from './invoice.service';
+import { InvoiceImportService } from './invoice-import.service';
+import { InvoiceExportService } from './invoice-export.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -16,6 +22,19 @@ import {
   CreateCashFlowDto, ListCashFlowDto,
   CreateExpenseDto, ListExpenseDto,
   CreateSupplierDto, UpdateSupplierDto,
+  ListFundLedgerDto, CreateFundEntryDto, UpdateFundEntryDto,
+  AdjustFundBalanceDto, TransferFundDto,
+  CreateInvoiceDto, CreateInvoiceFromBookingsDto,
+  CreateDebtStatementExportDto,
+  CreateInvoiceAttachmentDto,
+  CreateOutgoingRequestExportDto,
+  ListInvoiceCoverageDto,
+  ListInvoiceDebtStatementDto,
+  ListInvoiceExportBatchesDto,
+  ListInvoiceImportBatchesDto,
+  ListInvoicesDto,
+  ReviewInvoiceImportDto,
+  UpdateInvoiceDto,
 } from './dto';
 
 @Controller('finance')
@@ -27,12 +46,170 @@ export class FinanceController {
     private supplier: SupplierService,
     private cashflow: CashFlowService,
     private expense: ExpenseService,
+    private invoice: InvoiceService,
+    private invoiceImport: InvoiceImportService,
+    private invoiceExport: InvoiceExportService,
   ) {}
 
   // ─── Finance cũ (giữ nguyên) ───────────────────────────────────────
   @Get('dashboard')
   getDashboard() {
     return this.service.getDashboard();
+  }
+
+  // ─── Invoice (Phase 1) ──────────────────────────────────────────────
+  @Get('invoices/summary')
+  getInvoiceSummary() {
+    return this.invoice.getSummary();
+  }
+
+  @Get('invoices/coverage')
+  getInvoiceCoverage(@Query() query: ListInvoiceCoverageDto) {
+    return this.invoice.getCoverageQueue(query);
+  }
+
+  @Get('invoices')
+  getInvoices(@Query() query: ListInvoicesDto) {
+    return this.invoice.findAll(query);
+  }
+
+  @Get('invoices/debt-statement')
+  getInvoiceDebtStatement(@Query() query: ListInvoiceDebtStatementDto) {
+    return this.invoice.getDebtStatement(query);
+  }
+
+  @Get('invoices/import-batches')
+  getInvoiceImportBatches(@Query() query: ListInvoiceImportBatchesDto) {
+    return this.invoiceImport.list(query);
+  }
+
+  @Get('invoices/import-batches/:id')
+  getInvoiceImportBatchOne(@Param('id') id: string) {
+    return this.invoiceImport.findOne(id);
+  }
+
+  @Post('invoices/import-batches/upload')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 12 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+        return;
+      }
+
+      cb(new Error('Chi chap nhan JPEG, PNG, WebP hoac PDF cho OCR hoa don.'), false);
+    },
+  }))
+  uploadInvoiceImportBatch(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { supplierId?: string; notes?: string; externalUrl?: string },
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoiceImport.upload(file, body, req.user.id);
+  }
+
+  @Patch('invoices/import-batches/:id/review')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  reviewInvoiceImportBatch(
+    @Param('id') id: string,
+    @Body() dto: ReviewInvoiceImportDto,
+  ) {
+    return this.invoiceImport.review(id, dto);
+  }
+
+  @Post('invoices/import-batches/:id/commit')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  commitInvoiceImportBatch(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoiceImport.commit(id, req.user.id);
+  }
+
+  @Get('invoices/export-batches')
+  getInvoiceExportBatches(@Query() query: ListInvoiceExportBatchesDto) {
+    return this.invoiceExport.list(query);
+  }
+
+  @Post('invoices/export-batches/debt-statement')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createDebtStatementExport(
+    @Body() dto: CreateDebtStatementExportDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoiceExport.exportDebtStatement(dto, req.user.id);
+  }
+
+  @Post('invoices/export-batches/outgoing-request')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createOutgoingRequestExport(
+    @Body() dto: CreateOutgoingRequestExportDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoiceExport.exportOutgoingRequest(dto, req.user.id);
+  }
+
+  @Get('invoices/export-batches/:id/download')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.MANAGER)
+  async downloadInvoiceExportBatch(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { batch, absolutePath } = await this.invoiceExport.getDownloadMeta(id);
+    res.setHeader('Content-Type', batch.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${batch.fileName}"`);
+    return new StreamableFile((await import('fs')).createReadStream(absolutePath));
+  }
+
+  @Get('invoices/:id')
+  getInvoiceOne(@Param('id') id: string) {
+    return this.invoice.findOne(id);
+  }
+
+  @Post('invoices')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createInvoice(@Body() dto: CreateInvoiceDto, @Request() req: { user: { id: string } }) {
+    return this.invoice.create(dto, req.user.id);
+  }
+
+  @Post('invoices/outgoing-from-bookings')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createOutgoingInvoiceFromBookings(
+    @Body() dto: CreateInvoiceFromBookingsDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoice.createOutgoingFromBookings(dto, req.user.id);
+  }
+
+  @Post('invoices/incoming-from-bookings')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createIncomingInvoiceFromBookings(
+    @Body() dto: CreateInvoiceFromBookingsDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoice.createIncomingFromBookings(dto, req.user.id);
+  }
+
+  @Patch('invoices/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  updateInvoice(
+    @Param('id') id: string,
+    @Body() dto: UpdateInvoiceDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoice.update(id, dto, req.user.id);
+  }
+
+  @Post('invoices/:id/attachments')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  addInvoiceAttachment(
+    @Param('id') id: string,
+    @Body() dto: CreateInvoiceAttachmentDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.invoice.addAttachment(id, dto, req.user.id);
   }
 
   @Get('debts')
@@ -54,9 +231,25 @@ export class FinanceController {
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
   updateDeposit(
     @Param('id') id: string,
-    @Body() body: { amount: number; notes?: string },
+    @Body() body: {
+      amount: number;
+      notes?: string;
+      fundAccount?: string;
+      reference?: string;
+      date?: string;
+      pic?: string;
+    },
+    @Request() req: { user: { id: string; fullName?: string } },
   ) {
-    return this.service.updateDeposit(id, body.amount, body.notes);
+    return this.service.updateDeposit(id, {
+      amount: body.amount,
+      notes: body.notes,
+      fundAccount: body.fundAccount,
+      reference: body.reference,
+      date: body.date,
+      pic: body.pic ?? req.user.fullName,
+      userId: req.user.id,
+    });
   }
 
   @Post('deposits')
@@ -168,6 +361,66 @@ export class FinanceController {
     return this.cashflow.getFundBalances();
   }
 
+  @Get('funds/summary')
+  getFundsSummary() {
+    return this.cashflow.getFundsOverview();
+  }
+
+  @Get('funds/ledger')
+  getFundsLedger(@Query() query: ListFundLedgerDto) {
+    return this.cashflow.getFundLedger(query);
+  }
+
+  @Post('funds/entry')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createFundEntry(@Body() dto: CreateFundEntryDto, @Request() req: { user: { id: string } }) {
+    return this.cashflow.createFundEntry(dto, req.user.id);
+  }
+
+  @Patch('funds/entry/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  updateFundEntry(
+    @Param('id') id: string,
+    @Body() dto: UpdateFundEntryDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.cashflow.updateFundEntry(id, dto, req.user.id);
+  }
+
+  @Post('funds/adjust')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  adjustFundBalance(
+    @Body() dto: AdjustFundBalanceDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.cashflow.adjustFundBalance(dto, req.user.id);
+  }
+
+  @Post('funds/transfer')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  transferFund(
+    @Body() dto: TransferFundDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.cashflow.transferBetweenFunds(dto, req.user.id);
+  }
+
+  @Patch('funds/transfer/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  updateFundTransfer(
+    @Param('id') id: string,
+    @Body() dto: TransferFundDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.cashflow.updateFundTransfer(id, dto, req.user.id);
+  }
+
+  @Delete('funds/entry/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  deleteFundEntry(@Param('id') id: string, @Request() req: { user: { id: string } }) {
+    return this.cashflow.remove(id, req.user.id);
+  }
+
   @Get('cashflow/summary')
   getCashFlowSummary(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
     return this.cashflow.getSummary(dateFrom, dateTo);
@@ -196,14 +449,18 @@ export class FinanceController {
 
   @Patch('cashflow/:id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
-  updateCashFlow(@Param('id') id: string, @Body() dto: Partial<CreateCashFlowDto>) {
-    return this.cashflow.update(id, dto);
+  updateCashFlow(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateCashFlowDto>,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.cashflow.update(id, dto, req.user.id);
   }
 
   @Delete('cashflow/:id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
-  deleteCashFlow(@Param('id') id: string) {
-    return this.cashflow.remove(id);
+  deleteCashFlow(@Param('id') id: string, @Request() req: { user: { id: string } }) {
+    return this.cashflow.remove(id, req.user.id);
   }
 
   // ─── Phase B: Chi phí vận hành (Expenses) ─────────────────────────
