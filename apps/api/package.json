@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "APG Manager RMS - NestJS Backend API",
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "dev": "nest start --watch",
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
