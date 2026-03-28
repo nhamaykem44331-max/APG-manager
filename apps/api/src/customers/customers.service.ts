@@ -373,41 +373,28 @@ export class CustomersService {
   async remove(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
-      select: {
-        id: true,
-        fullName: true,
-        passengers: {
-          select: {
-            id: true,
-            _count: {
-              select: {
-                tickets: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            bookings: true,
-            debts: true,
-            ledgers: true,
-            invoiceRecords: true,
-            invoiceExportBatches: true,
-          },
-        },
-      },
+      select: { id: true, fullName: true },
     });
 
     if (!customer) {
       throw new NotFoundException(`Không tìm thấy khách hàng ID: ${id}`);
     }
 
+    // Đếm dữ liệu liên kết (bookings chỉ đếm chưa soft-delete)
+    const [activeBookings, debts, ledgers, invoices, exportBatches] = await Promise.all([
+      this.prisma.booking.count({ where: { customerId: id, deletedAt: null } }),
+      this.prisma.debt.count({ where: { customerId: id } }),
+      this.prisma.accountsLedger.count({ where: { customerId: id } }),
+      this.prisma.invoiceRecord.count({ where: { customerId: id } }),
+      this.prisma.invoiceExportBatch.count({ where: { customerId: id } }),
+    ]);
+
     const blockers = [
-      customer._count.bookings > 0 ? `${customer._count.bookings} booking` : null,
-      customer._count.debts > 0 ? `${customer._count.debts} công nợ cũ` : null,
-      customer._count.ledgers > 0 ? `${customer._count.ledgers} bút toán công nợ` : null,
-      customer._count.invoiceRecords > 0 ? `${customer._count.invoiceRecords} hóa đơn` : null,
-      customer._count.invoiceExportBatches > 0 ? `${customer._count.invoiceExportBatches} batch export invoice` : null,
+      activeBookings > 0 ? `${activeBookings} booking` : null,
+      debts > 0 ? `${debts} công nợ cũ` : null,
+      ledgers > 0 ? `${ledgers} bút toán công nợ` : null,
+      invoices > 0 ? `${invoices} hóa đơn` : null,
+      exportBatches > 0 ? `${exportBatches} batch export invoice` : null,
     ].filter(Boolean) as string[];
 
     if (blockers.length > 0) {
@@ -416,17 +403,32 @@ export class CustomersService {
       );
     }
 
-    const passengerIdsToDetach = customer.passengers
-      .filter((passenger) => passenger._count.tickets > 0)
-      .map((passenger) => passenger.id);
-    const passengerIdsToDelete = customer.passengers
-      .filter((passenger) => passenger._count.tickets === 0)
-      .map((passenger) => passenger.id);
+    // Phân loại passengers: có ticket → detach, không ticket → xóa
+    const passengers = await this.prisma.passenger.findMany({
+      where: { customerId: id },
+      select: { id: true, _count: { select: { tickets: true } } },
+    });
+    const passengerIdsToDetach = passengers.filter((p) => p._count.tickets > 0).map((p) => p.id);
+    const passengerIdsToDelete = passengers.filter((p) => p._count.tickets === 0).map((p) => p.id);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.customerInteraction.deleteMany({ where: { customerId: id } });
       await tx.customerNote.deleteMany({ where: { customerId: id } });
       await tx.communicationLog.deleteMany({ where: { customerId: id } });
+
+      // Xóa các booking đã soft-delete (vẫn có FK tới customer)
+      const softDeletedBookings = await tx.booking.findMany({
+        where: { customerId: id, deletedAt: { not: null } },
+        select: { id: true },
+      });
+      if (softDeletedBookings.length > 0) {
+        const bookingIds = softDeletedBookings.map((b) => b.id);
+        await tx.bookingStatusLog.deleteMany({ where: { bookingId: { in: bookingIds } } });
+        await tx.payment.deleteMany({ where: { bookingId: { in: bookingIds } } });
+        await tx.ticket.deleteMany({ where: { bookingId: { in: bookingIds } } });
+        await tx.accountsLedger.deleteMany({ where: { bookingId: { in: bookingIds } } });
+        await tx.booking.deleteMany({ where: { id: { in: bookingIds } } });
+      }
 
       if (passengerIdsToDetach.length > 0) {
         await tx.passenger.updateMany({

@@ -592,6 +592,91 @@ export class BookingsService {
     return updated;
   }
 
+
+  // Hard delete booking (chỉ cho CANCELLED)
+  async hardDelete(id: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, bookingCode: true, status: true, deletedAt: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
+    }
+
+    if (booking.status !== 'CANCELLED') {
+      throw new BadRequestException(
+        `Chỉ có thể xóa vĩnh viễn booking ở trạng thái "Đã hủy". Trạng thái hiện tại: ${booking.status}`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const ledgerIds = (await tx.accountsLedger.findMany({
+        where: { bookingId: id },
+        select: { id: true },
+      })).map((l) => l.id);
+
+      if (ledgerIds.length > 0) {
+        await tx.ledgerPayment.deleteMany({ where: { ledgerId: { in: ledgerIds } } });
+        await tx.accountsLedger.deleteMany({ where: { id: { in: ledgerIds } } });
+      }
+
+      await tx.invoiceLineItem.deleteMany({ where: { bookingId: id } });
+      await tx.payment.deleteMany({ where: { bookingId: id } });
+      await tx.bookingStatusLog.deleteMany({ where: { bookingId: id } });
+      await tx.ticket.deleteMany({ where: { bookingId: id } });
+      await tx.booking.delete({ where: { id } });
+    });
+
+    return {
+      success: true,
+      id,
+      message: `Đã xóa vĩnh viễn booking ${booking.bookingCode}.`,
+    };
+  }
+
+  // Hard delete booking (chỉ cho CANCELLED)
+  async hardDelete(id: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, bookingCode: true, status: true, deletedAt: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
+    }
+
+    if (booking.status !== 'CANCELLED') {
+      throw new BadRequestException(
+        `Chỉ có thể xóa vĩnh viễn booking ở trạng thái "Đã hủy". Trạng thái hiện tại: ${booking.status}`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const ledgerIds = (await tx.accountsLedger.findMany({
+        where: { bookingId: id },
+        select: { id: true },
+      })).map((l) => l.id);
+
+      if (ledgerIds.length > 0) {
+        await tx.ledgerPayment.deleteMany({ where: { ledgerId: { in: ledgerIds } } });
+        await tx.accountsLedger.deleteMany({ where: { id: { in: ledgerIds } } });
+      }
+
+      await tx.invoiceLineItem.deleteMany({ where: { bookingId: id } });
+      await tx.payment.deleteMany({ where: { bookingId: id } });
+      await tx.bookingStatusLog.deleteMany({ where: { bookingId: id } });
+      await tx.ticket.deleteMany({ where: { bookingId: id } });
+      await tx.booking.delete({ where: { id } });
+    });
+
+    return {
+      success: true,
+      id,
+      message: `Đã xóa vĩnh viễn booking ${booking.bookingCode}.`,
+    };
+  }
+
   // Chuyển trạng thái booking (có validation)
   async updateStatus(id: string, dto: UpdateBookingStatusDto, changedBy: string) {
     const booking = await this.findOne(id);

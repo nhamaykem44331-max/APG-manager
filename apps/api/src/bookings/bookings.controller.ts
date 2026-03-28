@@ -102,4 +102,12 @@ export class BookingsController {
   async remove(@Param('id') id: string, @CurrentUser() user: User) {
     return this.bookingsService.remove(id, user.id);
   }
+
+  // DELETE /bookings/:id/permanent - Xóa vĩnh viễn (chỉ ADMIN/MANAGER, chỉ CANCELLED)
+  @Delete(':id/permanent')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async hardDelete(@Param('id') id: string) {
+    return this.bookingsService.hardDelete(id);
+  }
 }

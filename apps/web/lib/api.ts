@@ -188,6 +188,8 @@ export const bookingsApi = {
     apiClient.delete(`/bookings/${id}/tickets`),
   addPayment: (id: string, data: unknown) =>
     apiClient.post(`/bookings/${id}/payments`, data),
+  hardDelete: (id: string) =>
+    apiClient.delete(`/bookings/${id}/permanent`),
 };
 
 export const customersApi = {

@@ -3,12 +3,12 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plane, User, Clock, CreditCard,
   Loader2, Phone, Plus, CheckCircle2, AlertTriangle, XCircle, Banknote, Zap, FileText,
-  ChevronDown, Check, Save, Edit3, RotateCcw, Ban, RefreshCw, Ticket, Search,
+  ChevronDown, Check, Save, Edit3, RotateCcw, Ban, RefreshCw, Ticket, Search, Trash2,
 } from 'lucide-react';
 import { authApi, bookingsApi, supplierApi, customersApi, documentsApi, usersApi } from '@/lib/api';
 import {
@@ -196,6 +196,7 @@ function FormSelect({ label, required, children, className, ...props }: React.Se
 // ────────────────────────────────────────────────────
 function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string; customerId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   // FIX 7a: Bỏ tax, serviceFee, commission — chỉ giữ sellPrice + netPrice
   const [form, setForm] = useState({
     passengerName: '',
@@ -954,6 +955,7 @@ function EditContactModal({
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [statusReason, setStatusReason]   = useState('');
   const [confirmAction, setConfirmAction] = useState<{ status: BookingStatus; label: string } | null>(null);
@@ -1111,6 +1113,20 @@ export default function BookingDetailPage() {
     },
   });
 
+  // Mutation xóa vĩnh viễn booking (chỉ CANCELLED)
+  const hardDeleteMutation = useMutation({
+    mutationFn: () => bookingsApi.hardDelete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      router.push('/bookings');
+    },
+    onError: (error) => {
+      const message =
+        (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+        || 'Không thể xóa booking. Vui lòng thử lại.';
+      window.alert(message);
+    },
+  });
   // Mutation tạo NCC mới
   const createSupplierMutation = useMutation({
     mutationFn: (data: typeof newSupplierForm) =>
@@ -1460,6 +1476,27 @@ export default function BookingDetailPage() {
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-destructive px-3 text-[12px] font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
               >
                 Hủy
+              </button>
+            )}
+            {/* Hard delete button — only for CANCELLED bookings */}
+            {bk.status === 'CANCELLED' && (
+              <button
+                onClick={() => {
+                  if (hardDeleteMutation.isPending) return;
+                  const shouldDelete = window.confirm(
+                    `Bạn có chắc muốn XÓA VĨNH VIỄN booking ${bk.pnr || bk.bookingCode}?\n\nHành động này không thể hoàn tác. Tất cả dữ liệu liên quan (vé, thanh toán, bút toán, lịch sử trạng thái) sẽ bị xóa hoàn toàn.`
+                  );
+                  if (shouldDelete) hardDeleteMutation.mutate();
+                }}
+                disabled={hardDeleteMutation.isPending}
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                title="Xóa vĩnh viễn booking đã hủy"
+              >
+                {hardDeleteMutation.isPending ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang xóa...</>
+                ) : (
+                  <><Trash2 className="w-3.5 h-3.5" /> Xóa vĩnh viễn</>
+                )}
               </button>
             )}
             {/* GLOBAL SAVE BUTTON */}
