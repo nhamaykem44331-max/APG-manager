@@ -1461,6 +1461,16 @@ export default function BookingDetailPage() {
               </div>
             )}
             {/* PDF document buttons */}
+            {['ISSUED', 'COMPLETED', 'CHANGED'].includes(bk.status) && (
+              <button
+                onClick={() => setShowAdjustmentModal(true)}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 text-[12px] font-medium text-orange-400 transition-colors hover:bg-orange-500/15"
+                title="Ghi nhận nghiệp vụ hoàn vé hoặc đổi vé"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Hoàn, Đổi
+              </button>
+            )}
+            {false && (
             <a
               href={documentsApi.quotationUrl(id)}
               target="_blank"
@@ -1470,6 +1480,7 @@ export default function BookingDetailPage() {
             >
               <FileText className="w-3.5 h-3.5 text-blue-500" /> Báo giá
             </a>
+            )}
             {['ISSUED', 'COMPLETED'].includes(bk.status) && (
               <a
                 href={documentsApi.invoiceUrl(id)}
