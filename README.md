@@ -62,6 +62,21 @@ cd apps/web && npm run dev   # Web: http://localhost:3000
 
 ---
 
+## Deployment Safety
+
+Before changing dependencies, Prisma, auth, Render, Vercel, or shared types, read:
+
+- `docs/deployment-guardrails.md`
+
+Short version:
+
+- This repo is an npm workspace monorepo
+- The root `package-lock.json` is the only authoritative lockfile
+- Prisma schema changes must include a migration
+- Render API deploy and Vercel web deploy are separate and must both be verified when relevant
+
+---
+
 ## 📁 Cấu trúc dự án
 
 ```
