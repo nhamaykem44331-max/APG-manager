@@ -22,6 +22,8 @@ import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
 import type { Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
+import { AdjustmentModal } from '@/components/booking/adjustment-modal';
+import type { BookingAdjustment } from '@/types';
 
 function getCustomerCodeBadgeClass(type?: string) {
   return type === 'CORPORATE'
@@ -683,6 +685,15 @@ function FinancialSummaryCard({
           { label: sellLabel, value: formatVND(totalSellPrice), green: false },
           { label: netLabel, value: formatVND(totalNetPrice), green: false },
           { label: 'Phí dịch vụ', value: formatVND(booking.totalFees), green: false },
+          ...(((booking.adjustments || []).reduce((sum, a) => sum + (a.type === 'CHANGE' ? a.changeFee : 0), 0) > 0)
+            ? [{ label: 'Phí đổi vé (NCC)', value: formatVND((booking.adjustments || []).reduce((sum, a) => sum + (a.type === 'CHANGE' ? a.changeFee : 0), 0)), green: false }]
+            : []),
+          ...(((booking.adjustments || []).reduce((sum, a) => sum + (a.type === 'CHANGE' ? a.chargeToCustomer : 0), 0) > 0)
+            ? [{ label: 'Phụ thu đổi vé (Thu khách)', value: formatVND((booking.adjustments || []).reduce((sum, a) => sum + (a.type === 'CHANGE' ? a.chargeToCustomer : 0), 0)), green: false }]
+            : []),
+          ...(((booking.adjustments || []).reduce((sum, a) => sum + (a.refundAmount || 0), 0) > 0)
+            ? [{ label: 'Khách được hoàn', value: formatVND((booking.adjustments || []).reduce((sum, a) => sum + (a.refundAmount || 0), 0)), green: false }]
+            : []),
           { label: 'Lợi nhuận', value: `+${formatVND(totalProfit)}`, green: true },
         ].map((row, idx, arr) => (
           <div key={row.label} className={cn('flex items-center justify-between py-2', idx !== arr.length - 1 && 'border-b border-border/50')}>
@@ -962,6 +973,7 @@ export default function BookingDetailPage() {
   const [showAddTicket, setShowAddTicket]   = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
@@ -2189,6 +2201,47 @@ export default function BookingDetailPage() {
             )}
           </div>
 
+          {/* Lịch sử Hoàn/Đổi vé */}
+          {(bk.adjustments ?? []).length > 0 && (
+            <div className="order-2 card p-3.5 mt-3 mb-3">
+              <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
+                <h3 className="text-[13px] font-medium text-foreground">Lịch sử Hoàn / Đổi vé</h3>
+              </div>
+              <div className="space-y-3 pt-1">
+                {(bk.adjustments ?? []).map((adj) => (
+                  <div key={adj.id} className="rounded-lg border border-border bg-muted/20 p-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className={cn(
+                          'inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase',
+                          adj.type === 'CHANGE' ? 'bg-orange-500/10 text-orange-600' :
+                          adj.type === 'REFUND_CREDIT' ? 'bg-amber-500/10 text-amber-600' :
+                          'bg-red-500/10 text-red-600'
+                        )}>
+                          {adj.type === 'CHANGE' ? 'Đổi vé' : adj.type === 'REFUND_CREDIT' ? 'Hoàn bảo lưu' : 'Hoàn vé'}
+                        </span>
+                        <p className="mt-1.5 text-[12px] text-muted-foreground">{formatDateTime(adj.createdAt)}</p>
+                      </div>
+                      <div className="text-right text-[12px]">
+                        {adj.type === 'CHANGE' ? (
+                          <>
+                            <p><span className="text-muted-foreground">Phụ thu khách:</span> <span className="font-medium text-foreground">{formatVND(adj.chargeToCustomer)}</span></p>
+                            <p className="mt-0.5"><span className="text-muted-foreground">Phí đổi NCC:</span> <span className="font-medium text-foreground">{formatVND(adj.changeFee)}</span></p>
+                          </>
+                        ) : (
+                          <p><span className="text-muted-foreground">Tiền hoàn:</span> <span className="font-medium text-foreground">{formatVND(adj.refundAmount)}</span></p>
+                        )}
+                      </div>
+                    </div>
+                    {adj.notes && (
+                      <p className="mt-2 text-[12px] text-foreground border-t border-border pt-2 italic">Ghi chú: {adj.notes}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Linked Ledgers (AR/AP) */}
           {(bk.ledgers ?? []).length > 0 && (
             <div className="order-3 card p-3.5">
@@ -2480,6 +2533,20 @@ export default function BookingDetailPage() {
           onSuccess={() => {
             setShowSmartImport(false);
             queryClient.invalidateQueries({ queryKey: ['booking', id] });
+          }}
+        />
+      )}
+
+      {/* Tích hợp modal */}
+      {showAdjustmentModal && (
+        <AdjustmentModal
+          bookingId={bk.id}
+          isOpen={showAdjustmentModal}
+          onClose={() => setShowAdjustmentModal(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['booking', id] });
+            queryClient.invalidateQueries({ queryKey: ['ledger'] });
+            queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
           }}
         />
       )}

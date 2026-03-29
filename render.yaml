@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: apg-manager-api
+    runtime: node
+    plan: starter
+    region: singapore
+    rootDir: apps/api
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: sh -c 'npx prisma migrate deploy && node dist/main'
+    healthCheckPath: /api/v1/system/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: FRONTEND_URL
+        value: https://manager.tanphuapg.com
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

@@ -8,6 +8,16 @@ import { ResetOperationalDataDto } from './dto/reset-operational-data.dto';
 export class SystemService {
   constructor(private prisma: PrismaService) {}
 
+  async getHealth() {
+    await this.prisma.$queryRaw`SELECT 1`;
+
+    return {
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   async resetOperationalData(currentUserId: string, dto: ResetOperationalDataDto) {
     const adminUser = await this.prisma.user.findFirst({
       where: {

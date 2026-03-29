@@ -1,4 +1,4 @@
-// APG Manager RMS - Bookings Service (nghiệp vụ đặt vé)
+// APG Manager RMS - Bookings Service (nghiá»‡p vá»¥ Ä‘áº·t vÃ©)
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException,
 } from '@nestjs/common';
@@ -12,8 +12,9 @@ import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AddTicketDto } from './dto/add-ticket.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
+import { AddAdjustmentDto } from './dto/add-adjustment.dto';
 
-/** Chuyển chuỗi ISO thành Date; fallback về now nếu invalid để tránh lỗi DB */
+/** Chuyá»ƒn chuá»—i ISO thÃ nh Date; fallback vá» now náº¿u invalid Ä‘á»ƒ trÃ¡nh lá»—i DB */
 function safeDate(iso: string, label = 'date'): Date {
   if (!iso || iso.trim() === '') {
     console.warn(`[safeDate] ${label}: empty string, using current time`);
@@ -39,7 +40,7 @@ function resolveBusinessDate(value?: string | Date | null) {
   return value ? safeDate(String(value), 'businessDate') : new Date();
 }
 
-// Máy trạng thái booking - quy định chuyển trạng thái hợp lệ
+// MÃ¡y tráº¡ng thÃ¡i booking - quy Ä‘á»‹nh chuyá»ƒn tráº¡ng thÃ¡i há»£p lá»‡
 const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   NEW:             ['PROCESSING', 'CANCELLED'],
   PROCESSING:      ['QUOTED', 'CANCELLED'],
@@ -80,7 +81,7 @@ export class BookingsService {
     private customers: CustomersService,
   ) {}
 
-  // Lấy danh sách booking có filter, sort, paginate
+  // Láº¥y danh sÃ¡ch booking cÃ³ filter, sort, paginate
   async findAll(dto: ListBookingsDto) {
     const {
       page = 1, pageSize = 20,
@@ -106,7 +107,7 @@ export class BookingsService {
       ];
     }
 
-    // FIX 6: Filter theo ngày tạo
+    // FIX 6: Filter theo ngÃ y táº¡o
     if (dto.dateFrom || dto.dateTo) {
       const businessDateFrom = dto.dateFrom ? parseFilterStart(dto.dateFrom) : undefined;
       const businessDateTo = dto.dateTo ? parseFilterEnd(dto.dateTo) : undefined;
@@ -180,7 +181,7 @@ export class BookingsService {
         include: {
           customer: { select: { id: true, fullName: true, vipTier: true, customerCode: true, type: true, phone: true } },
           staff: { select: { id: true, fullName: true } },
-          tickets: { orderBy: { departureTime: 'asc' } }, // Giữ đúng thứ tự hành trình để hiển thị route/khởi hành chính xác
+          tickets: { orderBy: { departureTime: 'asc' } }, // Giá»¯ Ä‘Ãºng thá»© tá»± hÃ nh trÃ¬nh Ä‘á»ƒ hiá»ƒn thá»‹ route/khá»Ÿi hÃ nh chÃ­nh xÃ¡c
         },
         orderBy: { [sortColumn]: order },
         skip: (page - 1) * pageSize,
@@ -198,7 +199,7 @@ export class BookingsService {
     };
   }
 
-  // Lấy chi tiết booking kèm tất cả relations
+  // Láº¥y chi tiáº¿t booking kÃ¨m táº¥t cáº£ relations
   async findOne(id: string) {
     const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null },
@@ -209,12 +210,13 @@ export class BookingsService {
         payments: { orderBy: { paidAt: 'desc' } },
         statusHistory: { orderBy: { createdAt: 'asc' } },
         supplier: true,
+        adjustments: { orderBy: { createdAt: 'asc' } },
         ledgers: { select: { id: true, code: true, direction: true, status: true, remaining: true, totalAmount: true, createdAt: true } },
       },
     });
 
     if (!booking) {
-      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
+      throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
     }
 
     if (booking.customer && !booking.customer.customerCode) {
@@ -224,7 +226,7 @@ export class BookingsService {
     return booking;
   }
 
-  // Tạo booking mới
+  // Táº¡o booking má»›i
   async create(dto: CreateBookingDto, staffId: string) {
     try {
       const customerId = await this.resolveCustomerId(dto);
@@ -237,18 +239,18 @@ export class BookingsService {
         };
       }> = await this.createBookingRecord(dto, customerId, staffId);
 
-      // Ghi log tạo mới
+      // Ghi log táº¡o má»›i
       await this.prisma.bookingStatusLog.create({
         data: {
           bookingId: booking.id,
           fromStatus: 'NEW',
           toStatus: 'NEW',
           changedBy: staffId,
-          reason: 'Tạo booking mới',
+          reason: 'Táº¡o booking má»›i',
         },
       });
 
-      // Trigger n8n webhook thông báo booking mới (fire & forget)
+      // Trigger n8n webhook thÃ´ng bÃ¡o booking má»›i (fire & forget)
       this.n8n.triggerWebhook('/booking-new', {
         bookingCode: booking.bookingCode,
         customerName: booking.customer.fullName,
@@ -263,9 +265,9 @@ export class BookingsService {
     }
   }
 
-  // Cập nhật thông tin booking
+  // Cáº­p nháº­t thÃ´ng tin booking
   async update(id: string, dto: UpdateBookingDto, currentUser: Pick<User, 'id' | 'role'>) {
-    const existingBooking = await this.findOne(id); // Kiểm tra tồn tại
+    const existingBooking = await this.findOne(id); // Kiá»ƒm tra tá»“n táº¡i
 
     const data: Prisma.BookingUncheckedUpdateInput = {};
 
@@ -286,11 +288,11 @@ export class BookingsService {
       const staffId = dto.staffId.trim();
 
       if (!staffId) {
-        throw new BadRequestException('staffId khÃ´ng há»£p lá»‡.');
+        throw new BadRequestException('staffId khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.');
       }
 
       if (staffId !== existingBooking.staffId && currentUser.role !== UserRole.ADMIN) {
-        throw new ForbiddenException('Chá»‰ admin má»›i Ä‘Æ°á»£c thay Ä‘á»•i nhÃ¢n viÃªn phá»¥ trÃ¡ch.');
+        throw new ForbiddenException('ChÃ¡Â»â€° admin mÃ¡Â»â€ºi Ã„â€˜Ã†Â°Ã¡Â»Â£c thay Ã„â€˜Ã¡Â»â€¢i nhÃƒÂ¢n viÃƒÂªn phÃ¡Â»Â¥ trÃƒÂ¡ch.');
       }
 
       const staff = await this.prisma.user.findUnique({
@@ -299,13 +301,13 @@ export class BookingsService {
       });
 
       if (!staff || !staff.isActive) {
-        throw new NotFoundException('KhÃ´ng tÃ¬m tháº¥y nhÃ¢n viÃªn phá»¥ trÃ¡ch phÃ¹ há»£p.');
+        throw new NotFoundException('KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y nhÃƒÂ¢n viÃƒÂªn phÃ¡Â»Â¥ trÃƒÂ¡ch phÃƒÂ¹ hÃ¡Â»Â£p.');
       }
 
       data.staffId = staff.id;
     }
 
-    // ── Re-sync AP ledger entries when supplier changes ──────────
+    // â”€â”€ Re-sync AP ledger entries when supplier changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (dto.supplierId !== undefined) {
       try {
         const newSupplierId = dto.supplierId;
@@ -328,7 +330,7 @@ export class BookingsService {
               supplierId: newSupplierId,
               partyType: newSupplier ? (newSupplier.type as any) : null,
               description: newSupplier
-                ? `Phải trả NCC ${newSupplier.name} — Booking ${(await this.findOne(id)).bookingCode}`
+                ? `Pháº£i tráº£ NCC ${newSupplier.name} â€” Booking ${(await this.findOne(id)).bookingCode}`
                 : undefined,
             },
           });
@@ -342,7 +344,7 @@ export class BookingsService {
     if (dto.customerId !== undefined) {
       const customerId = dto.customerId?.trim();
       if (!customerId) {
-        throw new BadRequestException('customerId không hợp lệ.');
+        throw new BadRequestException('customerId khÃ´ng há»£p lá»‡.');
       }
 
       const customer = await this.prisma.customer.findUnique({
@@ -351,7 +353,7 @@ export class BookingsService {
       });
 
       if (!customer) {
-        throw new NotFoundException('Không tìm thấy khách hàng.');
+        throw new NotFoundException('KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng.');
       }
 
       data.customerId = customer.id;
@@ -459,7 +461,7 @@ export class BookingsService {
       remaining,
       dueDate,
       status: status as never,
-      description: `Công nợ vé ${booking.bookingCode}`,
+      description: `CÃ´ng ná»£ vÃ© ${booking.bookingCode}`,
     };
 
     if (existingAR) {
@@ -537,7 +539,7 @@ export class BookingsService {
           remaining,
           dueDate,
           status: status as any,
-          description: `Phải trả NCC ${booking.supplier.name} — Booking ${booking.bookingCode}`,
+          description: `Pháº£i tráº£ NCC ${booking.supplier.name} â€” Booking ${booking.bookingCode}`,
         },
       });
       console.log(`[AP-SYNC] Synced AP ${existingAP.code} to supplier ${booking.supplier.name}`);
@@ -558,7 +560,7 @@ export class BookingsService {
         remaining,
         dueDate,
         status: status as any,
-        description: `Phải trả NCC ${booking.supplier.name} — Booking ${booking.bookingCode}`,
+        description: `Pháº£i tráº£ NCC ${booking.supplier.name} â€” Booking ${booking.bookingCode}`,
         createdBy: updatedBy,
       },
     });
@@ -569,7 +571,7 @@ export class BookingsService {
   async remove(id: string, staffId: string) {
     const booking = await this.findOne(id);
 
-    // Chuyển trạng thái sang CANCELLED và set deletedAt
+    // Chuyá»ƒn tráº¡ng thÃ¡i sang CANCELLED vÃ  set deletedAt
     const [updated] = await this.prisma.$transaction([
       this.prisma.booking.update({
         where: { id },
@@ -585,7 +587,7 @@ export class BookingsService {
           fromStatus: booking.status,
           toStatus: 'CANCELLED',
           changedBy: staffId,
-          reason: 'Xóa booking (soft delete)',
+          reason: 'XÃ³a booking (soft delete)',
         },
       }),
     ]);
@@ -593,7 +595,7 @@ export class BookingsService {
   }
 
 
-  // Hard delete booking (chỉ cho CANCELLED)
+  // Hard delete booking (chá»‰ cho CANCELLED)
   async hardDelete(id: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id },
@@ -601,12 +603,12 @@ export class BookingsService {
     });
 
     if (!booking) {
-      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
+      throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
     }
 
     if (booking.status !== 'CANCELLED') {
       throw new BadRequestException(
-        `Chỉ có thể xóa vĩnh viễn booking ở trạng thái "Đã hủy". Trạng thái hiện tại: ${booking.status}`,
+        `Chá»‰ cÃ³ thá»ƒ xÃ³a vÄ©nh viá»…n booking á»Ÿ tráº¡ng thÃ¡i "ÄÃ£ há»§y". Tráº¡ng thÃ¡i hiá»‡n táº¡i: ${booking.status}`,
       );
     }
 
@@ -631,53 +633,11 @@ export class BookingsService {
     return {
       success: true,
       id,
-      message: `Đã xóa vĩnh viễn booking ${booking.bookingCode}.`,
+      message: `ÄÃ£ xÃ³a vÄ©nh viá»…n booking ${booking.bookingCode}.`,
     };
   }
 
-  // Hard delete booking (chỉ cho CANCELLED)
-  async hardDelete(id: string) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, bookingCode: true, status: true, deletedAt: true },
-    });
-
-    if (!booking) {
-      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
-    }
-
-    if (booking.status !== 'CANCELLED') {
-      throw new BadRequestException(
-        `Chỉ có thể xóa vĩnh viễn booking ở trạng thái "Đã hủy". Trạng thái hiện tại: ${booking.status}`,
-      );
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      const ledgerIds = (await tx.accountsLedger.findMany({
-        where: { bookingId: id },
-        select: { id: true },
-      })).map((l) => l.id);
-
-      if (ledgerIds.length > 0) {
-        await tx.ledgerPayment.deleteMany({ where: { ledgerId: { in: ledgerIds } } });
-        await tx.accountsLedger.deleteMany({ where: { id: { in: ledgerIds } } });
-      }
-
-      await tx.invoiceLineItem.deleteMany({ where: { bookingId: id } });
-      await tx.payment.deleteMany({ where: { bookingId: id } });
-      await tx.bookingStatusLog.deleteMany({ where: { bookingId: id } });
-      await tx.ticket.deleteMany({ where: { bookingId: id } });
-      await tx.booking.delete({ where: { id } });
-    });
-
-    return {
-      success: true,
-      id,
-      message: `Đã xóa vĩnh viễn booking ${booking.bookingCode}.`,
-    };
-  }
-
-  // Chuyển trạng thái booking (có validation)
+  // Chuyá»ƒn tráº¡ng thÃ¡i booking (cÃ³ validation)
   async updateStatus(id: string, dto: UpdateBookingStatusDto, changedBy: string) {
     const booking = await this.findOne(id);
 
@@ -690,15 +650,15 @@ export class BookingsService {
     );
     const targetStatus = dto.toStatus as BookingStatus;
 
-    // Kiểm tra chuyển trạng thái có hợp lệ không
+    // Kiá»ƒm tra chuyá»ƒn tráº¡ng thÃ¡i cÃ³ há»£p lá»‡ khÃ´ng
     if (!allowedTransitions.includes(targetStatus)) {
       throw new BadRequestException(
-        `Không thể chuyển từ "${booking.status}" sang "${targetStatus}". ` +
-        `Cho phép: ${allowedTransitions.join(', ') || 'Không có (trạng thái cuối)'}`
+        `KhÃ´ng thá»ƒ chuyá»ƒn tá»« "${booking.status}" sang "${targetStatus}". ` +
+        `Cho phÃ©p: ${allowedTransitions.join(', ') || 'KhÃ´ng cÃ³ (tráº¡ng thÃ¡i cuá»‘i)'}`
       );
     }
 
-    // Cập nhật trong transaction để đảm bảo tính toàn vẹn
+    // Cáº­p nháº­t trong transaction Ä‘á»ƒ Ä‘áº£m báº£o tÃ­nh toÃ n váº¹n
     const [updated] = await this.prisma.$transaction([
       this.prisma.booking.update({
         where: { id },
@@ -718,10 +678,10 @@ export class BookingsService {
       }),
     ]);
 
-    // ── Bước 2i: Auto-tạo AR công nợ khi xuất vé chưa thanh toán ─────
-    // Business rule: Tạo công nợ phải thu (AR) cho MỌI booking chưa thanh toán khi xuất vé
-    // Không giới hạn chỉ paymentMethod === 'DEBT' — vì khách có thể thanh toán sau dù chọn bất kỳ method nào
-    // Khi khách thanh toán xong, payLedger() sẽ tự động chuyển status → PAID
+    // â”€â”€ BÆ°á»›c 2i: Auto-táº¡o AR cÃ´ng ná»£ khi xuáº¥t vÃ© chÆ°a thanh toÃ¡n â”€â”€â”€â”€â”€
+    // Business rule: Táº¡o cÃ´ng ná»£ pháº£i thu (AR) cho Má»ŒI booking chÆ°a thanh toÃ¡n khi xuáº¥t vÃ©
+    // KhÃ´ng giá»›i háº¡n chá»‰ paymentMethod === 'DEBT' â€” vÃ¬ khÃ¡ch cÃ³ thá»ƒ thanh toÃ¡n sau dÃ¹ chá»n báº¥t ká»³ method nÃ o
+    // Khi khÃ¡ch thanh toÃ¡n xong, payLedger() sáº½ tá»± Ä‘á»™ng chuyá»ƒn status â†’ PAID
     if (
       ['ISSUED', 'COMPLETED', 'CHANGED'].includes(targetStatus)
       && booking.paymentStatus !== 'PAID'
@@ -729,12 +689,12 @@ export class BookingsService {
       try {
         await this.syncReceivableLedgerForBooking(booking.id, changedBy, { createIfMissing: true });
       } catch (err) {
-        // Không throw — không để lỗi ledger chặn việc xuất vé
-        console.error(`[LedgerAutoCreate] Lỗi tạo AR cho booking ${booking.bookingCode}:`, err);
+        // KhÃ´ng throw â€” khÃ´ng Ä‘á»ƒ lá»—i ledger cháº·n viá»‡c xuáº¥t vÃ©
+        console.error(`[LedgerAutoCreate] Lá»—i táº¡o AR cho booking ${booking.bookingCode}:`, err);
       }
     }
 
-    // ── Auto-tạo AP (phải trả NCC) khi xuất vé có supplier ─────
+    // â”€â”€ Auto-táº¡o AP (pháº£i tráº£ NCC) khi xuáº¥t vÃ© cÃ³ supplier â”€â”€â”€â”€â”€
     if (targetStatus === 'ISSUED' && booking.supplierId) {
       try {
         const existingAP = await this.prisma.accountsLedger.findFirst({
@@ -768,19 +728,19 @@ export class BookingsService {
               paidAmount: 0,
               remaining: booking.totalNetPrice,
               dueDate: apDueDate,
-              description: `Phải trả NCC ${supplier.name} — Booking ${booking.bookingCode}`,
+              description: `Pháº£i tráº£ NCC ${supplier.name} â€” Booking ${booking.bookingCode}`,
               createdBy: changedBy,
             },
           });
-          console.log(`[AP-AUTO] Tạo AP ${apCode} — ${supplier.name} — ${booking.totalNetPrice}`);
+          console.log(`[AP-AUTO] Táº¡o AP ${apCode} â€” ${supplier.name} â€” ${booking.totalNetPrice}`);
         }
         }
       } catch (err) {
-        console.error(`[AP-AUTO] Lỗi tạo AP cho booking ${booking.bookingCode}:`, err);
+        console.error(`[AP-AUTO] Lá»—i táº¡o AP cho booking ${booking.bookingCode}:`, err);
       }
     }
 
-    // Gửi thông báo khi xuất vé hoặc hủy
+    // Gá»­i thÃ´ng bÃ¡o khi xuáº¥t vÃ© hoáº·c há»§y
     if (targetStatus === 'ISSUED' || targetStatus === 'CANCELLED') {
       await this.n8n.triggerWebhook('/booking-status', {
         bookingCode: booking.bookingCode,
@@ -794,7 +754,7 @@ export class BookingsService {
     return updated;
   }
 
-  // Helper: sinh mã AR-YYMMDD-XXX hoặc AP-YYMMDD-XXX (dùng cho Bước 2i + 2e)
+  // Helper: sinh mÃ£ AR-YYMMDD-XXX hoáº·c AP-YYMMDD-XXX (dÃ¹ng cho BÆ°á»›c 2i + 2e)
   private async generateLedgerCode(direction: string): Promise<string> {
     const prefix = direction === 'RECEIVABLE' ? 'AR' : 'AP';
     const now = new Date();
@@ -870,7 +830,7 @@ export class BookingsService {
   }
 
 
-  // Thêm vé vào booking và tính lại lợi nhuận
+  // ThÃªm vÃ© vÃ o booking vÃ  tÃ­nh láº¡i lá»£i nhuáº­n
   async addTicket(bookingId: string, dto: AddTicketDto) {
     const booking = await this.findOne(bookingId);
     const activeTickets = (booking.tickets ?? []).filter((ticket) => ticket.status === 'ACTIVE');
@@ -885,7 +845,7 @@ export class BookingsService {
 
     if (hasFinancialLocks) {
       throw new BadRequestException(
-        'Booking đã có thanh toán hoặc bút toán liên quan. Không thể thêm hoặc thay thế hành trình lúc này.',
+        'Booking Ä‘Ã£ cÃ³ thanh toÃ¡n hoáº·c bÃºt toÃ¡n liÃªn quan. KhÃ´ng thá»ƒ thÃªm hoáº·c thay tháº¿ hÃ nh trÃ¬nh lÃºc nÃ y.',
       );
     }
 
@@ -898,7 +858,7 @@ export class BookingsService {
 
     if (isNewPnrImport && hasExistingTickets && !shouldReplaceExistingPnr) {
       throw new BadRequestException(
-        'Booking đang có PNR khác. Vui lòng dùng Nhập nhanh để thay thế toàn bộ PNR cũ trước khi thêm PNR mới.',
+        'Booking Ä‘ang cÃ³ PNR khÃ¡c. Vui lÃ²ng dÃ¹ng Nháº­p nhanh Ä‘á»ƒ thay tháº¿ toÃ n bá»™ PNR cÅ© trÆ°á»›c khi thÃªm PNR má»›i.',
       );
     }
 
@@ -926,7 +886,7 @@ export class BookingsService {
       let passengerId = dto.passengerId;
       if (!passengerId) {
         if (!dto.passengerName) {
-          throw new BadRequestException('Cần cung cấp passengerId hoặc passengerName.');
+          throw new BadRequestException('Cáº§n cung cáº¥p passengerId hoáº·c passengerName.');
         }
         const newPassenger = await tx.passenger.create({
           data: {
@@ -972,7 +932,7 @@ export class BookingsService {
     });
   }
 
-  // Xóa toàn bộ vé/hành trình và reset tổng tiền về trạng thái ban đầu
+  // XÃ³a toÃ n bá»™ vÃ©/hÃ nh trÃ¬nh vÃ  reset tá»•ng tiá»n vá» tráº¡ng thÃ¡i ban Ä‘áº§u
   async clearTickets(bookingId: string) {
     await this.findOne(bookingId);
 
@@ -992,7 +952,7 @@ export class BookingsService {
 
     if (paymentCount > 0 || ledgerPaymentCount > 0) {
       throw new BadRequestException(
-        'Booking đã có thanh toán hoặc bút toán liên quan. Không thể xóa hành trình lúc này.',
+        'Booking Ä‘Ã£ cÃ³ thanh toÃ¡n hoáº·c bÃºt toÃ¡n liÃªn quan. KhÃ´ng thá»ƒ xÃ³a hÃ nh trÃ¬nh lÃºc nÃ y.',
       );
     }
 
@@ -1019,13 +979,13 @@ export class BookingsService {
   }
 
 
-  // Ghi nhận thanh toán
+  // Ghi nháº­n thanh toÃ¡n
   async addPayment(bookingId: string, dto: AddPaymentDto) {
     const booking = await this.findOne(bookingId);
 
-    // 1. Tạo payment record
+    // 1. Táº¡o payment record
     if (dto.method !== 'DEBT' && !dto.fundAccount) {
-      throw new BadRequestException('Vui lÃ²ng chá»n quá»¹ nháº­n tiá»n cho giao dá»‹ch nÃ y.');
+      throw new BadRequestException('Vui lÃƒÂ²ng chÃ¡Â»Ân quÃ¡Â»Â¹ nhÃ¡ÂºÂ­n tiÃ¡Â»Ân cho giao dÃ¡Â»â€¹ch nÃƒÂ y.');
     }
 
     const payment = await this.prisma.payment.create({
@@ -1040,19 +1000,19 @@ export class BookingsService {
       },
     });
 
-    // 2. Cập nhật paymentStatus booking
+    // 2. Cáº­p nháº­t paymentStatus booking
     await this.updatePaymentStatus(bookingId);
 
-    // 3. ── DEBT: tạo AR trực tiếp, skip CashFlow ──────────────────
+    // 3. â”€â”€ DEBT: táº¡o AR trá»±c tiáº¿p, skip CashFlow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (dto.method === 'DEBT') {
       try {
-        // Kiểm tra AR đã tồn tại chưa
+        // Kiá»ƒm tra AR Ä‘Ã£ tá»“n táº¡i chÆ°a
         const existingAR = await this.prisma.accountsLedger.findFirst({
           where: { bookingId, direction: 'RECEIVABLE', status: { not: 'PAID' } },
         });
 
         if (!existingAR) {
-          // Tạo mới AR cho toàn bộ giá trị booking
+          // Táº¡o má»›i AR cho toÃ n bá»™ giÃ¡ trá»‹ booking
           const arCode = `AR-${booking.bookingCode}`;
           const customer = await this.prisma.customer.findUnique({
             where: { id: booking.customerId },
@@ -1072,20 +1032,20 @@ export class BookingsService {
               paidAmount: 0,
               remaining: dto.amount,
               status: 'ACTIVE',
-              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 ngày
+              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 ngÃ y
             },
           });
-          console.log(`[AR-CREATE-DEBT] AR ${arCode} — ${dto.amount} cho KH ${customer?.fullName}`);
+          console.log(`[AR-CREATE-DEBT] AR ${arCode} â€” ${dto.amount} cho KH ${customer?.fullName}`);
         }
       } catch (err) {
-        console.error('[AR-DEBT] Lỗi tạo AR từ công nợ:', err);
+        console.error('[AR-DEBT] Lá»—i táº¡o AR tá»« cÃ´ng ná»£:', err);
       }
     } else {
-      // NON-DEBT: ghi CashFlow Inflow bình thường
+      // NON-DEBT: ghi CashFlow Inflow bÃ¬nh thÆ°á»ng
       try {
-        const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
+        const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiá»n máº·t VP'
           : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
-          : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'N/A';
+          : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cÃ¡ nhÃ¢n' : 'N/A';
 
         await this.prisma.cashFlowEntry.create({
           data: {
@@ -1093,26 +1053,26 @@ export class BookingsService {
             category: 'TICKET_PAYMENT',
             amount: dto.amount,
             pic: booking.staff?.fullName ?? 'System',
-            description: `KH thanh toán ${booking.bookingCode} — ${booking.contactName}`,
+            description: `KH thanh toÃ¡n ${booking.bookingCode} â€” ${booking.contactName}`,
             reference: booking.pnr || booking.bookingCode,
             date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
             status: 'DONE',
             fundAccount: dto.fundAccount as any,
           },
         });
-        console.log(`[INFLOW] +${dto.amount} từ KH ${booking.contactName} vào ${fundLabel}`);
+        console.log(`[INFLOW] +${dto.amount} tá»« KH ${booking.contactName} vÃ o ${fundLabel}`);
       } catch (err) {
-        console.error('[INFLOW] Lỗi ghi CashFlow:', err);
+        console.error('[INFLOW] Lá»—i ghi CashFlow:', err);
       }
     }
 
-    // 4. ── AUTO CẬP NHẬT AR (công nợ phải thu) ────────────────────
+    // 4. â”€â”€ AUTO Cáº¬P NHáº¬T AR (cÃ´ng ná»£ pháº£i thu) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       const arLedger = await this.prisma.accountsLedger.findFirst({
         where: { bookingId, direction: 'RECEIVABLE', status: { not: 'PAID' } },
       });
 
-      // Chỉ giảm trừ công nợ nếu khách trả tiền thực tế (không phải là ghi nợ mới)
+      // Chá»‰ giáº£m trá»« cÃ´ng ná»£ náº¿u khÃ¡ch tráº£ tiá»n thá»±c táº¿ (khÃ´ng pháº£i lÃ  ghi ná»£ má»›i)
       if (arLedger && dto.method !== 'DEBT') {
         const newPaid = Number(arLedger.paidAmount) + dto.amount;
         const newRemaining = Math.max(0, Number(arLedger.totalAmount) - newPaid);
@@ -1129,13 +1089,13 @@ export class BookingsService {
             amount: dto.amount,
             method: dto.method,
             reference: dto.reference,
-            notes: `Auto từ payment booking ${booking.bookingCode}`,
+            notes: `Auto tá»« payment booking ${booking.bookingCode}`,
           },
         });
-        console.log(`[AR-UPDATE] AR ${arLedger.code} — paid +${dto.amount}, remaining ${newRemaining}`);
+        console.log(`[AR-UPDATE] AR ${arLedger.code} â€” paid +${dto.amount}, remaining ${newRemaining}`);
       }
     } catch (err) {
-      console.error('[AR-UPDATE] Lỗi cập nhật AR:', err);
+      console.error('[AR-UPDATE] Lá»—i cáº­p nháº­t AR:', err);
     }
 
     // 5. Webhook n8n
@@ -1148,7 +1108,7 @@ export class BookingsService {
     return payment;
   }
 
-  // Cập nhật trạng thái thanh toán dựa trên tổng payments
+  // Cáº­p nháº­t tráº¡ng thÃ¡i thanh toÃ¡n dá»±a trÃªn tá»•ng payments
   private async updatePaymentStatus(bookingId: string) {
     const [booking, payments] = await Promise.all([
       this.prisma.booking.findUnique({ where: { id: bookingId } }),
@@ -1157,7 +1117,7 @@ export class BookingsService {
 
     if (!booking) return;
 
-    // Chỉ cộng dồn các khoản thu thực tế, bỏ qua phương thức CÔNG NỢ (DEBT) vì không sinh dòng tiền
+    // Chá»‰ cá»™ng dá»“n cÃ¡c khoáº£n thu thá»±c táº¿, bá» qua phÆ°Æ¡ng thá»©c CÃ”NG Ná»¢ (DEBT) vÃ¬ khÃ´ng sinh dÃ²ng tiá»n
     const totalPaid = payments
       .filter(p => p.method !== 'DEBT')
       .reduce((sum, p) => sum + Number(p.amount), 0);
@@ -1174,7 +1134,7 @@ export class BookingsService {
     });
   }
 
-  // Sinh mã booking APG-YYMMDD-XXX
+  // Sinh mÃ£ booking APG-YYMMDD-XXX
   private async generateBookingCode(): Promise<string> {
     const now = new Date();
     const yy = now.getFullYear().toString().slice(-2);
@@ -1182,8 +1142,8 @@ export class BookingsService {
     const dd = now.getDate().toString().padStart(2, '0');
     const prefix = `APG-${yy}${mm}${dd}`;
 
-    // Lấy sequence lớn nhất theo prefix ngày hiện tại.
-    // Không phụ thuộc createdAt để tránh đụng mã khi booking bị backdate.
+    // Láº¥y sequence lá»›n nháº¥t theo prefix ngÃ y hiá»‡n táº¡i.
+    // KhÃ´ng phá»¥ thuá»™c createdAt Ä‘á»ƒ trÃ¡nh Ä‘á»¥ng mÃ£ khi booking bá»‹ backdate.
     const rows = await this.prisma.booking.findMany({
       where: {
         bookingCode: { startsWith: `${prefix}-` },
@@ -1242,7 +1202,7 @@ export class BookingsService {
       }
     }
 
-    throw new ConflictException('Không thể sinh mã booking mới. Vui lòng thử lại.');
+    throw new ConflictException('KhÃ´ng thá»ƒ sinh mÃ£ booking má»›i. Vui lÃ²ng thá»­ láº¡i.');
   }
 
   private isBookingCodeConflict(error: unknown) {
@@ -1268,12 +1228,12 @@ export class BookingsService {
     return targets.some((item) => item.includes('booking_code') || item.includes('bookingCode'));
   }
 
-  // FIX 2: Xử lý contactPhone rỗng → sinh phone unique tạm
+  // FIX 2: Xá»­ lÃ½ contactPhone rá»—ng â†’ sinh phone unique táº¡m
   private async resolveCustomerId(dto: CreateBookingDto) {
     const providedCustomerId = dto.customerId?.trim();
     const providedCustomerCode = dto.customerCode?.trim().toUpperCase();
 
-    // 1. Nếu có customerId hợp lệ → dùng luôn
+    // 1. Náº¿u cÃ³ customerId há»£p lá»‡ â†’ dÃ¹ng luÃ´n
     if (providedCustomerId && providedCustomerId !== 'new') {
       const existing = await this.prisma.customer.findUnique({
         where: { id: providedCustomerId },
@@ -1285,7 +1245,7 @@ export class BookingsService {
       }
     }
 
-    // 2. Nếu có mã KH → ưu tiên tìm theo mã
+    // 2. Náº¿u cÃ³ mÃ£ KH â†’ Æ°u tiÃªn tÃ¬m theo mÃ£
     if (providedCustomerCode) {
       const existingByCode = await this.prisma.customer.findUnique({
         where: { customerCode: providedCustomerCode },
@@ -1297,7 +1257,7 @@ export class BookingsService {
       }
     }
 
-    // 3. Nếu có phone hợp lệ (không rỗng) → tìm theo phone
+    // 3. Náº¿u cÃ³ phone há»£p lá»‡ (khÃ´ng rá»—ng) â†’ tÃ¬m theo phone
     const phone = dto.contactPhone?.trim();
     if (phone && phone.length >= 5) {
       const existingByPhone = await this.prisma.customer.findUnique({
@@ -1310,10 +1270,10 @@ export class BookingsService {
       }
     }
 
-    // 4. Tạo khách mới — sinh phone unique nếu rỗng
+    // 4. Táº¡o khÃ¡ch má»›i â€” sinh phone unique náº¿u rá»—ng
     const newCustomer = await this.customers.create({
       data: {
-        fullName: dto.contactName || 'Khách hàng mới',
+        fullName: dto.contactName || 'KhÃ¡ch hÃ ng má»›i',
         phone: phone && phone.length >= 5
           ? phone
           : `TEMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1323,5 +1283,124 @@ export class BookingsService {
       select: { id: true },
     });
     return newCustomer.id;
+    return newCustomer.id;
+  }
+
+  // POST /bookings/:id/adjustments - Ghi nháº­n hoÃ n/Ä‘á»•i vÃ©
+  async addAdjustment(bookingId: string, dto: AddAdjustmentDto, userId: string) {
+    const booking = await this.findOne(bookingId);
+
+    let arCode: string | undefined;
+    let apCode: string | undefined;
+
+    if (dto.type === 'CHANGE') {
+      const charge = Number(dto.chargeToCustomer ?? 0);
+      const fee = Number(dto.changeFee ?? 0);
+      if (charge > 0 && booking.customer) arCode = await this.generateLedgerCode('RECEIVABLE');
+      if (fee > 0 && booking.supplier) apCode = await this.generateLedgerCode('PAYABLE');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Táº¡o báº£n ghi BookingAdjustment
+      const adjustment = await tx.bookingAdjustment.create({
+        data: {
+          bookingId,
+          type: dto.type as any,
+          changeFee: dto.changeFee ?? 0,
+          chargeToCustomer: dto.chargeToCustomer ?? 0,
+          refundAmount: dto.refundAmount ?? 0,
+          notes: dto.notes,
+          createdBy: userId,
+        },
+      });
+
+      // 2. Náº¿u lÃ  CHANGE, cáº§n táº¡o AR cho chargeToCustomer vÃ  AP cho changeFee
+      if (dto.type === 'CHANGE') {
+        const charge = Number(dto.chargeToCustomer ?? 0);
+        const fee = Number(dto.changeFee ?? 0);
+
+        // ThÃªm AR náº¿u thu khÃ¡ch > 0
+        if (charge > 0 && booking.customer && arCode) {
+          await tx.accountsLedger.create({
+            data: {
+              code: arCode,
+              direction: 'RECEIVABLE',
+              partyType: this.getReceivablePartyType(booking.customer.type) as any,
+              customerId: booking.customer.id,
+              customerCode: booking.customer.customerCode,
+              bookingId: booking.id,
+              bookingCode: booking.bookingCode,
+              totalAmount: charge,
+              paidAmount: 0,
+              remaining: charge,
+              issueDate: new Date(),
+              dueDate: this.buildReceivableDueDate(new Date(), booking.customer.type),
+              status: 'ACTIVE',
+              description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
+              createdBy: userId,
+            },
+          });
+        }
+
+        // ThÃªm AP náº¿u phÃ­ Ä‘á»•i > 0
+        if (fee > 0 && booking.supplier && apCode) {
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + (booking.supplier.paymentTerms ?? 15));
+          
+          await tx.accountsLedger.create({
+            data: {
+              code: apCode,
+              direction: 'PAYABLE',
+              partyType: booking.supplier.type as any,
+              supplierId: booking.supplier.id,
+              bookingId: booking.id,
+              bookingCode: booking.bookingCode,
+              totalAmount: fee,
+              paidAmount: 0,
+              remaining: fee,
+              issueDate: new Date(),
+              dueDate: dueDate,
+              status: 'ACTIVE',
+              description: `PhÃ­ Ä‘á»•i vÃ© (tráº£ NCC) â€” Booking ${booking.bookingCode}`,
+              createdBy: userId,
+            },
+          });
+        }
+
+        // Cáº­p nháº­t tráº¡ng thÃ¡i booking sang CHANGED (náº¿u chÆ°a)
+        if (booking.status !== 'CHANGED') {
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: { status: 'CHANGED' }
+          });
+          await tx.bookingStatusLog.create({
+            data: {
+              bookingId: booking.id,
+              fromStatus: booking.status,
+              toStatus: 'CHANGED',
+              changedBy: userId,
+              reason: `Äá»•i vÃ©: Phá»¥ thu ${charge}, PhÃ­ ${fee}`,
+            }
+          });
+        }
+      } else {
+        // Äá»‘i vá»›i REFUND
+        await tx.booking.update({
+          where: { id: booking.id },
+          data: { status: 'REFUNDED' }
+        });
+        await tx.bookingStatusLog.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: booking.status,
+            toStatus: 'REFUNDED',
+            changedBy: userId,
+            reason: `HoÃ n vÃ© (${dto.type}): Sá»‘ tiá»n hoÃ n ${dto.refundAmount ?? 0}`,
+          }
+        });
+      }
+
+      return adjustment;
+    });
   }
 }

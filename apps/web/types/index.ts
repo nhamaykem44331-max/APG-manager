@@ -34,6 +34,8 @@ export type BookingStatus =
   | 'REFUNDED'
   | 'CANCELLED';
 
+export type AdjustmentType = 'CHANGE' | 'REFUND_CREDIT' | 'REFUND_CASH';
+
 export type BookingSource =
   | 'WEBSITE' | 'ZALO' | 'MESSENGER' | 'PHONE' | 'WALK_IN' | 'REFERRAL';
 
@@ -144,6 +146,19 @@ export interface Booking {
   supplierId?: string;
   supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type' | 'contactName'>;
   ledgers?: { id: string; code: string; direction: string; status: string; remaining: number; totalAmount: number; createdAt: string }[];
+  adjustments?: BookingAdjustment[];
+}
+
+export interface BookingAdjustment {
+  id: string;
+  bookingId: string;
+  type: AdjustmentType;
+  changeFee: number;
+  chargeToCustomer: number;
+  refundAmount: number;
+  notes?: string;
+  createdBy?: string;
+  createdAt: string;
 }
 
 export interface Ticket {

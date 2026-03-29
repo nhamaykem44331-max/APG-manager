@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   // Bỏ qua static files và API routes
   if (
     pathname.startsWith('/_next') ||
+    pathname.startsWith('/api/') ||
     pathname.startsWith('/api/auth') ||
     pathname.includes('.')
   ) {

@@ -54,6 +54,12 @@ enum BookingStatus {
   CANCELLED        // Đã hủy
 }
 
+enum AdjustmentType {
+  CHANGE        // Đổi vé
+  REFUND_CREDIT // Hoàn bảo lưu (credit/voucher)
+  REFUND_CASH   // Hoàn tiền mặt
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -331,6 +337,7 @@ model Booking {
   statusHistory BookingStatusLog[]
   ledgers       AccountsLedger[]
   invoiceLineItems InvoiceLineItem[]
+  adjustments      BookingAdjustment[]
 
   @@index([customerId])
   @@index([staffId])
@@ -343,6 +350,28 @@ model Booking {
   @@map("bookings")
 }
 
+model BookingAdjustment {
+  id               String          @id @default(uuid())
+  bookingId        String          @map("booking_id")
+  type             AdjustmentType
+
+  // Tai chinh doi ve
+  changeFee        Decimal         @default(0) @map("change_fee")
+  chargeToCustomer Decimal         @default(0) @map("charge_to_customer")
+
+  // Tai chinh hoan ve
+  refundAmount     Decimal         @default(0) @map("refund_amount")
+
+  // Thong tin bo sung
+  notes            String?
+  createdBy        String?         @map("created_by")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  booking          Booking         @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("booking_adjustments")
+}
 model Ticket {
   id            String   @id @default(uuid())
   bookingId     String   @map("booking_id")
