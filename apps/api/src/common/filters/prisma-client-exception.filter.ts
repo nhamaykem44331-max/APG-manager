@@ -1,4 +1,3 @@
-// APG Manager RMS - Prisma Exception Filter (xử lý lỗi database global)
 import { ArgumentsHost, Catch, HttpStatus } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
@@ -20,6 +19,15 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         });
         break;
       }
+      case 'P2003': {
+        const status = HttpStatus.BAD_REQUEST;
+        response.status(status).json({
+          statusCode: status,
+          message: 'Không thể thao tác vì vẫn còn dữ liệu liên kết. Vui lòng xóa hoặc gỡ các bản ghi liên quan trước.',
+          error: 'Bad Request',
+        });
+        break;
+      }
       case 'P2025': {
         const status = HttpStatus.NOT_FOUND;
         response.status(status).json({
@@ -30,7 +38,6 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         break;
       }
       default:
-        // Cần xử lý các lỗi khác nếu cần bằng default filter
         super.catch(exception, host);
         break;
     }

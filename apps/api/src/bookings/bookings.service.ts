@@ -624,6 +624,7 @@ export class BookingsService {
       }
 
       await tx.invoiceLineItem.deleteMany({ where: { bookingId: id } });
+      await tx.bookingAdjustment.deleteMany({ where: { bookingId: id } });
       await tx.payment.deleteMany({ where: { bookingId: id } });
       await tx.bookingStatusLog.deleteMany({ where: { bookingId: id } });
       await tx.ticket.deleteMany({ where: { bookingId: id } });

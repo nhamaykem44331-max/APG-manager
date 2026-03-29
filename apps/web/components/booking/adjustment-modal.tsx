@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { X, RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
+import { MoneyInput } from '@/components/ui/money-input';
 import { bookingsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { AdjustmentType } from '@/types';
@@ -16,34 +17,45 @@ interface AdjustmentModalProps {
 
 export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: AdjustmentModalProps) {
   const [type, setType] = useState<AdjustmentType>('CHANGE');
-  const [chargeToCustomer, setChargeToCustomer] = useState<number>(0);
-  const [changeFee, setChangeFee] = useState<number>(0);
-  const [refundAmount, setRefundAmount] = useState<number>(0);
-  const [notes, setNotes] = useState<string>('');
+  const [chargeToCustomer, setChargeToCustomer] = useState('');
+  const [changeFee, setChangeFee] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const resetForm = () => {
+    setType('CHANGE');
+    setChargeToCustomer('');
+    setChangeFee('');
+    setRefundAmount('');
+    setNotes('');
+  };
+
+  const handleClose = () => {
+    if (submitMutation.isPending) return;
+    resetForm();
+    onClose();
+  };
 
   const submitMutation = useMutation({
-    mutationFn: async () => {
-      return bookingsApi.addAdjustment(bookingId, {
-        type,
-        chargeToCustomer: Number(chargeToCustomer) || 0,
-        changeFee: Number(changeFee) || 0,
-        refundAmount: Number(refundAmount) || 0,
-        notes,
-      });
-    },
+    mutationFn: async () => bookingsApi.addAdjustment(bookingId, {
+      type,
+      chargeToCustomer: Number(chargeToCustomer || 0),
+      changeFee: Number(changeFee || 0),
+      refundAmount: Number(refundAmount || 0),
+      notes,
+    }),
     onSuccess: () => {
+      resetForm();
       onSuccess();
       onClose();
     },
     onError: (error) => {
       console.error('Lỗi khi ghi nhận hoàn/đổi:', error);
-      alert('Có lỗi xảy ra, vui lòng thử lại.');
+      window.alert('Có lỗi xảy ra, vui lòng thử lại.');
     },
   });
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,8 +66,8 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-6"
       onClick={(event) => {
-        if (event.target === event.currentTarget && !submitMutation.isPending) {
-          onClose();
+        if (event.target === event.currentTarget) {
+          handleClose();
         }
       }}
     >
@@ -71,7 +83,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitMutation.isPending}
             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -90,8 +102,8 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                   className={cn(
                     'rounded-lg border px-3 py-2 text-sm transition-all',
                     type === 'CHANGE'
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-600 font-semibold'
-                      : 'border-border text-muted-foreground hover:bg-muted'
+                      ? 'border-blue-500 bg-blue-500/10 font-semibold text-blue-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
                   Đổi vé
@@ -102,8 +114,8 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                   className={cn(
                     'rounded-lg border px-3 py-2 text-sm transition-all',
                     type === 'REFUND_CREDIT'
-                      ? 'border-orange-500 bg-orange-500/10 text-orange-600 font-semibold'
-                      : 'border-border text-muted-foreground hover:bg-muted'
+                      ? 'border-orange-500 bg-orange-500/10 font-semibold text-orange-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
                   Hoàn bảo lưu
@@ -114,8 +126,8 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                   className={cn(
                     'rounded-lg border px-3 py-2 text-sm transition-all',
                     type === 'REFUND_CASH'
-                      ? 'border-red-500 bg-red-500/10 text-red-600 font-semibold'
-                      : 'border-border text-muted-foreground hover:bg-muted'
+                      ? 'border-red-500 bg-red-500/10 font-semibold text-red-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
                   Hoàn tiền mặt
@@ -126,23 +138,19 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
             {type === 'CHANGE' && (
               <>
                 <div>
-                  <label className="mb-1.5 block text-[13px] font-medium text-foreground">Thu khách (Phụ thu)</label>
-                  <input
-                    type="number"
-                    value={chargeToCustomer || ''}
-                    onChange={(e) => setChargeToCustomer(Number(e.target.value))}
-                    className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-[14px] outline-none focus:border-ring"
+                  <MoneyInput
+                    label="Thu khách (Phụ thu)"
+                    value={chargeToCustomer}
+                    onChange={setChargeToCustomer}
                     placeholder="0"
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Sẽ tạo công nợ Khách Hàng (AR) tương ứng.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Sẽ tạo công nợ Khách hàng (AR) tương ứng.</p>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-[13px] font-medium text-foreground">Phí đổi trả NCC / Hãng</label>
-                  <input
-                    type="number"
-                    value={changeFee || ''}
-                    onChange={(e) => setChangeFee(Number(e.target.value))}
-                    className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-[14px] outline-none focus:border-ring"
+                  <MoneyInput
+                    label="Phí đổi trả NCC / Hãng"
+                    value={changeFee}
+                    onChange={setChangeFee}
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">Sẽ tạo công nợ Phải trả NCC (AP) tương ứng.</p>
@@ -152,12 +160,10 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
 
             {(type === 'REFUND_CREDIT' || type === 'REFUND_CASH') && (
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-foreground">Số tiền khách được hoàn</label>
-                <input
-                  type="number"
-                  value={refundAmount || ''}
-                  onChange={(e) => setRefundAmount(Number(e.target.value))}
-                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-[14px] outline-none focus:border-ring"
+                <MoneyInput
+                  label="Số tiền khách được hoàn"
+                  value={refundAmount}
+                  onChange={setRefundAmount}
                   placeholder="0"
                 />
               </div>
@@ -169,7 +175,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-[14px] outline-none focus:border-ring resize-none"
+                className="w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-[14px] outline-none focus:border-ring"
                 placeholder="VD: Khách yêu cầu đổi sang chuyến lúc 15:00..."
               />
             </div>
@@ -178,7 +184,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
           <div className="mt-6 flex justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={submitMutation.isPending}
               className="rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent"
             >

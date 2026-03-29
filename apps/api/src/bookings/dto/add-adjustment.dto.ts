@@ -1,4 +1,4 @@
-// APG Manager RMS - Add Adjustment DTO (Hoàn/Đổi vé)
+import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export enum AdjustmentTypeDto {
@@ -11,20 +11,20 @@ export class AddAdjustmentDto {
   @IsEnum(AdjustmentTypeDto)
   type: AdjustmentTypeDto;
 
-  /** Phí đổi vé (hãng thu) — chỉ dùng khi type = CHANGE */
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   changeFee?: number;
 
-  /** Thu khách thêm — chỉ dùng khi type = CHANGE */
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   chargeToCustomer?: number;
 
-  /** Số tiền hoàn — dùng cho REFUND_CREDIT / REFUND_CASH */
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   refundAmount?: number;
