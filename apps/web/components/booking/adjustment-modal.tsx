@@ -51,7 +51,23 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
     },
     onError: (error) => {
       console.error('Lỗi khi ghi nhận hoàn/đổi:', error);
-      window.alert('Có lỗi xảy ra, vui lòng thử lại.');
+      const message = (() => {
+        const responseMessage = (error as {
+          response?: { data?: { message?: string | string[] } };
+        })?.response?.data?.message;
+
+        if (Array.isArray(responseMessage)) {
+          return responseMessage[0];
+        }
+
+        if (typeof responseMessage === 'string' && responseMessage.trim()) {
+          return responseMessage;
+        }
+
+        return 'Có lỗi xảy ra, vui lòng thử lại.';
+      })();
+
+      window.alert(message);
     },
   });
 

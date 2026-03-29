@@ -81,6 +81,80 @@ export class BookingsService {
     private customers: CustomersService,
   ) {}
 
+  private async generateLedgerCodeWithClient(
+    client: PrismaService | Prisma.TransactionClient,
+    direction: 'RECEIVABLE' | 'PAYABLE',
+  ): Promise<string> {
+    const prefix = direction === 'RECEIVABLE' ? 'AR' : 'AP';
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+    const dd = now.getDate().toString().padStart(2, '0');
+    const datePrefix = `${prefix}-${yy}${mm}${dd}`;
+
+    const rows = await client.accountsLedger.findMany({
+      where: { code: { startsWith: `${datePrefix}-` } },
+      select: { code: true },
+    });
+
+    const maxSeq = rows.reduce((max, row) => {
+      const match = row.code.match(new RegExp(`^${datePrefix}-(\\d+)$`));
+      if (!match) return max;
+
+      const value = Number(match[1]);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+
+    return `${datePrefix}-${(maxSeq + 1).toString().padStart(3, '0')}`;
+  }
+
+  private isLedgerCodeConflict(error: unknown) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    if (error.code !== 'P2002') {
+      return false;
+    }
+
+    const target = error.meta?.target;
+    const targets = Array.isArray(target)
+      ? target.map((item) => String(item))
+      : target
+        ? [String(target)]
+        : [];
+
+    if (targets.length === 0) {
+      return true;
+    }
+
+    return targets.some((item) => item.includes('code'));
+  }
+
+  private async createLedgerWithGeneratedCode(
+    client: PrismaService | Prisma.TransactionClient,
+    direction: 'RECEIVABLE' | 'PAYABLE',
+    buildData: (code: string) => Prisma.AccountsLedgerUncheckedCreateInput,
+  ) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = await this.generateLedgerCodeWithClient(client, direction);
+
+      try {
+        return await client.accountsLedger.create({
+          data: buildData(code),
+        });
+      } catch (error) {
+        if (this.isLedgerCodeConflict(error) && attempt < 4) {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException('Không thể sinh mã công nợ mới. Vui lòng thử lại.');
+  }
+
   // Láº¥y danh sÃ¡ch booking cÃ³ filter, sort, paginate
   async findAll(dto: ListBookingsDto) {
     const {
@@ -473,17 +547,18 @@ export class BookingsService {
       return;
     }
 
-    const code = await this.generateLedgerCode('RECEIVABLE');
-    await this.prisma.accountsLedger.create({
-      data: {
+    const createdLedger = await this.createLedgerWithGeneratedCode(
+      this.prisma,
+      'RECEIVABLE',
+      (code) => ({
         code,
         direction: 'RECEIVABLE',
         issueDate,
         createdBy: updatedBy,
         ...ledgerData,
-      },
-    });
-    console.log(`[AR-AUTO] Created AR ${code} for booking ${booking.bookingCode} -> ${booking.customer.fullName}`);
+      }),
+    );
+    console.log(`[AR-AUTO] Created AR ${createdLedger.code} for booking ${booking.bookingCode} -> ${booking.customer.fullName}`);
   }
 
   private async syncPayableLedgerForBooking(bookingId: string, updatedBy: string) {
@@ -546,13 +621,15 @@ export class BookingsService {
       return;
     }
 
-    const apCode = await this.generateLedgerCode('PAYABLE');
-    await this.prisma.accountsLedger.create({
-      data: {
-        code: apCode,
+    const supplier = booking.supplier;
+    const createdLedger = await this.createLedgerWithGeneratedCode(
+      this.prisma,
+      'PAYABLE',
+      (code) => ({
+        code,
         direction: 'PAYABLE',
-        partyType: booking.supplier.type as any,
-        supplierId: booking.supplier.id,
+        partyType: supplier.type as any,
+        supplierId: supplier.id,
         bookingId: booking.id,
         bookingCode: booking.bookingCode,
         totalAmount,
@@ -560,11 +637,11 @@ export class BookingsService {
         remaining,
         dueDate,
         status: status as any,
-        description: `Pháº£i tráº£ NCC ${booking.supplier.name} â€” Booking ${booking.bookingCode}`,
+        description: `Pháº£i tráº£ NCC ${supplier.name} â€” Booking ${booking.bookingCode}`,
         createdBy: updatedBy,
-      },
-    });
-    console.log(`[AP-AUTO] Created AP ${apCode} for booking ${booking.bookingCode} -> ${booking.supplier.name}`);
+      }),
+    );
+    console.log(`[AP-AUTO] Created AP ${createdLedger.code} for booking ${booking.bookingCode} -> ${supplier.name}`);
   }
 
   // Soft delete booking
@@ -716,11 +793,11 @@ export class BookingsService {
           const apDueDate = new Date();
           apDueDate.setDate(apDueDate.getDate() + apDueDays);
 
-          const apCode = await this.generateLedgerCode('PAYABLE');
-
-          await this.prisma.accountsLedger.create({
-            data: {
-              code: apCode,
+          const createdLedger = await this.createLedgerWithGeneratedCode(
+            this.prisma,
+            'PAYABLE',
+            (code) => ({
+              code,
               direction: 'PAYABLE',
               partyType: supplier.type as any,
               supplierId: booking.supplierId,
@@ -731,9 +808,9 @@ export class BookingsService {
               dueDate: apDueDate,
               description: `Pháº£i tráº£ NCC ${supplier.name} â€” Booking ${booking.bookingCode}`,
               createdBy: changedBy,
-            },
-          });
-          console.log(`[AP-AUTO] Táº¡o AP ${apCode} â€” ${supplier.name} â€” ${booking.totalNetPrice}`);
+            }),
+          );
+          console.log(`[AP-AUTO] Táº¡o AP ${createdLedger.code} â€” ${supplier.name} â€” ${booking.totalNetPrice}`);
         }
         }
       } catch (err) {
@@ -756,19 +833,6 @@ export class BookingsService {
   }
 
   // Helper: sinh mÃ£ AR-YYMMDD-XXX hoáº·c AP-YYMMDD-XXX (dÃ¹ng cho BÆ°á»›c 2i + 2e)
-  private async generateLedgerCode(direction: string): Promise<string> {
-    const prefix = direction === 'RECEIVABLE' ? 'AR' : 'AP';
-    const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-    const dd = now.getDate().toString().padStart(2, '0');
-    const datePrefix = `${prefix}-${yy}${mm}${dd}`;
-    const count = await this.prisma.accountsLedger.count({
-      where: { code: { startsWith: datePrefix } },
-    });
-    return `${datePrefix}-${(count + 1).toString().padStart(3, '0')}`;
-  }
-
   private normalizePnr(value?: string | null) {
     const normalized = value?.trim().toUpperCase();
     return normalized ? normalized : null;
@@ -1291,16 +1355,6 @@ export class BookingsService {
   async addAdjustment(bookingId: string, dto: AddAdjustmentDto, userId: string) {
     const booking = await this.findOne(bookingId);
 
-    let arCode: string | undefined;
-    let apCode: string | undefined;
-
-    if (dto.type === 'CHANGE') {
-      const charge = Number(dto.chargeToCustomer ?? 0);
-      const fee = Number(dto.changeFee ?? 0);
-      if (charge > 0 && booking.customer) arCode = await this.generateLedgerCode('RECEIVABLE');
-      if (fee > 0 && booking.supplier) apCode = await this.generateLedgerCode('PAYABLE');
-    }
-
     return this.prisma.$transaction(async (tx) => {
       // 1. Táº¡o báº£n ghi BookingAdjustment
       const adjustment = await tx.bookingAdjustment.create({
@@ -1321,51 +1375,49 @@ export class BookingsService {
         const fee = Number(dto.changeFee ?? 0);
 
         // ThÃªm AR náº¿u thu khÃ¡ch > 0
-        if (charge > 0 && booking.customer && arCode) {
-          await tx.accountsLedger.create({
-            data: {
-              code: arCode,
-              direction: 'RECEIVABLE',
-              partyType: this.getReceivablePartyType(booking.customer.type) as any,
-              customerId: booking.customer.id,
-              customerCode: booking.customer.customerCode,
-              bookingId: booking.id,
-              bookingCode: booking.bookingCode,
-              totalAmount: charge,
-              paidAmount: 0,
-              remaining: charge,
-              issueDate: new Date(),
-              dueDate: this.buildReceivableDueDate(new Date(), booking.customer.type),
-              status: 'ACTIVE',
-              description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
-              createdBy: userId,
-            },
-          });
+        if (charge > 0 && booking.customer) {
+          const issueDate = new Date();
+          await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
+            code,
+            direction: 'RECEIVABLE',
+            partyType: this.getReceivablePartyType(booking.customer.type) as any,
+            customerId: booking.customer.id,
+            customerCode: booking.customer.customerCode,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: charge,
+            paidAmount: 0,
+            remaining: charge,
+            issueDate,
+            dueDate: this.buildReceivableDueDate(issueDate, booking.customer.type),
+            status: 'ACTIVE',
+            description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
+            createdBy: userId,
+          }));
         }
 
         // ThÃªm AP náº¿u phÃ­ Ä‘á»•i > 0
-        if (fee > 0 && booking.supplier && apCode) {
+        if (fee > 0 && booking.supplier) {
+          const supplier = booking.supplier;
           const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + (booking.supplier.paymentTerms ?? 15));
+          dueDate.setDate(dueDate.getDate() + (supplier.paymentTerms ?? 15));
           
-          await tx.accountsLedger.create({
-            data: {
-              code: apCode,
-              direction: 'PAYABLE',
-              partyType: booking.supplier.type as any,
-              supplierId: booking.supplier.id,
-              bookingId: booking.id,
-              bookingCode: booking.bookingCode,
-              totalAmount: fee,
-              paidAmount: 0,
-              remaining: fee,
-              issueDate: new Date(),
-              dueDate: dueDate,
-              status: 'ACTIVE',
-              description: `PhÃ­ Ä‘á»•i vÃ© (tráº£ NCC) â€” Booking ${booking.bookingCode}`,
-              createdBy: userId,
-            },
-          });
+          await this.createLedgerWithGeneratedCode(tx, 'PAYABLE', (code) => ({
+            code,
+            direction: 'PAYABLE',
+            partyType: supplier.type as any,
+            supplierId: supplier.id,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: fee,
+            paidAmount: 0,
+            remaining: fee,
+            issueDate: new Date(),
+            dueDate: dueDate,
+            status: 'ACTIVE',
+            description: `PhÃ­ Ä‘á»•i vÃ© (tráº£ NCC) â€” Booking ${booking.bookingCode}`,
+            createdBy: userId,
+          }));
         }
 
         // Cáº­p nháº­t tráº¡ng thÃ¡i booking sang CHANGED (náº¿u chÆ°a)
