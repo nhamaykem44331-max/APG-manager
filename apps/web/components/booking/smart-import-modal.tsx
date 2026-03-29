@@ -1051,21 +1051,21 @@ export function SmartImportModal({
 
                               <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1.5">
-                                  <label className="text-xs font-medium text-foreground">Tổng giá bán nhóm *</label>
-                                  <input
-                                    type="text"
-                                    value={group.sellPrice ? formatVND(group.sellPrice) : ''}
-                                    onChange={(event) => updateGroupPrice(group._ui_id, 'sellPrice', event.target.value)}
-                                    placeholder="0 đ"
-                                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
                                   <label className="text-xs font-medium text-foreground">Tổng giá net nhóm *</label>
                                   <input
                                     type="text"
                                     value={group.netPrice ? formatVND(group.netPrice) : ''}
                                     onChange={(event) => updateGroupPrice(group._ui_id, 'netPrice', event.target.value)}
+                                    placeholder="0 đ"
+                                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-xs font-medium text-foreground">Tổng giá bán nhóm *</label>
+                                  <input
+                                    type="text"
+                                    value={group.sellPrice ? formatVND(group.sellPrice) : ''}
+                                    onChange={(event) => updateGroupPrice(group._ui_id, 'sellPrice', event.target.value)}
                                     placeholder="0 đ"
                                     className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                                   />
