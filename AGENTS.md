@@ -3,6 +3,7 @@
 Before making changes in this repo, read:
 
 - `docs/deployment-guardrails.md`
+- `DEPLOY_CHECKLIST.md` for the short release flow
 
 Follow these non-negotiable rules:
 
@@ -13,4 +14,3 @@ Follow these non-negotiable rules:
 - A task that affects UI is not complete until the Vercel web deployment is considered.
 - A task that affects API is not complete until the Render API health check is considered.
 - Do not call a feature "deployed" unless the visible production behavior matches the requested change.
-

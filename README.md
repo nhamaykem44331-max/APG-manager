@@ -67,6 +67,7 @@ cd apps/web && npm run dev   # Web: http://localhost:3000
 Before changing dependencies, Prisma, auth, Render, Vercel, or shared types, read:
 
 - `docs/deployment-guardrails.md`
+- `DEPLOY_CHECKLIST.md`
 
 Short version:
 
