@@ -5,8 +5,8 @@ services:
     plan: starter
     region: singapore
     rootDir: apps/api
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: sh -c 'npx prisma migrate deploy && node dist/main'
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: node dist/main
     healthCheckPath: /api/v1/system/health
     autoDeployTrigger: commit
     envVars:
