@@ -61,7 +61,7 @@ export function LoginForm() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="andy@tanphuapg.com"
+          placeholder="Nhập email"
           autoComplete="email"
           disabled={isLoading}
           className={cn(
@@ -137,9 +137,6 @@ export function LoginForm() {
         {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
       </button>
 
-      <p className="text-xs text-center text-muted-foreground">
-        Demo: <span className="text-primary">andy@tanphuapg.com</span> / Admin@2026!
-      </p>
     </form>
   );
 }
