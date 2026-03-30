@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, Download, FileText, Filter, Loader2, Plane, Plus, X
+  type LucideIcon, ArrowDown, ArrowUp, ArrowUpDown, Banknote, Ban, CalendarDays, CheckCircle2, Download, FileText, Filter, Loader2, Plane, Plus, RefreshCw, RotateCcw, Ticket, X
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
@@ -41,6 +41,23 @@ const PAYMENT_STATUS_CLASSES: Record<Booking['paymentStatus'], string> = {
   PARTIAL: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   UNPAID: 'bg-red-500/10 text-red-600 dark:text-red-400',
   REFUNDED: 'bg-slate-500/10 text-slate-400 dark:text-slate-300',
+};
+
+const BOOKING_STATUS_META: Record<Booking['status'], {
+  label: string;
+  icon: LucideIcon;
+  color: string;
+  bgColor: string;
+}> = {
+  NEW: { label: 'Mới', icon: Plus, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
+  PROCESSING: { label: 'Đang xử lý', icon: RefreshCw, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
+  QUOTED: { label: 'Đã báo giá', icon: FileText, color: 'text-indigo-500', bgColor: 'bg-indigo-500/10' },
+  PENDING_PAYMENT: { label: 'Chờ thanh toán', icon: Banknote, color: 'text-orange-500', bgColor: 'bg-orange-500/10' },
+  ISSUED: { label: 'Đã xuất vé', icon: Ticket, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
+  COMPLETED: { label: 'Hoàn thành', icon: CheckCircle2, color: 'text-green-600', bgColor: 'bg-green-600/10' },
+  CHANGED: { label: 'Đổi vé', icon: RotateCcw, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' },
+  REFUNDED: { label: 'Hoàn vé', icon: RotateCcw, color: 'text-pink-500', bgColor: 'bg-pink-500/10' },
+  CANCELLED: { label: 'Đã hủy', icon: Ban, color: 'text-red-500', bgColor: 'bg-red-500/10' },
 };
 
 function getCustomerCodeBadgeClass(type?: string) {
@@ -233,7 +250,7 @@ export default function BookingsPage() {
     },
     {
       header: 'Hành trình',
-      className: 'w-[164px]',
+      className: 'w-[156px]',
       cell: (b) => {
         const firstTicket = getPrimaryTicket(b);
         const lastTicket = getLastTicket(b);
@@ -259,7 +276,7 @@ export default function BookingsPage() {
     },
     {
       header: renderSortHeader('Khởi hành', 'departureTime'),
-      className: 'w-[108px]',
+      className: 'w-[96px]',
       cell: (b) => {
         const firstTicket = getPrimaryTicket(b);
 
@@ -277,12 +294,12 @@ export default function BookingsPage() {
     },
     {
       header: 'Giá bán',
-      className: 'w-[112px] text-right',
+      className: 'w-[104px] text-right',
       cell: (b) => <span className="font-medium font-tabular text-foreground">{formatVND(b.totalSellPrice)}</span>,
     },
     {
       header: 'Lãi/Lỗ',
-      className: 'w-[108px] text-right',
+      className: 'w-[96px] text-right',
       cell: (b) => {
         const profit = Number(b.profit ?? 0);
 
@@ -302,7 +319,7 @@ export default function BookingsPage() {
     },
     {
       header: 'Mã khách hàng',
-      className: 'w-[108px]',
+      className: 'w-[116px]',
       cell: (b) => (
         b.customer?.customerCode ? (
           <span
@@ -320,21 +337,38 @@ export default function BookingsPage() {
     },
     {
       header: 'Trạng thái',
-      className: 'w-[100px]',
-      cell: (b) => (
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium',
-            PAYMENT_STATUS_CLASSES[b.paymentStatus],
-          )}
-        >
-          {PAYMENT_STATUS_LABELS[b.paymentStatus]}
-        </span>
-      ),
+      className: 'w-[188px]',
+      cell: (b) => {
+        const statusMeta = BOOKING_STATUS_META[b.status];
+        const StatusIcon = statusMeta.icon;
+
+        return (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span
+              className={cn(
+                'inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium whitespace-nowrap',
+                statusMeta.bgColor,
+                statusMeta.color,
+              )}
+            >
+              <StatusIcon className="h-3.5 w-3.5 shrink-0" />
+              <span>{statusMeta.label}</span>
+            </span>
+            <span
+              className={cn(
+                'inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap',
+                PAYMENT_STATUS_CLASSES[b.paymentStatus],
+              )}
+            >
+              {PAYMENT_STATUS_LABELS[b.paymentStatus]}
+            </span>
+          </div>
+        );
+      },
     },
     {
       header: renderSortHeader('Ngày tạo', 'createdAt'),
-      className: 'w-[98px]',
+      className: 'w-[112px]',
       cell: (b) => (
         <div className="flex flex-col gap-0.5 whitespace-nowrap">
           <span className="font-medium text-foreground">{formatDate(b.businessDate ?? b.createdAt)}</span>
@@ -344,7 +378,7 @@ export default function BookingsPage() {
     },
     {
       header: 'Phụ trách',
-      className: 'w-[118px]',
+      className: 'w-[108px]',
       cell: (b) => (
         <span className={cn('block max-w-[102px] truncate font-medium', !b.staff?.fullName && 'text-muted-foreground font-normal')}>
           {b.staff?.fullName ?? 'Chưa phân công'}
