@@ -2214,38 +2214,79 @@ export default function BookingDetailPage() {
 
           {/* Lịch sử Hoàn/Đổi vé */}
           {(bk.adjustments ?? []).length > 0 && (
-            <div className="order-2 card p-3.5 mt-3 mb-3">
-              <div className="mb-1.5 flex items-center justify-between border-b border-border pb-2.5">
-                <h3 className="text-[13px] font-medium text-foreground">Lịch sử Hoàn / Đổi vé</h3>
-              </div>
-              <div className="space-y-3 pt-1">
-                {(bk.adjustments ?? []).map((adj) => (
-                  <div key={adj.id} className="rounded-lg border border-border bg-muted/20 p-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className={cn(
-                          'inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase',
-                          adj.type === 'CHANGE' ? 'bg-orange-500/10 text-orange-600' :
-                          adj.type === 'REFUND_CREDIT' ? 'bg-amber-500/10 text-amber-600' :
-                          'bg-red-500/10 text-red-600'
-                        )}>
-                          {adj.type === 'CHANGE' ? 'Đổi vé' : adj.type === 'REFUND_CREDIT' ? 'Hoàn bảo lưu' : 'Hoàn vé'}
-                        </span>
-                        <p className="mt-1.5 text-[12px] text-muted-foreground">{formatDateTime(adj.createdAt)}</p>
-                      </div>
-                      <div className="text-right text-[12px]">
-                        {adj.type === 'CHANGE' ? (
-                          <>
-                            <p><span className="text-muted-foreground">Phụ thu khách:</span> <span className="font-medium text-foreground">{formatVND(adj.chargeToCustomer)}</span></p>
-                            <p className="mt-0.5"><span className="text-muted-foreground">Phí đổi NCC:</span> <span className="font-medium text-foreground">{formatVND(adj.changeFee)}</span></p>
-                          </>
-                        ) : (
-                          <p><span className="text-muted-foreground">Tiền hoàn:</span> <span className="font-medium text-foreground">{formatVND(adj.refundAmount)}</span></p>
+            <div className="order-2 card mb-3 mt-3 p-4">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Lịch sử Hoàn / Đổi vé
+              </h3>
+              <div className="space-y-3">
+                {(bk.adjustments ?? []).map((adj: BookingAdjustment) => (
+                  <div key={adj.id} className="rounded-lg border border-border p-3 text-[13px]">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                          adj.type === 'CHANGE'
+                            ? 'bg-blue-500/10 text-blue-500'
+                            : adj.type === 'REFUND_CASH'
+                              ? 'bg-red-500/10 text-red-500'
+                              : 'bg-orange-500/10 text-orange-500',
                         )}
-                      </div>
+                      >
+                        {adj.type === 'CHANGE' ? 'Đổi vé' : adj.type === 'REFUND_CASH' ? 'Hoàn tiền' : 'Hoàn bảo lưu'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{formatDateTime(adj.createdAt)}</span>
                     </div>
+
+                    <div className="space-y-1 text-xs">
+                      {adj.type === 'CHANGE' && (
+                        <>
+                          {Number(adj.chargeToCustomer) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Thu thêm KH (AR):</span>
+                              <span className="font-tabular text-amber-500">+{formatVND(adj.chargeToCustomer)}</span>
+                            </div>
+                          )}
+                          {Number(adj.changeFee) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Phí đổi trả NCC (AP):</span>
+                              <span className="font-tabular text-red-400">-{formatVND(adj.changeFee)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {(adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') && (
+                        <>
+                          {Number(adj.airlineRefund) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">NCC hoàn APG:</span>
+                              <span className="font-tabular text-emerald-500">+{formatVND(adj.airlineRefund)}</span>
+                            </div>
+                          )}
+                          {Number(adj.penaltyFee) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Phí hoàn (hãng thu):</span>
+                              <span className="font-tabular text-muted-foreground">{formatVND(adj.penaltyFee)}</span>
+                            </div>
+                          )}
+                          {Number(adj.refundAmount) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Hoàn KH:</span>
+                              <span className="font-tabular text-red-500">-{formatVND(adj.refundAmount)}</span>
+                            </div>
+                          )}
+                          {Number(adj.apgServiceFee) > 0 && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Phí xử lý APG:</span>
+                              <span className="font-tabular text-emerald-500">+{formatVND(adj.apgServiceFee)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
                     {adj.notes && (
-                      <p className="mt-2 text-[12px] text-foreground border-t border-border pt-2 italic">Ghi chú: {adj.notes}</p>
+                      <p className="mt-2 italic text-xs text-muted-foreground">{adj.notes}</p>
                     )}
                   </div>
                 ))}

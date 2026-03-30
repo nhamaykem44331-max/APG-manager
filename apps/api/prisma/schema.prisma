@@ -361,6 +361,12 @@ model BookingAdjustment {
 
   // Tai chinh hoan ve
   refundAmount     Decimal         @default(0) @map("refund_amount")
+  airlineRefund    Decimal         @default(0) @map("airline_refund")
+  penaltyFee       Decimal         @default(0) @map("penalty_fee")
+  apgServiceFee    Decimal         @default(0) @map("apg_service_fee")
+
+  // Quy tien
+  fundAccount      FundAccount?    @map("fund_account")
 
   // Thong tin bo sung
   notes            String?

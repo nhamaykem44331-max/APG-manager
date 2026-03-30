@@ -156,6 +156,10 @@ export interface BookingAdjustment {
   changeFee: number;
   chargeToCustomer: number;
   refundAmount: number;
+  airlineRefund: number;
+  penaltyFee: number;
+  apgServiceFee: number;
+  fundAccount?: string | null;
   notes?: string;
   createdBy?: string;
   createdAt: string;

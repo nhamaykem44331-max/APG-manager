@@ -1356,6 +1356,8 @@ export class BookingsService {
     const booking = await this.findOne(bookingId);
 
     return this.prisma.$transaction(async (tx) => {
+      const fundAccount = dto.fundAccount ? (dto.fundAccount as any) : null;
+
       // 1. Táº¡o báº£n ghi BookingAdjustment
       const adjustment = await tx.bookingAdjustment.create({
         data: {
@@ -1364,17 +1366,29 @@ export class BookingsService {
           changeFee: dto.changeFee ?? 0,
           chargeToCustomer: dto.chargeToCustomer ?? 0,
           refundAmount: dto.refundAmount ?? 0,
+          airlineRefund: dto.airlineRefund ?? 0,
+          penaltyFee: dto.penaltyFee ?? 0,
+          apgServiceFee: dto.apgServiceFee ?? 0,
+          fundAccount,
           notes: dto.notes,
           createdBy: userId,
         },
       });
 
-      // 2. Náº¿u lÃ  CHANGE, cáº§n táº¡o AR cho chargeToCustomer vÃ  AP cho changeFee
+      const fundLabel = dto.fundAccount === 'CASH_OFFICE'
+        ? 'Tiền mặt VP'
+        : dto.fundAccount === 'BANK_HTX'
+          ? 'TK BIDV HTX'
+          : dto.fundAccount === 'BANK_PERSONAL'
+            ? 'TK MB cá nhân'
+            : 'N/A';
+
+      // 2. ĐỔI VÉ (CHANGE)
       if (dto.type === 'CHANGE') {
         const charge = Number(dto.chargeToCustomer ?? 0);
         const fee = Number(dto.changeFee ?? 0);
 
-        // ThÃªm AR náº¿u thu khÃ¡ch > 0
+        // 2a. AR bổ sung: thu thêm khách
         if (charge > 0 && booking.customer) {
           const issueDate = new Date();
           await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
@@ -1394,14 +1408,15 @@ export class BookingsService {
             description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
             createdBy: userId,
           }));
+          console.log(`[CHANGE-AR] +${charge} phụ thu KH ${booking.contactName}`);
         }
 
-        // ThÃªm AP náº¿u phÃ­ Ä‘á»•i > 0
+        // 2b. AP bổ sung: phí đổi trả NCC
         if (fee > 0 && booking.supplier) {
           const supplier = booking.supplier;
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + (supplier.paymentTerms ?? 15));
-          
+
           await this.createLedgerWithGeneratedCode(tx, 'PAYABLE', (code) => ({
             code,
             direction: 'PAYABLE',
@@ -1418,13 +1433,14 @@ export class BookingsService {
             description: `PhÃ­ Ä‘á»•i vÃ© (tráº£ NCC) â€” Booking ${booking.bookingCode}`,
             createdBy: userId,
           }));
+          console.log(`[CHANGE-AP] +${fee} phí đổi trả NCC ${supplier.name}`);
         }
 
-        // Cáº­p nháº­t tráº¡ng thÃ¡i booking sang CHANGED (náº¿u chÆ°a)
+        // 2c. Chuyển trạng thái → CHANGED
         if (booking.status !== 'CHANGED') {
           await tx.booking.update({
             where: { id: booking.id },
-            data: { status: 'CHANGED' }
+            data: { status: 'CHANGED' },
           });
           await tx.bookingStatusLog.create({
             data: {
@@ -1432,15 +1448,125 @@ export class BookingsService {
               fromStatus: booking.status,
               toStatus: 'CHANGED',
               changedBy: userId,
-              reason: `Äá»•i vÃ©: Phá»¥ thu ${charge}, PhÃ­ ${fee}`,
-            }
+              reason: `Đổi vé: Phụ thu KH ${charge}, Phí NCC ${fee}`,
+            },
           });
         }
       } else {
-        // Äá»‘i vá»›i REFUND
+        // 3. HOÀN VÉ (REFUND_CASH / REFUND_CREDIT)
+        const refundToCustomer = Number(dto.refundAmount ?? 0);
+        const airlineRefund = Number(dto.airlineRefund ?? 0);
+        const penaltyFee = Number(dto.penaltyFee ?? 0);
+        const apgFee = Number(dto.apgServiceFee ?? 0);
+
+        // 3a. Điều chỉnh AR gốc: giảm/xóa công nợ khách
+        const existingAR = await tx.accountsLedger.findFirst({
+          where: { bookingId: booking.id, direction: 'RECEIVABLE' },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (existingAR) {
+          const arTotal = Number(existingAR.totalAmount);
+          const arPaid = Number(existingAR.paidAmount);
+
+          // Schema công nợ hiện chưa có trạng thái CANCELLED,
+          // nên dùng WRITTEN_OFF cho trường hợp xóa nợ chưa thu.
+          if (arPaid < arTotal) {
+            await tx.accountsLedger.update({
+              where: { id: existingAR.id },
+              data: {
+                totalAmount: arPaid,
+                remaining: 0,
+                status: arPaid > 0 ? 'PAID' : 'WRITTEN_OFF',
+                description: `${existingAR.description} [HOÀN VÉ - AR điều chỉnh]`,
+              },
+            });
+            console.log(`[REFUND-AR] AR ${existingAR.code}: giảm từ ${arTotal} → ${arPaid} (xóa nợ)`);
+          }
+        }
+
+        // 3b. Điều chỉnh AP gốc: giảm công nợ NCC về phần phí hoàn phải trả
+        const existingAP = await tx.accountsLedger.findFirst({
+          where: { bookingId: booking.id, direction: 'PAYABLE' },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (existingAP) {
+          const apTotal = Number(existingAP.totalAmount);
+          const apPaid = Number(existingAP.paidAmount);
+
+          if (apPaid < apTotal) {
+            const newApTotal = apPaid + penaltyFee;
+            const newApRemaining = Math.max(0, newApTotal - apPaid);
+            const newApStatus = newApRemaining <= 0
+              ? 'PAID'
+              : apPaid > 0
+                ? 'PARTIAL_PAID'
+                : 'ACTIVE';
+
+            await tx.accountsLedger.update({
+              where: { id: existingAP.id },
+              data: {
+                totalAmount: Math.max(0, newApTotal),
+                remaining: newApRemaining,
+                status: newApStatus as any,
+                description: `${existingAP.description} [HOÀN VÉ - AP điều chỉnh]`,
+              },
+            });
+            console.log(`[REFUND-AP] AP ${existingAP.code}: giảm từ ${apTotal} → ${newApTotal}`);
+          }
+        }
+
+        // 3c. CashFlow: NCC hoàn tiền cho APG (INFLOW)
+        if (airlineRefund > 0) {
+          try {
+            await tx.cashFlowEntry.create({
+              data: {
+                direction: 'INFLOW',
+                category: 'TICKET_REFUND',
+                amount: airlineRefund,
+                pic: 'System',
+                description: `NCC hoàn vé - Booking ${booking.bookingCode}`,
+                reference: booking.pnr || booking.bookingCode,
+                date: new Date(),
+                status: 'DONE',
+                fundAccount,
+                notes: `Quỹ nhận: ${fundLabel}. Hãng hoàn ${airlineRefund}, phí hoàn ${penaltyFee}`,
+              },
+            });
+            console.log(`[REFUND-INFLOW] +${airlineRefund} NCC hoàn APG vào ${fundLabel}`);
+          } catch (err) {
+            console.error('[REFUND-INFLOW] Lỗi ghi CashFlow:', err);
+          }
+        }
+
+        // 3d. CashFlow: APG hoàn tiền cho KH (OUTFLOW) - chỉ khi hoàn tiền mặt
+        if (dto.type === 'REFUND_CASH' && refundToCustomer > 0) {
+          try {
+            await tx.cashFlowEntry.create({
+              data: {
+                direction: 'OUTFLOW',
+                category: 'TICKET_REFUND',
+                amount: refundToCustomer,
+                pic: 'System',
+                description: `Hoàn tiền KH ${booking.contactName} - Booking ${booking.bookingCode}`,
+                reference: booking.pnr || booking.bookingCode,
+                date: new Date(),
+                status: 'DONE',
+                fundAccount,
+                notes: `Quỹ chi: ${fundLabel}. Hoàn KH ${refundToCustomer}`,
+              },
+            });
+            console.log(`[REFUND-OUTFLOW] -${refundToCustomer} hoàn KH ${booking.contactName} từ ${fundLabel}`);
+          } catch (err) {
+            console.error('[REFUND-OUTFLOW] Lỗi ghi CashFlow:', err);
+          }
+        }
+
+        // 3e. Chuyển trạng thái → REFUNDED
         await tx.booking.update({
           where: { id: booking.id },
-          data: { status: 'REFUNDED' }
+          data: { status: 'REFUNDED' },
         });
         await tx.bookingStatusLog.create({
           data: {
@@ -1448,8 +1574,8 @@ export class BookingsService {
             fromStatus: booking.status,
             toStatus: 'REFUNDED',
             changedBy: userId,
-            reason: `HoÃ n vÃ© (${dto.type}): Sá»‘ tiá»n hoÃ n ${dto.refundAmount ?? 0}`,
-          }
+            reason: `Hoàn vé (${dto.type}): Hoàn KH ${refundToCustomer}, NCC hoàn ${airlineRefund}, Phí hoàn ${penaltyFee}, Phí APG ${apgFee}`,
+          },
         });
       }
 

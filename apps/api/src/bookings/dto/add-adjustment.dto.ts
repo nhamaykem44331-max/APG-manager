@@ -11,6 +11,7 @@ export class AddAdjustmentDto {
   @IsEnum(AdjustmentTypeDto)
   type: AdjustmentTypeDto;
 
+  // === DOI VE ===
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -23,11 +24,35 @@ export class AddAdjustmentDto {
   @Min(0)
   chargeToCustomer?: number;
 
+  // === HOAN VE ===
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   refundAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  airlineRefund?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  penaltyFee?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  apgServiceFee?: number;
+
+  // === QUY ===
+  @IsOptional()
+  @IsString()
+  fundAccount?: string;
 
   @IsOptional()
   @IsString()
