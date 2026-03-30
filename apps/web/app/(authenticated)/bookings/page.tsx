@@ -337,7 +337,7 @@ export default function BookingsPage() {
     },
     {
       header: 'Trạng thái',
-      className: 'w-[188px]',
+      className: 'w-[176px]',
       cell: (b) => {
         const statusMeta = BOOKING_STATUS_META[b.status];
         const StatusIcon = statusMeta.icon;
@@ -368,7 +368,7 @@ export default function BookingsPage() {
     },
     {
       header: renderSortHeader('Ngày tạo', 'createdAt'),
-      className: 'w-[112px]',
+      className: 'w-[108px]',
       cell: (b) => (
         <div className="flex flex-col gap-0.5 whitespace-nowrap">
           <span className="font-medium text-foreground">{formatDate(b.businessDate ?? b.createdAt)}</span>

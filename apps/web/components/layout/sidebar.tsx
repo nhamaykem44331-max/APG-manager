@@ -5,14 +5,24 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
-  LayoutDashboard, Plane, Users, Wallet,
-  Search as SearchIcon, BarChart3, Settings, Files,
-  LogOut, Target, ChevronDown, ExternalLink
+  LayoutDashboard,
+  Plane,
+  Users,
+  Wallet,
+  Search as SearchIcon,
+  BarChart3,
+  Settings,
+  Files,
+  LogOut,
+  Target,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
+import { useUIStore } from '@/stores/ui.store';
 
-// Cấu hình menu sidebar
 const TOP_ITEMS = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/bookings', label: 'Bookings', icon: Plane },
@@ -34,20 +44,39 @@ const SETTINGS_ITEMS = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
-function NavItem({ item, isActive }: { item: any; isActive: boolean }) {
+function NavItem({
+  item,
+  isActive,
+  collapsed,
+}: {
+  item: { href: string; label: string; icon: React.ElementType; external?: boolean };
+  isActive: boolean;
+  collapsed: boolean;
+}) {
   const Icon = item.icon;
   const content = (
     <div
+      title={collapsed ? item.label : undefined}
       className={cn(
-        'group flex items-center h-[32px] px-2.5 mx-3 rounded-md transition-colors duration-100',
+        'group flex items-center transition-all duration-200',
+        collapsed
+          ? 'mx-auto h-10 w-10 justify-center rounded-xl'
+          : 'mx-3 h-[32px] rounded-md px-2.5',
         isActive
           ? 'bg-accent text-foreground font-medium'
-          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
     >
-      <Icon className={cn('w-4 h-4 mr-2.5 flex-shrink-0', isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} strokeWidth={isActive ? 2 : 1.5} />
-      <span className="text-[13px] flex-1 truncate">{item.label}</span>
-      {item.external && <ExternalLink className="w-3 h-3 text-muted-foreground/50 ml-1" />}
+      <Icon
+        className={cn(
+          'h-4 w-4 flex-shrink-0',
+          !collapsed && 'mr-2.5',
+          isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
+        )}
+        strokeWidth={isActive ? 2 : 1.5}
+      />
+      {!collapsed && <span className="flex-1 truncate text-[13px]">{item.label}</span>}
+      {!collapsed && item.external && <ExternalLink className="ml-1 h-3 w-3 text-muted-foreground/50" />}
     </div>
   );
 
@@ -69,14 +98,15 @@ function NavItem({ item, isActive }: { item: any; isActive: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + '/');
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
 
-  // Xử lý đổi tên admin -> Đức Anh theo yêu cầu
   let userName = session?.user?.name || 'Vũ Đức Anh';
   if (userName.toLowerCase() === 'admin' || userName === 'Administrator' || userName === 'Đức Anh') {
     userName = 'Vũ Đức Anh';
@@ -86,87 +116,150 @@ export function Sidebar() {
 
   if (!mounted) {
     return (
-      <aside className="relative flex flex-col h-screen border-r bg-background border-border w-[240px] flex-shrink-0" />
+      <aside className="relative flex h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out w-[240px]" />
     );
   }
 
   return (
-    <aside className="relative flex flex-col h-screen border-r bg-background border-border w-[240px] flex-shrink-0">
-      
-      {/* Logo Area (Top Left) */}
-      <div className="flex items-center h-14 pl-4 pr-3 mx-2 mt-2 select-none">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="relative flex items-center justify-center w-7 h-7 rounded-full flex-shrink-0 overflow-hidden bg-muted">
-             {/* Fallback styling for monochrome logo */}
-            <Plane className="w-[14px] h-[14px] text-muted-foreground rotate-45 transform" />
-            <img 
-              src="/logo-apg.png" 
-              alt="Logo" 
-              className="absolute inset-0 w-full h-full object-cover" 
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+    <aside
+      className={cn(
+        'relative flex h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out',
+        sidebarCollapsed ? 'w-[84px]' : 'w-[240px]',
+      )}
+    >
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+        className="absolute right-0 top-6 z-20 hidden h-7 w-7 translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground lg:flex"
+      >
+        {sidebarCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+      </button>
+
+      <div
+        className={cn(
+          'mx-2 mt-2 flex h-14 select-none items-center',
+          sidebarCollapsed ? 'justify-center px-0' : 'justify-start pl-4 pr-3',
+        )}
+      >
+        <div className={cn('flex min-w-0 items-center', sidebarCollapsed ? 'justify-center' : 'gap-2.5')}>
+          <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+            <Plane className="h-[14px] w-[14px] rotate-45 transform text-muted-foreground" />
+            <img
+              src="/logo-apg.png"
+              alt="Logo"
+              className="absolute inset-0 h-full w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
             />
           </div>
-          <span className="text-[14px] font-bold tracking-tight text-foreground truncate">
-            APG RMS Manager
-          </span>
+          {!sidebarCollapsed && (
+            <span className="truncate text-[14px] font-bold tracking-tight text-foreground">
+              APG RMS Manager
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="px-3 py-2">
-        <div className="relative group flex items-center">
-          <SearchIcon className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
-          <input 
-            type="text" 
-            placeholder="Find..." 
-            className="w-full h-[32px] pl-8 pr-6 rounded-md bg-transparent border border-border text-[13px] focus:outline-none focus:border-muted-foreground/30 focus:ring-1 focus:ring-muted-foreground/30 transition-all placeholder:text-muted-foreground/70 text-foreground"
-          />
-          <div className="absolute right-2 flex items-center justify-center w-4 h-4 rounded-[4px] bg-accent/50 border border-border text-[10px] text-muted-foreground font-medium pointer-events-none">
-            F
+      <div className={cn('py-2', sidebarCollapsed ? 'px-2' : 'px-3')}>
+        {sidebarCollapsed ? (
+          <button
+            type="button"
+            title="Tìm kiếm"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-transparent text-muted-foreground transition-all hover:bg-accent hover:text-foreground mx-auto"
+          >
+            <SearchIcon className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="group relative flex items-center">
+            <SearchIcon className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Find..."
+              className="h-[32px] w-full rounded-md border border-border bg-transparent pl-8 pr-6 text-[13px] text-foreground placeholder:text-muted-foreground/70 transition-all focus:outline-none focus:border-muted-foreground/30 focus:ring-1 focus:ring-muted-foreground/30"
+            />
+            <div className="pointer-events-none absolute right-2 flex h-4 w-4 items-center justify-center rounded-[4px] border border-border bg-accent/50 text-[10px] font-medium text-muted-foreground">
+              F
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto pb-4 pt-1 custom-scrollbar">
+      <nav className="custom-scrollbar flex-1 overflow-y-auto pb-4 pt-1">
         <div className="space-y-0.5">
-          {TOP_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+          {TOP_ITEMS.map((item) => (
+            <NavItem key={item.href} item={item} isActive={isActive(item.href)} collapsed={sidebarCollapsed} />
+          ))}
         </div>
 
-        <div className="mt-6 mb-2 px-5">
-          <p className="text-[11px] font-medium text-muted-foreground tracking-wide select-none">ANALYTICS</p>
+        <div className={cn('mb-2 mt-6', sidebarCollapsed ? 'px-0' : 'px-5')}>
+          {sidebarCollapsed ? <div className="mx-auto h-px w-8 bg-border/70" /> : (
+            <p className="select-none text-[11px] font-medium tracking-wide text-muted-foreground">ANALYTICS</p>
+          )}
         </div>
         <div className="space-y-0.5">
-          {ANALYTICS_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+          {ANALYTICS_ITEMS.map((item) => (
+            <NavItem key={item.href} item={item} isActive={isActive(item.href)} collapsed={sidebarCollapsed} />
+          ))}
         </div>
 
-        <div className="mt-6 mb-2 px-5">
-          <p className="text-[11px] font-medium text-muted-foreground tracking-wide select-none">WORKSPACE</p>
+        <div className={cn('mb-2 mt-6', sidebarCollapsed ? 'px-0' : 'px-5')}>
+          {sidebarCollapsed ? <div className="mx-auto h-px w-8 bg-border/70" /> : (
+            <p className="select-none text-[11px] font-medium tracking-wide text-muted-foreground">WORKSPACE</p>
+          )}
         </div>
         <div className="space-y-0.5">
-          {EXTERNAL_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
-          {SETTINGS_ITEMS.map((item) => <NavItem key={item.href} item={item} isActive={isActive(item.href)} />)}
+          {EXTERNAL_ITEMS.map((item) => (
+            <NavItem key={item.href} item={item} isActive={isActive(item.href)} collapsed={sidebarCollapsed} />
+          ))}
+          {SETTINGS_ITEMS.map((item) => (
+            <NavItem key={item.href} item={item} isActive={isActive(item.href)} collapsed={sidebarCollapsed} />
+          ))}
         </div>
       </nav>
 
-      {/* Bottom User Area */}
-      <div className="p-3 border-t border-border mt-auto">
-        <div className="flex justify-between items-center h-10 px-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer select-none">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] flex items-center justify-center flex-shrink-0 text-white font-semibold text-[11px] shadow-sm">
+      <div className="mt-auto border-t border-border p-3">
+        {sidebarCollapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <div
+              title={userName}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] text-[11px] font-semibold text-white shadow-sm"
+            >
               {initial}
             </div>
-            <span className="text-[13px] font-medium text-foreground truncate max-w-[100px]">{userName}</span>
-            <div className="flex items-center justify-center px-1.5 h-4 rounded-full bg-accent text-[9px] text-muted-foreground font-semibold flex-shrink-0 border border-border/50 uppercase">
-              {roleName}
-            </div>
+            <button
+              onClick={() => signOut()}
+              title="Đăng xuất"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-red-500"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button onClick={(e) => { e.stopPropagation(); signOut(); }} className="flex p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors" title="Đăng xuất">
-            <LogOut className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 hover:text-red-500 transition-colors" />
-          </button>
-        </div>
+        ) : (
+          <div className="flex h-10 cursor-pointer select-none items-center justify-between rounded-md px-2 transition-colors hover:bg-accent/50">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#FF4D4D] to-[#F9CB28] text-[11px] font-semibold text-white shadow-sm">
+                {initial}
+              </div>
+              <span className="max-w-[100px] truncate text-[13px] font-medium text-foreground">{userName}</span>
+              <div className="flex h-4 flex-shrink-0 items-center justify-center rounded-full border border-border/50 bg-accent px-1.5 text-[9px] font-semibold uppercase text-muted-foreground">
+                {roleName}
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                signOut();
+              }}
+              className="flex rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              title="Đăng xuất"
+            >
+              <LogOut className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-colors hover:text-red-500" />
+            </button>
+          </div>
+        )}
       </div>
-
     </aside>
   );
 }
