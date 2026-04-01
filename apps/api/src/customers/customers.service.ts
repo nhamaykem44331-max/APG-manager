@@ -257,6 +257,10 @@ export class CustomersService {
         },
         interactions: { take: 10, orderBy: { createdAt: 'desc' } },
         customerNotes: { take: 10, orderBy: { createdAt: 'desc' } },
+        namedCredits: {
+          where: { status: { in: ['ACTIVE', 'PARTIAL'] } },
+          orderBy: { expiryDate: 'asc' },
+        },
       },
     });
 

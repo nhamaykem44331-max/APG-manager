@@ -1,17 +1,17 @@
 // APG Manager RMS - Danh sách Booking
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  type LucideIcon, ArrowDown, ArrowUp, ArrowUpDown, Banknote, Ban, CalendarDays, CheckCircle2, Download, FileText, Filter, Loader2, Plane, Plus, RefreshCw, RotateCcw, Ticket, X
+  type LucideIcon, ArrowDown, ArrowUp, ArrowUpDown, Banknote, Ban, CalendarDays, CheckCircle2, CreditCard, Download, FileText, Filter, Loader2, Plane, Plus, RefreshCw, RotateCcw, Ticket, X
 } from 'lucide-react';
 import { bookingsApi } from '@/lib/api';
 import {
   cn, formatVND, formatDate, formatTime,
 } from '@/lib/utils';
 import { AirlineBadge } from '@/components/ui/airline-badge';
-import type { Booking } from '@/types';
+import type { Booking, NamedCredit } from '@/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterBar } from '@/components/ui/filter-bar';
 import { DataTable, ColumnDef } from '@/components/ui/data-table';
@@ -124,6 +124,7 @@ function buildCreatedDateRange(type: BookingPeriodFilter, value: string) {
 
 export default function BookingsPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'bookings' | 'named-credits'>('bookings');
   const [activeStatus, setActiveStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<BookingSortField>('createdAt');
@@ -134,22 +135,36 @@ export default function BookingsPage() {
   const pageSize = 20;
   const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'named-credits') {
+      setActiveTab('named-credits');
+    }
+  }, []);
+
   const { dateFrom, dateTo } = useMemo(
     () => buildCreatedDateRange(periodFilterType, periodFilterValue),
     [periodFilterType, periodFilterValue],
   );
 
-  // Tạo booking nhanh -> vào thẳng trang chi tiết và mở modal nhập nhanh
-  // FIX 2 frontend: quick-create không gửi contactPhone rỗng
+  const handleActiveTabChange = (tab: 'bookings' | 'named-credits') => {
+    setActiveTab(tab);
+    if (tab === 'named-credits') {
+      router.push('/bookings?tab=named-credits');
+      return;
+    }
+    router.push('/bookings');
+  };
+
+  // Tạo booking nhanh -> vào thẳng trang chi tiết
   const quickCreateMutation = useMutation({
     mutationFn: () => bookingsApi.create({
-      contactName: 'Khách hàng mới',
-      contactPhone: `QUICK-${Date.now()}`,
+      contactName: '',
+      contactPhone: '',
       source: 'PHONE',
       paymentMethod: 'BANK_TRANSFER',
     }),
     onSuccess: (res: any) => {
-      window.sessionStorage.setItem('booking:openQuickImport', res.data.id);
       router.push(`/bookings/${res.data.id}`);
     },
     onError: (error: any) => {
@@ -161,6 +176,7 @@ export default function BookingsPage() {
   // Fetch danh sách booking
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['bookings', activeStatus, searchTerm, sortBy, sortOrder, dateFrom, dateTo, page],
+    enabled: activeTab === 'bookings',
     queryFn: () => bookingsApi.list({
       status: activeStatus || undefined,
       search: searchTerm || undefined,
@@ -172,6 +188,24 @@ export default function BookingsPage() {
       pageSize,
     } as Record<string, string | number>),
     select: (res) => res.data,
+  });
+
+  const { data: creditsData = [], isLoading: creditsLoading } = useQuery({
+    queryKey: ['named-credits'],
+    queryFn: () => bookingsApi.getNamedCredits(),
+    enabled: activeTab === 'named-credits',
+    select: (res) => res.data as NamedCredit[],
+  });
+
+  const { data: creditsSummary } = useQuery({
+    queryKey: ['named-credits-summary'],
+    queryFn: () => bookingsApi.getNamedCreditsSummary(),
+    enabled: activeTab === 'named-credits',
+    select: (res) => res.data as {
+      activeCount: number;
+      expiringSoonCount: number;
+      totalRemainingValue: number;
+    },
   });
 
   // FIX 9: Bỏ SAMPLE_BOOKINGS, dùng empty array + empty state
@@ -214,7 +248,7 @@ export default function BookingsPage() {
     );
   };
 
-  if (isError) {
+  if (activeTab === 'bookings' && isError) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <p className="text-sm text-destructive">Không thể tải danh sách booking. Vui lòng thử lại.</p>
@@ -387,6 +421,8 @@ export default function BookingsPage() {
     },
   ];
 
+  const namedCreditExpiryThreshold = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+
   return (
     <div className="w-full max-w-none space-y-6">
       {/* Header */}
@@ -410,6 +446,18 @@ export default function BookingsPage() {
               <FileText className="w-4 h-4" />
             </button>
             <button
+              onClick={() => handleActiveTabChange(activeTab === 'named-credits' ? 'bookings' : 'named-credits')}
+              className={cn(
+                'flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium border',
+                activeTab === 'named-credits'
+                  ? 'border-orange-500 bg-orange-500/10 text-orange-600'
+                  : 'border-border text-muted-foreground hover:bg-accent',
+              )}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              Quản lý Định Danh
+            </button>
+            <button
               onClick={() => quickCreateMutation.mutate()}
               disabled={quickCreateMutation.isPending}
               className={cn(
@@ -429,6 +477,8 @@ export default function BookingsPage() {
 
       {/* Main Content */}
       <div className="flex flex-col gap-4">
+        {activeTab === 'bookings' && (
+          <>
         {/* Vercel-style underline tabs */}
         <div className="flex items-center gap-6 border-b border-border px-1 overflow-x-auto custom-scrollbar">
           {STATUS_TABS.map((tab) => (
@@ -571,6 +621,125 @@ export default function BookingsPage() {
             />
           )}
         </div>
+
+          </>
+        )}
+
+        {activeTab === 'named-credits' && (
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs text-muted-foreground">Credit đang active</p>
+                <p className="mt-1 text-xl font-semibold text-orange-500">{creditsSummary?.activeCount ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs text-muted-foreground">Sắp hết hạn (30 ngày)</p>
+                <p className="mt-1 text-xl font-semibold text-red-500">{creditsSummary?.expiringSoonCount ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs text-muted-foreground">Tổng giá trị còn lại</p>
+                <p className="mt-1 text-xl font-semibold text-emerald-500">
+                  {formatVND(creditsSummary?.totalRemainingValue ?? 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              {creditsLoading ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang tải danh sách credit bảo lưu...
+                </div>
+              ) : creditsData.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  Chưa có credit bảo lưu nào
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-[13px]">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="px-4 py-3">Hành khách</th>
+                        <th className="px-4 py-3">Hãng</th>
+                        <th className="px-4 py-3">PNR gốc</th>
+                        <th className="px-4 py-3">Số tiền BL</th>
+                        <th className="px-4 py-3">Đã dùng</th>
+                        <th className="px-4 py-3">Còn lại</th>
+                        <th className="px-4 py-3">Hạn sử dụng</th>
+                        <th className="px-4 py-3">Trạng thái</th>
+                        <th className="px-4 py-3">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {creditsData.map((credit) => (
+                        <tr key={credit.id} className="border-b border-border transition-colors hover:bg-accent/20">
+                          <td className="px-4 py-3 font-medium">{credit.passengerName}</td>
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-1.5">
+                              <img
+                                src={`https://images.kiwi.com/airlines/32/${credit.airline}.png`}
+                                alt=""
+                                className="h-4 w-4 rounded-sm"
+                                onError={(event) => {
+                                  (event.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                              {credit.airline}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs">{credit.pnr || '—'}</td>
+                          <td className="px-4 py-3 font-tabular">{formatVND(credit.creditAmount)}</td>
+                          <td className="px-4 py-3 font-tabular text-muted-foreground">{formatVND(credit.usedAmount)}</td>
+                          <td className="px-4 py-3 font-tabular font-medium text-emerald-500">{formatVND(credit.remainingAmount)}</td>
+                          <td
+                            className={cn(
+                              'px-4 py-3',
+                              new Date(credit.expiryDate) < namedCreditExpiryThreshold ? 'text-red-500' : 'text-muted-foreground',
+                            )}
+                          >
+                            {formatDate(credit.expiryDate)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                                credit.status === 'ACTIVE' && 'bg-emerald-500/10 text-emerald-500',
+                                credit.status === 'PARTIAL' && 'bg-amber-500/10 text-amber-500',
+                                credit.status === 'USED' && 'bg-blue-500/10 text-blue-500',
+                                credit.status === 'EXPIRED' && 'bg-red-500/10 text-red-500',
+                              )}
+                            >
+                              {credit.status === 'ACTIVE'
+                                ? 'Đang BL'
+                                : credit.status === 'PARTIAL'
+                                  ? 'Dùng 1 phần'
+                                  : credit.status === 'USED'
+                                    ? 'Đã dùng'
+                                    : 'Hết hạn'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {credit.status === 'ACTIVE' ? (
+                              <button
+                                type="button"
+                                onClick={() => window.alert('Màn cấn trừ credit sẽ được hoàn thiện ở bước tiếp theo.')}
+                                className="text-xs text-blue-500 hover:underline"
+                              >
+                                Cấn trừ
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <SheetSyncPanel isOpen={isSheetSyncOpen} onClose={() => setIsSheetSyncOpen(false)} />

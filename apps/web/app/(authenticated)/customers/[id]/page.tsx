@@ -21,7 +21,7 @@ import {
 import { PageHeader } from '@/components/ui/page-header';
 import { DataTable } from '@/components/ui/data-table';
 import type {
-  Customer, Booking, CustomerInteraction, CustomerNote,
+  Customer, Booking, CustomerInteraction, CustomerNote, NamedCredit,
   RfmScore, CustomerStats, TimelineItem,
 } from '@/types';
 
@@ -30,6 +30,7 @@ import type {
 const TABS = [
   { key: 'profile', label: 'Hồ sơ', icon: User },
   { key: 'bookings', label: 'Booking', icon: Plane },
+  { key: 'named-credits', label: 'Định danh', icon: Pin },
   { key: 'interactions', label: 'Tương tác', icon: MessageSquare },
   { key: 'debts', label: 'Công nợ', icon: CreditCard },
   { key: 'notes', label: 'Ghi chú', icon: StickyNote },
@@ -282,6 +283,7 @@ export default function CustomerDetailPage() {
       <div>
         {activeTab === 'profile' && <ProfileTab customer={cust} rfm={rfm} stats={stats} />}
         {activeTab === 'bookings' && <BookingsTab customerId={id} bookings={(customer as unknown as Record<string, unknown>)?.bookings as Booking[] | undefined} />}
+        {activeTab === 'named-credits' && <NamedCreditsTab namedCredits={customer?.namedCredits} />}
         {activeTab === 'interactions' && <InteractionsTab customerId={id} />}
         {activeTab === 'debts' && <DebtsTab ledgers={(customer as unknown as Record<string, unknown>)?.ledgers as Record<string, unknown>[] | undefined} />}
         {activeTab === 'notes' && <NotesTab customerId={id} />}
@@ -634,6 +636,72 @@ function BookingsTab({ customerId, bookings }: { customerId: string; bookings?: 
           },
         ]}
       />
+    </div>
+  );
+}
+
+function NamedCreditsTab({ namedCredits }: { namedCredits?: NamedCredit[] }) {
+  const credits = namedCredits ?? [];
+
+  if (credits.length === 0) {
+    return (
+      <div className="card p-8 text-center text-sm text-muted-foreground">
+        Khách hàng này chưa có định danh còn hiệu lực
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {credits.map((credit) => (
+        <div key={credit.id} className="card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">{credit.passengerName}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono">{credit.airline}</span>
+                {credit.pnr && <span className="font-mono">{credit.pnr}</span>}
+                {credit.ticketNumber && <span>Vé: {credit.ticketNumber}</span>}
+              </div>
+            </div>
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium',
+                credit.status === 'PARTIAL'
+                  ? 'bg-amber-500/10 text-amber-500'
+                  : 'bg-emerald-500/10 text-emerald-500',
+              )}
+            >
+              {credit.status === 'PARTIAL' ? 'Đã dùng một phần' : 'Còn hiệu lực'}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-muted/40 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Còn lại</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-500">{formatVND(credit.remainingAmount)}</p>
+            </div>
+            <div className="rounded-lg bg-muted/40 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Tổng credit</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatVND(credit.creditAmount)}</p>
+            </div>
+            <div className="rounded-lg bg-muted/40 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Hạn dùng</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(credit.expiryDate)}</p>
+            </div>
+          </div>
+
+          {credit.booking && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Tạo từ booking <span className="font-mono text-foreground">{credit.booking.pnr ?? credit.booking.bookingCode}</span>
+            </p>
+          )}
+
+          {credit.notes && (
+            <p className="mt-2 text-xs italic text-muted-foreground">{credit.notes}</p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

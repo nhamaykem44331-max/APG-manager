@@ -5,6 +5,9 @@ export enum AdjustmentTypeDto {
   CHANGE = 'CHANGE',
   REFUND_CREDIT = 'REFUND_CREDIT',
   REFUND_CASH = 'REFUND_CASH',
+  REFUND_NAMED = 'REFUND_NAMED',
+  HLKG = 'HLKG',
+  SERVICE = 'SERVICE',
 }
 
 export class AddAdjustmentDto {
@@ -53,6 +56,20 @@ export class AddAdjustmentDto {
   @IsOptional()
   @IsString()
   fundAccount?: string;
+
+  // === HOAN DINH DANH ===
+  @IsOptional()
+  @IsString()
+  passengerName?: string;
+
+  @IsOptional()
+  @IsString()
+  expiryDate?: string;
+
+  // === HLKG / SERVICE ===
+  @IsOptional()
+  @IsString()
+  serviceCode?: string;
 
   @IsOptional()
   @IsString()

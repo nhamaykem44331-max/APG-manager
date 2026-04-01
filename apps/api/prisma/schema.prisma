@@ -15,13 +15,13 @@ datasource db {
 // ========== AIRPORT (IATA/ICAO - ip2location dataset) ==========
 
 model Airport {
-  id          String  @id @default(cuid())
-  iata        String  @unique
+  id          String   @id @default(cuid())
+  iata        String   @unique
   icao        String?
   name        String
   nameVi      String? // Tên tiếng Việt (optional, cho sân bay VN)
-  region      String  // Region/Province
-  countryCode String  @map("country_code")
+  region      String // Region/Province
+  countryCode String   @map("country_code")
   latitude    Float
   longitude   Float
   createdAt   DateTime @default(now()) @map("created_at")
@@ -32,32 +32,34 @@ model Airport {
   @@map("airports")
 }
 
-
 // ========== ENUMS ==========
 
 enum UserRole {
-  ADMIN       // Chủ doanh nghiệp (Andy)
-  MANAGER     // Quản lý
-  SALES       // Nhân viên bán hàng
-  ACCOUNTANT  // Kế toán
+  ADMIN // Chủ doanh nghiệp (Andy)
+  MANAGER // Quản lý
+  SALES // Nhân viên bán hàng
+  ACCOUNTANT // Kế toán
 }
 
 enum BookingStatus {
-  NEW              // Mới tạo
-  PROCESSING       // Đang xử lý
-  QUOTED           // Đã báo giá
-  PENDING_PAYMENT  // Chờ thanh toán
-  ISSUED           // Đã xuất vé
-  COMPLETED        // Hoàn thành (sau bay)
-  CHANGED          // Đã đổi
-  REFUNDED         // Đã hoàn
-  CANCELLED        // Đã hủy
+  NEW // Mới tạo
+  PROCESSING // Đang xử lý
+  QUOTED // Đã báo giá
+  PENDING_PAYMENT // Chờ thanh toán
+  ISSUED // Đã xuất vé
+  COMPLETED // Hoàn thành (sau bay)
+  CHANGED // Đã đổi
+  REFUNDED // Đã hoàn
+  CANCELLED // Đã hủy
 }
 
 enum AdjustmentType {
-  CHANGE        // Đổi vé
+  CHANGE // Đổi vé
   REFUND_CREDIT // Hoàn bảo lưu (credit/voucher)
-  REFUND_CASH   // Hoàn tiền mặt
+  REFUND_CASH // Hoàn tiền mặt
+  REFUND_NAMED // Hoàn định danh
+  HLKG // Hành lý ký gửi
+  SERVICE // Dịch vụ hàng không
 }
 
 enum PaymentMethod {
@@ -78,7 +80,7 @@ enum PaymentStatus {
 
 enum CustomerType {
   INDIVIDUAL // Khách lẻ
-  CORPORATE  // Khách doanh nghiệp
+  CORPORATE // Khách doanh nghiệp
 }
 
 enum InvoiceDirection {
@@ -137,17 +139,17 @@ enum InvoiceExportType {
 
 enum VipTier {
   NORMAL
-  SILVER   // > 10 triệu/năm
-  GOLD     // > 50 triệu/năm
+  SILVER // > 10 triệu/năm
+  GOLD // > 50 triệu/năm
   PLATINUM // > 200 triệu/năm
 }
 
 enum Airline {
-  VN    // Vietnam Airlines
-  VJ    // Vietjet Air
-  QH    // Bamboo Airways
-  BL    // Pacific Airlines (Jetstar)
-  VU    // Vietravel Airlines
+  VN // Vietnam Airlines
+  VJ // Vietjet Air
+  QH // Bamboo Airways
+  BL // Pacific Airlines (Jetstar)
+  VU // Vietravel Airlines
   OTHER
 }
 
@@ -159,42 +161,57 @@ enum DebtStatus {
   WRITTEN_OFF
 }
 
+enum NamedCreditStatus {
+  ACTIVE
+  PARTIAL
+  USED
+  EXPIRED
+}
+
 // Thêm cho hệ thống công nợ 2 chiều
 enum LedgerDirection {
-  RECEIVABLE  // Phải thu — khách nợ APG
-  PAYABLE     // Phải trả — APG nợ nhà cung cấp
+  RECEIVABLE // Phải thu — khách nợ APG
+  PAYABLE // Phải trả — APG nợ nhà cung cấp
+}
+
+enum LedgerCategory {
+  TICKET
+  TICKET_CHANGE
+  TICKET_REFUND
+  HLKG
+  SERVICE
 }
 
 enum LedgerPartyType {
-  CUSTOMER_INDIVIDUAL  // Khách lẻ
-  CUSTOMER_CORPORATE   // Khách doanh nghiệp
-  AIRLINE              // Hãng bay (VN, VJ, QH, BL, VU)
-  GDS_PROVIDER         // Amadeus, Sabre
-  PARTNER              // Đối tác feedback (Mr Sơn VTC, Mr Lưu SCCM...)
-  OTHER_SUPPLIER       // Nhà cung cấp khác
+  CUSTOMER_INDIVIDUAL // Khách lẻ
+  CUSTOMER_CORPORATE // Khách doanh nghiệp
+  AIRLINE // Hãng bay (VN, VJ, QH, BL, VU)
+  GDS_PROVIDER // Amadeus, Sabre
+  PARTNER // Đối tác feedback (Mr Sơn VTC, Mr Lưu SCCM...)
+  OTHER_SUPPLIER // Nhà cung cấp khác
 }
 
 // Phase B: Quản lý dòng tiền
 enum CashFlowDirection {
-  INFLOW   // Tiền vào
-  OUTFLOW  // Tiền ra
+  INFLOW // Tiền vào
+  OUTFLOW // Tiền ra
 }
 
 enum CashFlowCategory {
-  TICKET_PAYMENT       // Khách thanh toán vé
-  TICKET_REFUND        // Hoàn tiền vé cho khách
-  PARTNER_FEEDBACK     // Trả phí hoa hồng đối tác
-  AIRLINE_PAYMENT      // Nạp deposit / thanh toán hãng
-  SALARY               // Lương nhân viên
-  OFFICE_RENT          // Thuê văn phòng
-  OFFICE_SUPPLIES      // Đồ dùng VP, thiết bị
-  ENTERTAINMENT        // Tiếp khách, ăn uống
-  TRAVEL               // Công tác phí (vé, KS, taxi)
-  RITUAL               // Lễ, thắp hương, phong thủy
-  MARKETING            // Quảng cáo, quà tặng
-  TECHNOLOGY           // Server, domain, phần mềm
-  DISBURSEMENT         // Giải ngân, nộp tiền vào TK công ty
-  OTHER                // Khác
+  TICKET_PAYMENT // Khách thanh toán vé
+  TICKET_REFUND // Hoàn tiền vé cho khách
+  PARTNER_FEEDBACK // Trả phí hoa hồng đối tác
+  AIRLINE_PAYMENT // Nạp deposit / thanh toán hãng
+  SALARY // Lương nhân viên
+  OFFICE_RENT // Thuê văn phòng
+  OFFICE_SUPPLIES // Đồ dùng VP, thiết bị
+  ENTERTAINMENT // Tiếp khách, ăn uống
+  TRAVEL // Công tác phí (vé, KS, taxi)
+  RITUAL // Lễ, thắp hương, phong thủy
+  MARKETING // Quảng cáo, quà tặng
+  TECHNOLOGY // Server, domain, phần mềm
+  DISBURSEMENT // Giải ngân, nộp tiền vào TK công ty
+  OTHER // Khác
 }
 
 enum CashFlowSourceType {
@@ -209,23 +226,23 @@ enum CashFlowSourceType {
 
 // Phase D: CRM Sales Pipeline
 enum LeadStatus {
-  NEW           // Mới tiếp cận
-  CONTACTED     // Đã liên hệ
-  NEGOTIATING   // Đang đàm phán
-  WON           // Đã chốt hợp đồng
-  ACTIVE        // Đang phát sinh doanh số
-  LOST          // Mất lead
-  ON_HOLD       // Tạm dừng
+  NEW // Mới tiếp cận
+  CONTACTED // Đã liên hệ
+  NEGOTIATING // Đang đàm phán
+  WON // Đã chốt hợp đồng
+  ACTIVE // Đang phát sinh doanh số
+  LOST // Mất lead
+  ON_HOLD // Tạm dừng
 }
 
 enum InteractionType {
-  CALL          // Cuộc gọi
-  MEETING       // Gặp mặt
-  MESSAGE       // Tin nhắn
-  FOLLOW_UP     // Follow-up
-  QUOTATION     // Gửi báo giá
-  COMPLAINT     // Khiếu nại
-  FEEDBACK      // Phản hồi
+  CALL // Cuộc gọi
+  MEETING // Gặp mặt
+  MESSAGE // Tin nhắn
+  FOLLOW_UP // Follow-up
+  QUOTATION // Gửi báo giá
+  COMPLAINT // Khiếu nại
+  FEEDBACK // Phản hồi
   OTHER
 }
 
@@ -243,15 +260,15 @@ enum InteractionChannel {
 model User {
   id          String    @id @default(uuid())
   email       String    @unique
-  password    String    // bcrypt hashed
+  password    String // bcrypt hashed
   fullName    String    @map("full_name")
   phone       String?
   role        UserRole  @default(SALES)
   permissions Json?
-  isActive    Boolean   @default(true)  @map("is_active")
+  isActive    Boolean   @default(true) @map("is_active")
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt      @map("updated_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   bookings      Booking[]
   auditLogs     AuditLog[]
@@ -273,24 +290,25 @@ model Customer {
   companyName   String?      @map("company_name")
   companyTaxId  String?      @map("company_tax_id")
   vipTier       VipTier      @default(NORMAL) @map("vip_tier")
-  totalSpent    Decimal      @default(0)       @map("total_spent")
-  totalBookings Int          @default(0)       @map("total_bookings")
+  totalSpent    Decimal      @default(0) @map("total_spent")
+  totalBookings Int          @default(0) @map("total_bookings")
   preferredSeat String?      @map("preferred_seat")
   notes         String?
-  tags          String[]     // ["VIP", "thường_bay_SGN"]
+  tags          String[] // ["VIP", "thường_bay_SGN"]
   customerCode  String?      @unique @map("customer_code") // Mã KH nội bộ: SCCM01, TB01, PHONG01, APG1...
   createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt      @map("updated_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  bookings       Booking[]
-  passengers     Passenger[]
-  debts          Debt[]
-  ledgers        AccountsLedger[] @relation("CustomerLedger")
-  invoiceRecords InvoiceRecord[]
+  bookings             Booking[]
+  passengers           Passenger[]
+  debts                Debt[]
+  ledgers              AccountsLedger[]      @relation("CustomerLedger")
+  namedCredits         NamedCredit[]
+  invoiceRecords       InvoiceRecord[]
   invoiceExportBatches InvoiceExportBatch[]
-  interactions   CustomerInteraction[]
-  customerNotes  CustomerNote[]
-  communications CommunicationLog[]
+  interactions         CustomerInteraction[]
+  customerNotes        CustomerNote[]
+  communications       CommunicationLog[]
 
   @@map("customers")
 }
@@ -298,7 +316,7 @@ model Customer {
 model Booking {
   id           String        @id @default(uuid())
   bookingCode  String        @unique @map("booking_code")
-  customerId   String        @map("customer_id")
+  customerId   String?       @map("customer_id")
   staffId      String        @map("staff_id")
   status       BookingStatus @default(NEW)
   source       String        @default("PHONE")
@@ -318,26 +336,28 @@ model Booking {
   gdsBookingId String? @map("gds_booking_id")
 
   // Nhà cung cấp vé
-  supplierId   String?       @map("supplier_id")
-  supplier     SupplierProfile? @relation("BookingSupplier", fields: [supplierId], references: [id])
+  supplierId String?          @map("supplier_id")
+  supplier   SupplierProfile? @relation("BookingSupplier", fields: [supplierId], references: [id])
 
-  notes        String?
+  notes         String?
   internalNotes String? @map("internal_notes")
 
   createdAt    DateTime  @default(now()) @map("created_at")
   businessDate DateTime? @map("business_date")
-  updatedAt    DateTime  @updatedAt      @map("updated_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   issuedAt     DateTime? @map("issued_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  customer      Customer           @relation(fields: [customerId], references: [id])
-  staff         User               @relation(fields: [staffId], references: [id])
-  tickets       Ticket[]
-  payments      Payment[]
-  statusHistory BookingStatusLog[]
-  ledgers       AccountsLedger[]
+  customer         Customer?           @relation(fields: [customerId], references: [id])
+  staff            User                @relation(fields: [staffId], references: [id])
+  tickets          Ticket[]
+  payments         Payment[]
+  statusHistory    BookingStatusLog[]
+  ledgers          AccountsLedger[]
   invoiceLineItems InvoiceLineItem[]
   adjustments      BookingAdjustment[]
+  creditsCreated   NamedCredit[]       @relation("CreditFromBooking")
+  creditsUsed      NamedCredit[]       @relation("CreditUsedInBooking")
 
   @@index([customerId])
   @@index([staffId])
@@ -346,61 +366,94 @@ model Booking {
   @@index([businessDate])
   @@index([deletedAt])
   @@index([paymentStatus])
-  @@index([source, createdAt])  // PERF 4: Reports - source analysis + monthly grouping
+  @@index([source, createdAt]) // PERF 4: Reports - source analysis + monthly grouping
   @@map("bookings")
 }
 
 model BookingAdjustment {
-  id               String          @id @default(uuid())
-  bookingId        String          @map("booking_id")
-  type             AdjustmentType
+  id        String         @id @default(uuid())
+  bookingId String         @map("booking_id")
+  type      AdjustmentType
 
   // Tai chinh doi ve
-  changeFee        Decimal         @default(0) @map("change_fee")
-  chargeToCustomer Decimal         @default(0) @map("charge_to_customer")
+  changeFee        Decimal @default(0) @map("change_fee")
+  chargeToCustomer Decimal @default(0) @map("charge_to_customer")
 
   // Tai chinh hoan ve
-  refundAmount     Decimal         @default(0) @map("refund_amount")
-  airlineRefund    Decimal         @default(0) @map("airline_refund")
-  penaltyFee       Decimal         @default(0) @map("penalty_fee")
-  apgServiceFee    Decimal         @default(0) @map("apg_service_fee")
+  refundAmount  Decimal @default(0) @map("refund_amount")
+  airlineRefund Decimal @default(0) @map("airline_refund")
+  penaltyFee    Decimal @default(0) @map("penalty_fee")
+  apgServiceFee Decimal @default(0) @map("apg_service_fee")
 
   // Quy tien
-  fundAccount      FundAccount?    @map("fund_account")
+  fundAccount FundAccount? @map("fund_account")
 
   // Thong tin bo sung
-  notes            String?
-  createdBy        String?         @map("created_by")
-  createdAt        DateTime        @default(now()) @map("created_at")
+  notes     String?
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  booking          Booking         @relation(fields: [bookingId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
 
   @@index([bookingId])
   @@map("booking_adjustments")
 }
+
+model NamedCredit {
+  id              String            @id @default(uuid())
+  bookingId       String            @map("booking_id")
+  customerId      String            @map("customer_id")
+  passengerName   String            @map("passenger_name")
+  airline         String
+  ticketNumber    String?           @map("ticket_number")
+  pnr             String?
+  creditAmount    Decimal           @map("credit_amount")
+  usedAmount      Decimal           @default(0) @map("used_amount")
+  remainingAmount Decimal           @map("remaining_amount")
+  expiryDate      DateTime          @map("expiry_date")
+  status          NamedCreditStatus @default(ACTIVE)
+  usedInBookingId String?           @map("used_in_booking_id")
+  usedAt          DateTime?         @map("used_at")
+  notes           String?
+  createdBy       String?           @map("created_by")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  booking       Booking  @relation("CreditFromBooking", fields: [bookingId], references: [id])
+  customer      Customer @relation(fields: [customerId], references: [id])
+  usedInBooking Booking? @relation("CreditUsedInBooking", fields: [usedInBookingId], references: [id])
+
+  @@index([customerId])
+  @@index([bookingId])
+  @@index([status])
+  @@index([airline, passengerName])
+  @@index([expiryDate])
+  @@map("named_credits")
+}
+
 model Ticket {
-  id            String   @id @default(uuid())
-  bookingId     String   @map("booking_id")
-  passengerId   String   @map("passenger_id")
-  airline       String   // IATA 2-letter code: VN, VJ, EK, SQ... (không giới hạn enum)
-  flightNumber  String   @map("flight_number")
-  departureCode String   @map("departure_code") // IATA: SGN
-  arrivalCode   String   @map("arrival_code")
-  departureTime DateTime @map("departure_time")
-  arrivalTime   DateTime @map("arrival_time")
-  seatClass     String   @map("seat_class")  // Economy/Business
-  fareClass     String?  @map("fare_class")  // Booking class: Y/M/B
-  airlineBookingCode String? @map("airline_booking_code") // Mã đặt chỗ hãng bay: 64NTWM
-  sellPrice     Decimal  @map("sell_price")
-  netPrice      Decimal  @map("net_price")
-  tax           Decimal  @default(0)
-  serviceFee    Decimal  @default(0) @map("service_fee")
-  commission    Decimal  @default(0)
-  profit        Decimal  @default(0)
-  eTicketNumber String?  @map("e_ticket_number")
-  baggageAllowance String? @map("baggage_allowance")
-  status        String   @default("ACTIVE")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(uuid())
+  bookingId          String   @map("booking_id")
+  passengerId        String   @map("passenger_id")
+  airline            String // IATA 2-letter code: VN, VJ, EK, SQ... (không giới hạn enum)
+  flightNumber       String   @map("flight_number")
+  departureCode      String   @map("departure_code") // IATA: SGN
+  arrivalCode        String   @map("arrival_code")
+  departureTime      DateTime @map("departure_time")
+  arrivalTime        DateTime @map("arrival_time")
+  seatClass          String   @map("seat_class") // Economy/Business
+  fareClass          String?  @map("fare_class") // Booking class: Y/M/B
+  airlineBookingCode String?  @map("airline_booking_code") // Mã đặt chỗ hãng bay: 64NTWM
+  sellPrice          Decimal  @map("sell_price")
+  netPrice           Decimal  @map("net_price")
+  tax                Decimal  @default(0)
+  serviceFee         Decimal  @default(0) @map("service_fee")
+  commission         Decimal  @default(0)
+  profit             Decimal  @default(0)
+  eTicketNumber      String?  @map("e_ticket_number")
+  baggageAllowance   String?  @map("baggage_allowance")
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   booking   Booking   @relation(fields: [bookingId], references: [id])
   passenger Passenger @relation(fields: [passengerId], references: [id])
@@ -408,7 +461,7 @@ model Ticket {
   @@index([bookingId])
   @@index([passengerId])
   @@index([airline])
-  @@index([departureCode, arrivalCode])  // PERF 4: Reports - route analysis queries
+  @@index([departureCode, arrivalCode]) // PERF 4: Reports - route analysis queries
   @@map("tickets")
 }
 
@@ -417,7 +470,7 @@ model Passenger {
   customerId  String?   @map("customer_id")
   fullName    String    @map("full_name")
   dateOfBirth DateTime? @map("date_of_birth")
-  gender      String?   // M/F
+  gender      String? // M/F
   idNumber    String?   @map("id_number")
   passport    String?
   phone       String?
@@ -433,21 +486,21 @@ model Passenger {
 }
 
 enum FundAccount {
-  CASH_OFFICE     // Quỹ tiền mặt văn phòng
-  BANK_HTX        // Tài khoản ngân hàng HTX (BIDV 3900543757)
-  BANK_PERSONAL   // Tài khoản cá nhân (MB 996106688)
+  CASH_OFFICE // Quỹ tiền mặt văn phòng
+  BANK_HTX // Tài khoản ngân hàng HTX (BIDV 3900543757)
+  BANK_PERSONAL // Tài khoản cá nhân (MB 996106688)
 }
 
 model Payment {
-  id        String        @id @default(uuid())
-  bookingId String        @map("booking_id")
-  amount    Decimal
-  method    PaymentMethod
-  reference String?       // Mã giao dịch / biên lai
-  paidAt    DateTime      @default(now()) @map("paid_at")
-  notes     String?
-  fundAccount   FundAccount?  @map("fund_account")
-  createdAt DateTime      @default(now()) @map("created_at")
+  id          String        @id @default(uuid())
+  bookingId   String        @map("booking_id")
+  amount      Decimal
+  method      PaymentMethod
+  reference   String? // Mã giao dịch / biên lai
+  paidAt      DateTime      @default(now()) @map("paid_at")
+  notes       String?
+  fundAccount FundAccount?  @map("fund_account")
+  createdAt   DateTime      @default(now()) @map("created_at")
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
@@ -466,7 +519,7 @@ model Debt {
   dueDate     DateTime   @map("due_date")
   description String?
   createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt      @map("updated_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
 
@@ -477,30 +530,30 @@ model Debt {
 }
 
 model AirlineDeposit {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   airline        String
-  balance        Decimal  @default(0)
-  lastTopUp      Decimal  @default(0) @map("last_top_up")
+  balance        Decimal   @default(0)
+  lastTopUp      Decimal   @default(0) @map("last_top_up")
   lastTopUpAt    DateTime? @map("last_top_up_at")
-  alertThreshold Decimal  @default(5000000) @map("alert_threshold")
+  alertThreshold Decimal   @default(5000000) @map("alert_threshold")
   notes          String?
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@unique([airline])
   @@map("airline_deposits")
 }
 
 model DailyReconciliation {
-  id           String   @id @default(uuid())
-  date         DateTime @unique
-  totalTickets Int      @map("total_tickets")
-  totalRevenue Decimal  @map("total_revenue")
-  totalCost    Decimal  @map("total_cost")
-  totalProfit  Decimal  @map("total_profit")
-  discrepancies Json?   // Chi tiết chênh lệch
-  isVerified   Boolean  @default(false) @map("is_verified")
-  verifiedBy   String?  @map("verified_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  date          DateTime @unique
+  totalTickets  Int      @map("total_tickets")
+  totalRevenue  Decimal  @map("total_revenue")
+  totalCost     Decimal  @map("total_cost")
+  totalProfit   Decimal  @map("total_profit")
+  discrepancies Json? // Chi tiết chênh lệch
+  isVerified    Boolean  @default(false) @map("is_verified")
+  verifiedBy    String?  @map("verified_by")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@map("daily_reconciliations")
 }
@@ -524,8 +577,8 @@ model BookingStatusLog {
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
-  action    String   // CREATE/UPDATE/DELETE
-  entity    String   // booking/customer/payment
+  action    String // CREATE/UPDATE/DELETE
+  entity    String // booking/customer/payment
   entityId  String   @map("entity_id")
   oldData   Json?    @map("old_data")
   newData   Json?    @map("new_data")
@@ -544,17 +597,17 @@ model AuditLog {
 
 // Ghi lại tương tác với khách (cuộc gọi, gặp mặt, Zalo...)
 model CustomerInteraction {
-  id          String             @id @default(uuid())
-  customerId  String             @map("customer_id")
-  staffId     String             @map("staff_id")
-  type        InteractionType
-  channel     InteractionChannel
-  subject     String
-  content     String?
-  outcome     String?            // "Đã đặt vé", "Hẹn gọi lại", "Không nghe máy"
-  followUpAt  DateTime?          @map("follow_up_at")
-  duration    Int?               // phút (cho cuộc gọi)
-  createdAt   DateTime           @default(now()) @map("created_at")
+  id         String             @id @default(uuid())
+  customerId String             @map("customer_id")
+  staffId    String             @map("staff_id")
+  type       InteractionType
+  channel    InteractionChannel
+  subject    String
+  content    String?
+  outcome    String? // "Đã đặt vé", "Hẹn gọi lại", "Không nghe máy"
+  followUpAt DateTime?          @map("follow_up_at")
+  duration   Int? // phút (cho cuộc gọi)
+  createdAt  DateTime           @default(now()) @map("created_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
   staff    User     @relation(fields: [staffId], references: [id])
@@ -573,7 +626,7 @@ model CustomerNote {
   content    String
   isPinned   Boolean  @default(false) @map("is_pinned")
   createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt      @map("updated_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
   staff    User     @relation(fields: [staffId], references: [id])
@@ -587,8 +640,8 @@ model CustomerNote {
 model CommunicationLog {
   id         String   @id @default(uuid())
   customerId String   @map("customer_id")
-  channel    String   // ZALO, SMS, EMAIL, TELEGRAM
-  direction  String   // INBOUND, OUTBOUND
+  channel    String // ZALO, SMS, EMAIL, TELEGRAM
+  direction  String // INBOUND, OUTBOUND
   content    String
   status     String   @default("SENT") // SENT, DELIVERED, READ, FAILED
   metadata   Json?
@@ -604,27 +657,27 @@ model CommunicationLog {
 
 // H\u1ed3 s\u01a0 nh\u00e0 cung c\u1ea5p / \u0111\u1ed1i t\u00e1c
 model SupplierProfile {
-  id            String          @id @default(uuid())
-  code          String          @unique  // VN, VJ, QH, AMADEUS, SCCM, TB_VTC...
-  name          String                   // Vietnam Airlines, Amadeus GDS...
-  type          LedgerPartyType
-  contactName   String?         @map("contact_name")   // Mr L\u01b0u, Mr S\u01a1n, Mr Hoan...
-  contactPhone  String?         @map("contact_phone")
-  contactEmail  String?         @map("contact_email")
-  taxId         String?         @map("tax_id")
-  bankAccount   String?         @map("bank_account")
-  bankName      String?         @map("bank_name")
-  creditLimit   Decimal?        @map("credit_limit")
-  paymentTerms  Int?            @map("payment_terms") // S\u1ed1 ng\u00e0y cho ph\u00e9p n\u1ee3
-  feedbackRate  Decimal?        @map("feedback_rate") // T\u1ec9 l\u1ec7 % hoa h\u1ed3ng
-  notes         String?
-  isActive      Boolean         @default(true) @map("is_active")
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
+  id           String          @id @default(uuid())
+  code         String          @unique // VN, VJ, QH, AMADEUS, SCCM, TB_VTC...
+  name         String // Vietnam Airlines, Amadeus GDS...
+  type         LedgerPartyType
+  contactName  String?         @map("contact_name") // Mr L\u01b0u, Mr S\u01a1n, Mr Hoan...
+  contactPhone String?         @map("contact_phone")
+  contactEmail String?         @map("contact_email")
+  taxId        String?         @map("tax_id")
+  bankAccount  String?         @map("bank_account")
+  bankName     String?         @map("bank_name")
+  creditLimit  Decimal?        @map("credit_limit")
+  paymentTerms Int?            @map("payment_terms") // S\u1ed1 ng\u00e0y cho ph\u00e9p n\u1ee3
+  feedbackRate Decimal?        @map("feedback_rate") // T\u1ec9 l\u1ec7 % hoa h\u1ed3ng
+  notes        String?
+  isActive     Boolean         @default(true) @map("is_active")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
 
-  ledgers       AccountsLedger[]
-  bookings      Booking[]     @relation("BookingSupplier")
-  invoiceRecords InvoiceRecord[]
+  ledgers              AccountsLedger[]
+  bookings             Booking[]            @relation("BookingSupplier")
+  invoiceRecords       InvoiceRecord[]
   invoiceImportBatches InvoiceImportBatch[]
 
   @@map("supplier_profiles")
@@ -679,11 +732,11 @@ model InvoiceRecord {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  customer    Customer?          @relation(fields: [customerId], references: [id])
-  supplier    SupplierProfile?   @relation(fields: [supplierId], references: [id])
-  lines       InvoiceLineItem[]
-  attachments InvoiceAttachment[]
-  reviews     InvoiceReviewLog[]
+  customer      Customer?            @relation(fields: [customerId], references: [id])
+  supplier      SupplierProfile?     @relation(fields: [supplierId], references: [id])
+  lines         InvoiceLineItem[]
+  attachments   InvoiceAttachment[]
+  reviews       InvoiceReviewLog[]
   importBatches InvoiceImportBatch[]
   exportBatches InvoiceExportBatch[]
 
@@ -696,30 +749,30 @@ model InvoiceRecord {
 }
 
 model InvoiceLineItem {
-  id              String    @id @default(uuid())
-  invoiceId       String    @map("invoice_id")
-  lineNo          Int       @map("line_no")
-  bookingId       String?   @map("booking_id")
-  bookingCode     String?   @map("booking_code")
+  id              String   @id @default(uuid())
+  invoiceId       String   @map("invoice_id")
+  lineNo          Int      @map("line_no")
+  bookingId       String?  @map("booking_id")
+  bookingCode     String?  @map("booking_code")
   pnr             String?
-  ticketIds       String[]  @default([]) @map("ticket_ids")
+  ticketIds       String[] @default([]) @map("ticket_ids")
   description     String
-  passengerName   String?   @map("passenger_name")
-  passengerType   String?   @map("passenger_type")
+  passengerName   String?  @map("passenger_name")
+  passengerType   String?  @map("passenger_type")
   route           String?
-  quantity        Decimal   @default(1)
-  unitName        String?   @default("Ve") @map("unit_name")
-  currencyCode    String    @default("VND") @map("currency_code")
-  unitPrice       Decimal   @default(0) @map("unit_price")
-  amountBeforeVat Decimal   @default(0) @map("amount_before_vat")
-  vatRate         Decimal   @default(0) @map("vat_rate")
-  vatAmount       Decimal   @default(0) @map("vat_amount")
-  amount          Decimal   @default(0)
-  serviceFee      Decimal   @default(0) @map("service_fee")
+  quantity        Decimal  @default(1)
+  unitName        String?  @default("Ve") @map("unit_name")
+  currencyCode    String   @default("VND") @map("currency_code")
+  unitPrice       Decimal  @default(0) @map("unit_price")
+  amountBeforeVat Decimal  @default(0) @map("amount_before_vat")
+  vatRate         Decimal  @default(0) @map("vat_rate")
+  vatAmount       Decimal  @default(0) @map("vat_amount")
+  amount          Decimal  @default(0)
+  serviceFee      Decimal  @default(0) @map("service_fee")
   notes           String?
   snapshot        Json?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   invoice InvoiceRecord @relation(fields: [invoiceId], references: [id])
   booking Booking?      @relation(fields: [bookingId], references: [id])
@@ -766,22 +819,22 @@ model InvoiceReviewLog {
 }
 
 model InvoiceImportBatch {
-  id          String              @id @default(uuid())
-  status      InvoiceImportStatus @default(OCR_PENDING)
-  supplierId  String?             @map("supplier_id")
-  invoiceId   String?             @unique @map("invoice_id")
-  fileName    String              @map("file_name")
-  mimeType    String?             @map("mime_type")
-  fileSize    Int?                @map("file_size")
-  storagePath String?             @map("storage_path")
-  externalUrl String?             @map("external_url")
-  ocrProvider String?             @map("ocr_provider")
-  errorMessage String?            @map("error_message")
-  extractedData Json?             @map("extracted_data")
-  reviewedData Json?              @map("reviewed_data")
-  createdBy   String?             @map("created_by")
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
+  id            String              @id @default(uuid())
+  status        InvoiceImportStatus @default(OCR_PENDING)
+  supplierId    String?             @map("supplier_id")
+  invoiceId     String?             @unique @map("invoice_id")
+  fileName      String              @map("file_name")
+  mimeType      String?             @map("mime_type")
+  fileSize      Int?                @map("file_size")
+  storagePath   String?             @map("storage_path")
+  externalUrl   String?             @map("external_url")
+  ocrProvider   String?             @map("ocr_provider")
+  errorMessage  String?             @map("error_message")
+  extractedData Json?               @map("extracted_data")
+  reviewedData  Json?               @map("reviewed_data")
+  createdBy     String?             @map("created_by")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
   supplier SupplierProfile? @relation(fields: [supplierId], references: [id])
   invoice  InvoiceRecord?   @relation(fields: [invoiceId], references: [id])
@@ -792,18 +845,18 @@ model InvoiceImportBatch {
 }
 
 model InvoiceExportBatch {
-  id        String            @id @default(uuid())
-  type      InvoiceExportType
-  invoiceId String?           @map("invoice_id")
-  customerId String?          @map("customer_id")
-  fileName  String            @map("file_name")
-  filePath  String            @map("file_path")
-  mimeType  String            @default("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") @map("mime_type")
-  rowCount  Int               @default(0) @map("row_count")
-  filters   Json?
-  payload   Json?
-  createdBy String?           @map("created_by")
-  createdAt DateTime          @default(now()) @map("created_at")
+  id         String            @id @default(uuid())
+  type       InvoiceExportType
+  invoiceId  String?           @map("invoice_id")
+  customerId String?           @map("customer_id")
+  fileName   String            @map("file_name")
+  filePath   String            @map("file_path")
+  mimeType   String            @default("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") @map("mime_type")
+  rowCount   Int               @default(0) @map("row_count")
+  filters    Json?
+  payload    Json?
+  createdBy  String?           @map("created_by")
+  createdAt  DateTime          @default(now()) @map("created_at")
 
   invoice  InvoiceRecord? @relation(fields: [invoiceId], references: [id])
   customer Customer?      @relation(fields: [customerId], references: [id])
@@ -816,44 +869,46 @@ model InvoiceExportBatch {
 
 // S\u1ed5 c\u00e1i c\u00f4ng n\u1ee3 2 chi\u1ec1u (Ph\u1ea3i thu AR + Ph\u1ea3i tr\u1ea3 AP)
 model AccountsLedger {
-  id              String          @id @default(uuid())
-  code            String          @unique // M\u00e3 t\u1ef1 sinh: AR-YYMMDD-XXX ho\u1eb7c AP-YYMMDD-XXX
-  direction       LedgerDirection
-  partyType       LedgerPartyType @map("party_type")
+  id        String          @id @default(uuid())
+  code      String          @unique // M\u00e3 t\u1ef1 sinh: AR-YYMMDD-XXX ho\u1eb7c AP-YYMMDD-XXX
+  direction LedgerDirection
+  partyType LedgerPartyType @map("party_type")
 
   // Li\u00ean k\u1ebft \u0111\u1ed1i t\u01b0\u1ee3ng (polymorphic)
-  customerId      String?         @map("customer_id")
-  supplierId      String?         @map("supplier_id")
-  customerCode    String?         @map("customer_code") // M\u00e3 KH n\u1ed9i b\u1ed9: SCCM01, TB01...
+  customerId   String? @map("customer_id")
+  supplierId   String? @map("supplier_id")
+  customerCode String? @map("customer_code") // M\u00e3 KH n\u1ed9i b\u1ed9: SCCM01, TB01...
 
   // Li\u00ean k\u1ebft ngu\u1ed3n g\u1ed1c
-  bookingId       String?         @map("booking_id")
-  bookingCode     String?         @map("booking_code") // PNR ho\u1eb7c m\u00e3 booking
+  bookingId   String? @map("booking_id")
+  bookingCode String? @map("booking_code") // PNR ho\u1eb7c m\u00e3 booking
 
   // S\u1ed1 ti\u1ec1n
-  totalAmount     Decimal         @map("total_amount")
-  paidAmount      Decimal         @default(0) @map("paid_amount")
-  remaining       Decimal         @default(0)
+  totalAmount Decimal @map("total_amount")
+  paidAmount  Decimal @default(0) @map("paid_amount")
+  remaining   Decimal @default(0)
 
   // Th\u1eddi h\u1ea1n
-  issueDate       DateTime        @default(now()) @map("issue_date")
-  dueDate         DateTime        @map("due_date")
-  status          DebtStatus      @default(ACTIVE)
+  issueDate DateTime   @default(now()) @map("issue_date")
+  dueDate   DateTime   @map("due_date")
+  status    DebtStatus @default(ACTIVE)
 
   // Th\u00f4ng tin b\u1ed5 sung
-  description     String?
-  invoiceNumber   String?         @map("invoice_number")
-  pic             String?         // Ng\u01b0\u1eddi ph\u1ee5 tr\u00e1ch: Ms Thanh, Mr \u0110\u1ee9c Anh...
-  notes           String?
-  createdBy       String?         @map("created_by")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  category      LedgerCategory @default(TICKET) @map("ledger_category")
+  serviceCode   String?        @map("service_code")
+  description   String?
+  invoiceNumber String?        @map("invoice_number")
+  pic           String? // Ng\u01b0\u1eddi ph\u1ee5 tr\u00e1ch: Ms Thanh, Mr \u0110\u1ee9c Anh...
+  notes         String?
+  createdBy     String?        @map("created_by")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer?       @relation("CustomerLedger", fields: [customerId], references: [id])
-  supplier        SupplierProfile? @relation(fields: [supplierId], references: [id])
-  booking         Booking?        @relation(fields: [bookingId], references: [id])
-  payments        LedgerPayment[]
+  customer Customer?        @relation("CustomerLedger", fields: [customerId], references: [id])
+  supplier SupplierProfile? @relation(fields: [supplierId], references: [id])
+  booking  Booking?         @relation(fields: [bookingId], references: [id])
+  payments LedgerPayment[]
 
   @@index([direction, status])
   @@index([customerId])
@@ -861,22 +916,23 @@ model AccountsLedger {
   @@index([customerCode])
   @@index([dueDate])
   @@index([partyType])
+  @@index([category])
   @@map("accounts_ledger")
 }
 
 // L\u1ecbch s\u1eed thanh to\u00e1n c\u00f4ng n\u1ee3
 model LedgerPayment {
-  id            String         @id @default(uuid())
-  ledgerId      String         @map("ledger_id")
-  amount        Decimal
-  method        PaymentMethod
-  reference     String?        // M\u00e3 giao d\u1ecbch / UNC / bi\u00ean lai
-  paidAt        DateTime       @default(now()) @map("paid_at")
-  paidBy        String?        @map("paid_by") // User ID
-  notes         String?
-  createdAt     DateTime       @default(now()) @map("created_at")
+  id        String        @id @default(uuid())
+  ledgerId  String        @map("ledger_id")
+  amount    Decimal
+  method    PaymentMethod
+  reference String? // M\u00e3 giao d\u1ecbch / UNC / bi\u00ean lai
+  paidAt    DateTime      @default(now()) @map("paid_at")
+  paidBy    String?       @map("paid_by") // User ID
+  notes     String?
+  createdAt DateTime      @default(now()) @map("created_at")
 
-  ledger        AccountsLedger @relation(fields: [ledgerId], references: [id])
+  ledger AccountsLedger @relation(fields: [ledgerId], references: [id])
 
   @@index([ledgerId])
   @@map("ledger_payments")
@@ -886,26 +942,26 @@ model LedgerPayment {
 
 // Giao dịch dòng tiền (từ Google Sheet "Dòng tiền KHÁCH LẺ")
 model CashFlowEntry {
-  id            String            @id @default(uuid())
-  direction     CashFlowDirection
-  category      CashFlowCategory
-  amount        Decimal
-  pic           String            // Người thực hiện: Ms Thanh, Mr Đức Anh, Mr Phong...
-  description   String
-  reference     String?           // PNR code, mã booking, mã giao dịch
-  date          DateTime
-  status        String            @default("DONE") // DONE, PENDING
-  notes         String?
-  fundAccount   FundAccount?      @map("fund_account")
-  counterpartyFundAccount FundAccount? @map("counterparty_fund_account")
-  sourceType    CashFlowSourceType? @map("source_type")
-  sourceId      String?           @map("source_id")
-  transferGroupId String?         @map("transfer_group_id")
-  reason        String?
-  isLocked      Boolean           @default(false) @map("is_locked")
-  createdBy     String?           @map("created_by")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  id                      String              @id @default(uuid())
+  direction               CashFlowDirection
+  category                CashFlowCategory
+  amount                  Decimal
+  pic                     String // Người thực hiện: Ms Thanh, Mr Đức Anh, Mr Phong...
+  description             String
+  reference               String? // PNR code, mã booking, mã giao dịch
+  date                    DateTime
+  status                  String              @default("DONE") // DONE, PENDING
+  notes                   String?
+  fundAccount             FundAccount?        @map("fund_account")
+  counterpartyFundAccount FundAccount?        @map("counterparty_fund_account")
+  sourceType              CashFlowSourceType? @map("source_type")
+  sourceId                String?             @map("source_id")
+  transferGroupId         String?             @map("transfer_group_id")
+  reason                  String?
+  isLocked                Boolean             @default(false) @map("is_locked")
+  createdBy               String?             @map("created_by")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
 
   @@index([direction])
   @@index([category])
@@ -919,17 +975,17 @@ model CashFlowEntry {
 
 // Chi phí vận hành (từ Google Sheet "Chi phí vận hành" - 209 khoản)
 model OperatingExpense {
-  id            String           @id @default(uuid())
-  category      CashFlowCategory
-  description   String           // Nội dung chi phí
-  amount        Decimal
-  date          DateTime
-  status        String           @default("DONE") // DONE, PENDING
-  notes         String?
-  fundAccount   FundAccount?     @map("fund_account")
-  createdBy     String?          @map("created_by")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  id          String           @id @default(uuid())
+  category    CashFlowCategory
+  description String // Nội dung chi phí
+  amount      Decimal
+  date        DateTime
+  status      String           @default("DONE") // DONE, PENDING
+  notes       String?
+  fundAccount FundAccount?     @map("fund_account")
+  createdBy   String?          @map("created_by")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
 
   @@index([category])
   @@index([date])
@@ -940,22 +996,22 @@ model OperatingExpense {
 
 // Pipeline bán hàng (nguồn: Google Sheet "Công tác sales" - 17 leads)
 model SalesLead {
-  id              String      @id @default(uuid())
-  salesPerson     String      @map("sales_person") // Phong, Giang, Đức Anh
-  companyName     String      @map("company_name") // Nguồn khách: Du học Úc, XKLD, Tàu biển...
-  contactName     String?     @map("contact_name") // Ms Tú, Mr Tuấn...
-  contactPhone    String?     @map("contact_phone")
-  contactEmail    String?     @map("contact_email")
-  customerCode    String?     @map("customer_code") // APG1, APG2... APG7
-  source          String?     // Kênh dẫn nguồn: Zalo, Referral, Cold call...
-  description     String?     // Mô tả nhu cầu / tiềm năng
-  status          LeadStatus  @default(NEW)
-  notes           String?
-  nextAction      String?     @map("next_action")   // Hành động tiếp theo
-  nextActionDate  DateTime?   @map("next_action_date")
-  estimatedValue  Decimal?    @map("estimated_value") // Doanh số ước tính/tháng
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  id             String     @id @default(uuid())
+  salesPerson    String     @map("sales_person") // Phong, Giang, Đức Anh
+  companyName    String     @map("company_name") // Nguồn khách: Du học Úc, XKLD, Tàu biển...
+  contactName    String?    @map("contact_name") // Ms Tú, Mr Tuấn...
+  contactPhone   String?    @map("contact_phone")
+  contactEmail   String?    @map("contact_email")
+  customerCode   String?    @map("customer_code") // APG1, APG2... APG7
+  source         String? // Kênh dẫn nguồn: Zalo, Referral, Cold call...
+  description    String? // Mô tả nhu cầu / tiềm năng
+  status         LeadStatus @default(NEW)
+  notes          String?
+  nextAction     String?    @map("next_action") // Hành động tiếp theo
+  nextActionDate DateTime?  @map("next_action_date")
+  estimatedValue Decimal?   @map("estimated_value") // Doanh số ước tính/tháng
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
 
   @@index([salesPerson])
   @@index([status])

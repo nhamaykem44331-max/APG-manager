@@ -15,13 +15,17 @@ import {
 import { PaymentModal } from './payment-modal';
 import {
   getLedgerBookingRef,
+  getLedgerCategoryBadgeClass,
+  getLedgerCategoryEntries,
+  getLedgerCategoryLabel,
   getLedgerGroupMetrics,
   matchesLedgerSearch,
   sortLedgerRows,
+  type LedgerCategoryEntry,
   type LedgerGroupMetrics,
   type LedgerSortKey,
 } from './ledger-tab-helpers';
-import type { AccountsLedger, DebtStatus, LedgerPartyType } from '@/types';
+import type { AccountsLedger, DebtStatus, LedgerCategory, LedgerPartyType } from '@/types';
 
 type ViewMode = 'PNR' | 'SUPPLIER';
 
@@ -38,6 +42,7 @@ interface PayablePnrRow extends LedgerGroupMetrics {
   supplierName: string;
   supplierCode?: string | null;
   partyType: LedgerPartyType;
+  categoryEntries: LedgerCategoryEntry[];
   invoiceNumber?: string | null;
   paymentTarget?: AccountsLedger | null;
 }
@@ -47,6 +52,7 @@ interface PayableSupplierRow extends LedgerGroupMetrics {
   supplierName: string;
   supplierCode?: string | null;
   partyType: LedgerPartyType;
+  categoryEntries: LedgerCategoryEntry[];
   pnrCount: number;
 }
 
@@ -66,6 +72,15 @@ function getPayablePartyKey(ledger: AccountsLedger) {
   return ledger.supplierId ?? ledger.supplier?.code ?? ledger.supplier?.name ?? ledger.customerCode ?? 'unknown-supplier';
 }
 
+const CATEGORY_FILTER_OPTIONS: Array<{ value: 'ALL' | LedgerCategory; label: string }> = [
+  { value: 'ALL', label: 'T\u1ea5t c\u1ea3 lo\u1ea1i' },
+  { value: 'TICKET', label: 'V\u00e9' },
+  { value: 'TICKET_CHANGE', label: '\u0110\u1ed5i v\u00e9' },
+  { value: 'TICKET_REFUND', label: 'Ho\u00e0n v\u00e9' },
+  { value: 'HLKG', label: 'HLKG' },
+  { value: 'SERVICE', label: 'D\u1ecbch v\u1ee5' },
+];
+
 function getPayablePartyName(ledger: AccountsLedger) {
   return ledger.supplier?.name ?? ledger.customerCode ?? 'Chưa gán NCC';
 }
@@ -74,11 +89,39 @@ function getGroupStatusClass(status: DebtStatus) {
   return cn('text-[10px] px-2 py-0.5 rounded-full font-medium', DEBT_STATUS_CLASSES[status]);
 }
 
+function CategoryBadges({ entries }: { entries: LedgerCategoryEntry[] }) {
+  const visibleEntries = entries.slice(0, 2);
+  const hiddenCount = entries.length - visibleEntries.length;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {visibleEntries.map((entry) => (
+        <div key={entry.key} className="flex items-center gap-1">
+          <span className={getLedgerCategoryBadgeClass(entry.category)}>
+            {getLedgerCategoryLabel(entry.category)}
+          </span>
+          {entry.serviceCode && (
+            <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {entry.serviceCode}
+            </span>
+          )}
+        </div>
+      ))}
+      {hiddenCount > 0 && (
+        <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          +{hiddenCount}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function PayableTab() {
   const [viewMode, setViewMode] = useState<ViewMode>('PNR');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<LedgerSortKey>('remaining:desc');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | LedgerCategory>('ALL');
   const [paying, setPaying] = useState<AccountsLedger | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -124,9 +167,12 @@ export function PayableTab() {
         if (supplierFilter !== 'ALL' && getPayablePartyKey(ledger) !== supplierFilter) {
           return false;
         }
+        if (categoryFilter !== 'ALL' && ledger.category !== categoryFilter) {
+          return false;
+        }
         return matchesLedgerSearch(ledger, search);
       }),
-    [ledgers, search, supplierFilter],
+    [ledgers, search, supplierFilter, categoryFilter],
   );
 
   const pnrRows = useMemo<PayablePnrRow[]>(() => {
@@ -153,6 +199,7 @@ export function PayableTab() {
         supplierName: getPayablePartyName(first),
         supplierCode: first.supplier?.code,
         partyType: first.partyType,
+        categoryEntries: getLedgerCategoryEntries(bucket),
         invoiceNumber: bucket.length === 1 ? first.invoiceNumber : null,
         paymentTarget: openLedgers.length === 1 ? openLedgers[0] : null,
         ...metrics,
@@ -182,6 +229,7 @@ export function PayableTab() {
         supplierName: getPayablePartyName(first),
         supplierCode: first.supplier?.code,
         partyType: first.partyType,
+        categoryEntries: getLedgerCategoryEntries(bucket),
         pnrCount,
         ...metrics,
       };
@@ -246,6 +294,18 @@ export function PayableTab() {
               {supplierOptions.map((option) => (
                 <option key={option.key} value={option.key}>
                   {option.label} · {formatVND(option.remaining)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value as 'ALL' | LedgerCategory)}
+              className="h-10 min-w-[180px] rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {CATEGORY_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -323,11 +383,14 @@ export function PayableTab() {
                       </td>
                       <td className="px-4 py-2.5">
                         <p className="text-xs font-medium text-foreground">{row.supplierName}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</p>
                         {row.supplierCode && (
                           <p className="mt-0.5 text-[10px] font-mono text-primary">{row.supplierCode}</p>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        <CategoryBadges entries={row.categoryEntries} />
+                      </td>
                       <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{formatVND(row.totalAmount)}</td>
                       <td className="px-4 py-2.5 text-xs text-emerald-600">{formatVND(row.paidAmount)}</td>
                       <td className="px-4 py-2.5 text-xs font-bold text-orange-500">{formatVND(row.remaining)}</td>
@@ -375,11 +438,14 @@ export function PayableTab() {
                     <tr key={row.key} className={cn('transition-colors hover:bg-muted/30', isOverdue && 'bg-red-500/5')}>
                       <td className="px-4 py-2.5">
                         <p className="text-xs font-medium text-foreground">{row.supplierName}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</p>
                         {row.supplierCode && (
                           <p className="mt-0.5 text-[10px] font-mono text-primary">{row.supplierCode}</p>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{LEDGER_PARTY_LABELS[row.partyType]}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        <CategoryBadges entries={row.categoryEntries} />
+                      </td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{row.pnrCount} PNR</td>
                       <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{formatVND(row.totalAmount)}</td>
                       <td className="px-4 py-2.5 text-xs text-emerald-600">{formatVND(row.paidAmount)}</td>

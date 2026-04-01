@@ -178,6 +178,12 @@ export const bookingsApi = {
   list: (params?: Record<string, string | number>) =>
     apiClient.get('/bookings', { params }),
   get: (id: string) => apiClient.get(`/bookings/${id}`),
+  getNamedCredits: (params?: Record<string, string>) =>
+    apiClient.get('/bookings/named-credits', { params }),
+  getNamedCreditsSummary: () =>
+    apiClient.get('/bookings/named-credits/summary'),
+  applyCredit: (creditId: string, data: { bookingId: string; amount: number }) =>
+    apiClient.post(`/bookings/named-credits/${creditId}/apply`, data),
   create: (data: unknown) => apiClient.post('/bookings', data),
   update: (id: string, data: unknown) => apiClient.patch(`/bookings/${id}`, data),
   updateStatus: (id: string, toStatus: string, reason?: string) =>
@@ -197,6 +203,9 @@ export const bookingsApi = {
     penaltyFee?: number;
     apgServiceFee?: number;
     fundAccount?: string;
+    passengerName?: string;
+    expiryDate?: string;
+    serviceCode?: string;
     notes?: string;
   }) =>
     apiClient.post(`/bookings/${id}/adjustments`, data),

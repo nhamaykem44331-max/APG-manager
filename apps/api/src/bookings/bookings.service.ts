@@ -13,6 +13,7 @@ import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AddTicketDto } from './dto/add-ticket.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { AddAdjustmentDto } from './dto/add-adjustment.dto';
+import { NamedCreditService } from './named-credit.service';
 
 /** Chuyá»ƒn chuá»—i ISO thÃ nh Date; fallback vá» now náº¿u invalid Ä‘á»ƒ trÃ¡nh lá»—i DB */
 function safeDate(iso: string, label = 'date'): Date {
@@ -79,6 +80,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private n8n: N8nService,
     private customers: CustomersService,
+    private namedCreditService: NamedCreditService,
   ) {}
 
   private async generateLedgerCodeWithClient(
@@ -285,12 +287,18 @@ export class BookingsService {
         statusHistory: { orderBy: { createdAt: 'asc' } },
         supplier: true,
         adjustments: { orderBy: { createdAt: 'asc' } },
+        creditsCreated: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { fullName: true } },
+          },
+        },
         ledgers: { select: { id: true, code: true, direction: true, status: true, remaining: true, totalAmount: true, createdAt: true } },
       },
     });
 
     if (!booking) {
-      throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
+      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
     }
 
     if (booking.customer && !booking.customer.customerCode) {
@@ -320,15 +328,15 @@ export class BookingsService {
           fromStatus: 'NEW',
           toStatus: 'NEW',
           changedBy: staffId,
-          reason: 'Táº¡o booking má»›i',
+          reason: 'Tạo booking mới',
         },
       });
 
       // Trigger n8n webhook thÃ´ng bÃ¡o booking má»›i (fire & forget)
       this.n8n.triggerWebhook('/booking-new', {
         bookingCode: booking.bookingCode,
-        customerName: booking.customer.fullName,
-        customerPhone: booking.customer.phone,
+        customerName: booking.customer?.fullName ?? booking.contactName,
+        customerPhone: booking.customer?.phone ?? booking.contactPhone,
         staffName: booking.staff.fullName,
       }).catch(err => console.error('[N8N] webhook error:', err));
 
@@ -362,11 +370,11 @@ export class BookingsService {
       const staffId = dto.staffId.trim();
 
       if (!staffId) {
-        throw new BadRequestException('staffId khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.');
+        throw new BadRequestException('staffId không hợp lệ.');
       }
 
       if (staffId !== existingBooking.staffId && currentUser.role !== UserRole.ADMIN) {
-        throw new ForbiddenException('ChÃ¡Â»â€° admin mÃ¡Â»â€ºi Ã„â€˜Ã†Â°Ã¡Â»Â£c thay Ã„â€˜Ã¡Â»â€¢i nhÃƒÂ¢n viÃƒÂªn phÃ¡Â»Â¥ trÃƒÂ¡ch.');
+        throw new ForbiddenException('Chỉ admin mới được thay đổi nhân viên phụ trách.');
       }
 
       const staff = await this.prisma.user.findUnique({
@@ -375,7 +383,7 @@ export class BookingsService {
       });
 
       if (!staff || !staff.isActive) {
-        throw new NotFoundException('KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y nhÃƒÂ¢n viÃƒÂªn phÃ¡Â»Â¥ trÃƒÂ¡ch phÃƒÂ¹ hÃ¡Â»Â£p.');
+        throw new NotFoundException('Không tìm thấy nhân viên phụ trách phù hợp.');
       }
 
       data.staffId = staff.id;
@@ -404,7 +412,7 @@ export class BookingsService {
               supplierId: newSupplierId,
               partyType: newSupplier ? (newSupplier.type as any) : null,
               description: newSupplier
-                ? `Pháº£i tráº£ NCC ${newSupplier.name} â€” Booking ${(await this.findOne(id)).bookingCode}`
+                ? `Phải trả NCC ${newSupplier.name} — Booking ${(await this.findOne(id)).bookingCode}`
                 : undefined,
             },
           });
@@ -418,7 +426,7 @@ export class BookingsService {
     if (dto.customerId !== undefined) {
       const customerId = dto.customerId?.trim();
       if (!customerId) {
-        throw new BadRequestException('customerId khÃ´ng há»£p lá»‡.');
+        throw new BadRequestException('customerId không hợp lệ.');
       }
 
       const customer = await this.prisma.customer.findUnique({
@@ -427,7 +435,7 @@ export class BookingsService {
       });
 
       if (!customer) {
-        throw new NotFoundException('KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng.');
+        throw new NotFoundException('Không tìm thấy khách hàng.');
       }
 
       data.customerId = customer.id;
@@ -535,7 +543,7 @@ export class BookingsService {
       remaining,
       dueDate,
       status: status as never,
-      description: `CÃ´ng ná»£ vÃ© ${booking.bookingCode}`,
+      description: `Công nợ vé ${booking.bookingCode}`,
     };
 
     if (existingAR) {
@@ -614,7 +622,7 @@ export class BookingsService {
           remaining,
           dueDate,
           status: status as any,
-          description: `Pháº£i tráº£ NCC ${booking.supplier.name} â€” Booking ${booking.bookingCode}`,
+          description: `Phải trả NCC ${booking.supplier.name} — Booking ${booking.bookingCode}`,
         },
       });
       console.log(`[AP-SYNC] Synced AP ${existingAP.code} to supplier ${booking.supplier.name}`);
@@ -637,7 +645,7 @@ export class BookingsService {
         remaining,
         dueDate,
         status: status as any,
-        description: `Pháº£i tráº£ NCC ${supplier.name} â€” Booking ${booking.bookingCode}`,
+        description: `Phải trả NCC ${supplier.name} — Booking ${booking.bookingCode}`,
         createdBy: updatedBy,
       }),
     );
@@ -664,7 +672,7 @@ export class BookingsService {
           fromStatus: booking.status,
           toStatus: 'CANCELLED',
           changedBy: staffId,
-          reason: 'XÃ³a booking (soft delete)',
+          reason: 'Xóa booking (soft delete)',
         },
       }),
     ]);
@@ -680,12 +688,12 @@ export class BookingsService {
     });
 
     if (!booking) {
-      throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
+      throw new NotFoundException(`Không tìm thấy booking ID: ${id}`);
     }
 
     if (booking.status !== 'CANCELLED') {
       throw new BadRequestException(
-        `Chá»‰ cÃ³ thá»ƒ xÃ³a vÄ©nh viá»…n booking á»Ÿ tráº¡ng thÃ¡i "ÄÃ£ há»§y". Tráº¡ng thÃ¡i hiá»‡n táº¡i: ${booking.status}`,
+        `Chỉ có thể xóa vĩnh viễn booking ở trạng thái "Đã hủy". Trạng thái hiện tại: ${booking.status}`,
       );
     }
 
@@ -711,7 +719,7 @@ export class BookingsService {
     return {
       success: true,
       id,
-      message: `ÄÃ£ xÃ³a vÄ©nh viá»…n booking ${booking.bookingCode}.`,
+      message: `Đã xóa vĩnh viễn booking ${booking.bookingCode}.`,
     };
   }
 
@@ -728,11 +736,21 @@ export class BookingsService {
     );
     const targetStatus = dto.toStatus as BookingStatus;
 
+    if (['ISSUED', 'PENDING_PAYMENT'].includes(targetStatus)) {
+      if (!booking.customerId || !booking.customer || booking.contactName === 'Khách hàng mới') {
+        throw new BadRequestException('Vui lòng chọn khách hàng trước khi chuyển trạng thái.');
+      }
+
+      if (!booking.supplierId) {
+        throw new BadRequestException('Vui lòng chọn nhà cung cấp trước khi chuyển trạng thái.');
+      }
+    }
+
     // Kiá»ƒm tra chuyá»ƒn tráº¡ng thÃ¡i cÃ³ há»£p lá»‡ khÃ´ng
     if (!allowedTransitions.includes(targetStatus)) {
       throw new BadRequestException(
-        `KhÃ´ng thá»ƒ chuyá»ƒn tá»« "${booking.status}" sang "${targetStatus}". ` +
-        `Cho phÃ©p: ${allowedTransitions.join(', ') || 'KhÃ´ng cÃ³ (tráº¡ng thÃ¡i cuá»‘i)'}`
+        `Không thể chuyển từ "${booking.status}" sang "${targetStatus}". ` +
+        `Cho phép: ${allowedTransitions.join(', ') || 'Không có (trạng thái cuối)'}`
       );
     }
 
@@ -768,7 +786,7 @@ export class BookingsService {
         await this.syncReceivableLedgerForBooking(booking.id, changedBy, { createIfMissing: true });
       } catch (err) {
         // KhÃ´ng throw â€” khÃ´ng Ä‘á»ƒ lá»—i ledger cháº·n viá»‡c xuáº¥t vÃ©
-        console.error(`[LedgerAutoCreate] Lá»—i táº¡o AR cho booking ${booking.bookingCode}:`, err);
+        console.error(`[LedgerAutoCreate] Lỗi tạo AR cho booking ${booking.bookingCode}:`, err);
       }
     }
 
@@ -806,15 +824,15 @@ export class BookingsService {
               paidAmount: 0,
               remaining: booking.totalNetPrice,
               dueDate: apDueDate,
-              description: `Pháº£i tráº£ NCC ${supplier.name} â€” Booking ${booking.bookingCode}`,
+              description: `Phải trả NCC ${supplier.name} — Booking ${booking.bookingCode}`,
               createdBy: changedBy,
             }),
           );
-          console.log(`[AP-AUTO] Táº¡o AP ${createdLedger.code} â€” ${supplier.name} â€” ${booking.totalNetPrice}`);
+          console.log(`[AP-AUTO] Tạo AP ${createdLedger.code} — ${supplier.name} — ${booking.totalNetPrice}`);
         }
         }
       } catch (err) {
-        console.error(`[AP-AUTO] Lá»—i táº¡o AP cho booking ${booking.bookingCode}:`, err);
+        console.error(`[AP-AUTO] Lỗi tạo AP cho booking ${booking.bookingCode}:`, err);
       }
     }
 
@@ -910,7 +928,7 @@ export class BookingsService {
 
     if (hasFinancialLocks) {
       throw new BadRequestException(
-        'Booking Ä‘Ã£ cÃ³ thanh toÃ¡n hoáº·c bÃºt toÃ¡n liÃªn quan. KhÃ´ng thá»ƒ thÃªm hoáº·c thay tháº¿ hÃ nh trÃ¬nh lÃºc nÃ y.',
+        'Booking đã có thanh toán hoặc bút toán liên quan. Không thể thêm hoặc thay thế hành trình lúc này.',
       );
     }
 
@@ -923,7 +941,7 @@ export class BookingsService {
 
     if (isNewPnrImport && hasExistingTickets && !shouldReplaceExistingPnr) {
       throw new BadRequestException(
-        'Booking Ä‘ang cÃ³ PNR khÃ¡c. Vui lÃ²ng dÃ¹ng Nháº­p nhanh Ä‘á»ƒ thay tháº¿ toÃ n bá»™ PNR cÅ© trÆ°á»›c khi thÃªm PNR má»›i.',
+        'Booking đang có PNR khác. Vui lòng dùng Nhập nhanh để thay thế toàn bộ PNR cũ trước khi thêm PNR mới.',
       );
     }
 
@@ -951,7 +969,7 @@ export class BookingsService {
       let passengerId = dto.passengerId;
       if (!passengerId) {
         if (!dto.passengerName) {
-          throw new BadRequestException('Cáº§n cung cáº¥p passengerId hoáº·c passengerName.');
+          throw new BadRequestException('Cần cung cấp passengerId hoặc passengerName.');
         }
         const newPassenger = await tx.passenger.create({
           data: {
@@ -1017,7 +1035,7 @@ export class BookingsService {
 
     if (paymentCount > 0 || ledgerPaymentCount > 0) {
       throw new BadRequestException(
-        'Booking Ä‘Ã£ cÃ³ thanh toÃ¡n hoáº·c bÃºt toÃ¡n liÃªn quan. KhÃ´ng thá»ƒ xÃ³a hÃ nh trÃ¬nh lÃºc nÃ y.',
+        'Booking đã có thanh toán hoặc bút toán liên quan. Không thể xóa hành trình lúc này.',
       );
     }
 
@@ -1048,9 +1066,17 @@ export class BookingsService {
   async addPayment(bookingId: string, dto: AddPaymentDto) {
     const booking = await this.findOne(bookingId);
 
+    if (!booking.customerId || !booking.customer || booking.contactName === 'Khách hàng mới') {
+      throw new BadRequestException('Vui lòng chọn khách hàng trước khi ghi nhận thanh toán.');
+    }
+
+    if (!booking.supplierId) {
+      throw new BadRequestException('Vui lòng chọn nhà cung cấp trước khi ghi nhận thanh toán.');
+    }
+
     // 1. Táº¡o payment record
     if (dto.method !== 'DEBT' && !dto.fundAccount) {
-      throw new BadRequestException('Vui lÃƒÂ²ng chÃ¡Â»Ân quÃ¡Â»Â¹ nhÃ¡ÂºÂ­n tiÃ¡Â»Ân cho giao dÃ¡Â»â€¹ch nÃƒÂ y.');
+      throw new BadRequestException('Vui lòng chọn quỹ nhận tiền cho giao dịch này.');
     }
 
     const payment = await this.prisma.payment.create({
@@ -1100,17 +1126,17 @@ export class BookingsService {
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 ngÃ y
             },
           });
-          console.log(`[AR-CREATE-DEBT] AR ${arCode} â€” ${dto.amount} cho KH ${customer?.fullName}`);
+          console.log(`[AR-CREATE-DEBT] AR ${arCode} — ${dto.amount} cho KH ${customer?.fullName}`);
         }
       } catch (err) {
-        console.error('[AR-DEBT] Lá»—i táº¡o AR tá»« cÃ´ng ná»£:', err);
+        console.error('[AR-DEBT] Lỗi tạo AR từ công nợ:', err);
       }
     } else {
       // NON-DEBT: ghi CashFlow Inflow bÃ¬nh thÆ°á»ng
       try {
-        const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiá»n máº·t VP'
+        const fundLabel = dto.fundAccount === 'CASH_OFFICE' ? 'Tiền mặt VP'
           : dto.fundAccount === 'BANK_HTX' ? 'TK BIDV HTX'
-          : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cÃ¡ nhÃ¢n' : 'N/A';
+          : dto.fundAccount === 'BANK_PERSONAL' ? 'TK MB cá nhân' : 'N/A';
 
         await this.prisma.cashFlowEntry.create({
           data: {
@@ -1118,16 +1144,16 @@ export class BookingsService {
             category: 'TICKET_PAYMENT',
             amount: dto.amount,
             pic: booking.staff?.fullName ?? 'System',
-            description: `KH thanh toÃ¡n ${booking.bookingCode} â€” ${booking.contactName}`,
+            description: `KH thanh toán ${booking.bookingCode} — ${booking.contactName}`,
             reference: booking.pnr || booking.bookingCode,
             date: dto.paidAt ? new Date(dto.paidAt) : new Date(),
             status: 'DONE',
             fundAccount: dto.fundAccount as any,
           },
         });
-        console.log(`[INFLOW] +${dto.amount} tá»« KH ${booking.contactName} vÃ o ${fundLabel}`);
+        console.log(`[INFLOW] +${dto.amount} từ KH ${booking.contactName} vào ${fundLabel}`);
       } catch (err) {
-        console.error('[INFLOW] Lá»—i ghi CashFlow:', err);
+        console.error('[INFLOW] Lỗi ghi CashFlow:', err);
       }
     }
 
@@ -1154,13 +1180,13 @@ export class BookingsService {
             amount: dto.amount,
             method: dto.method,
             reference: dto.reference,
-            notes: `Auto tá»« payment booking ${booking.bookingCode}`,
+            notes: `Auto từ payment booking ${booking.bookingCode}`,
           },
         });
-        console.log(`[AR-UPDATE] AR ${arLedger.code} â€” paid +${dto.amount}, remaining ${newRemaining}`);
+        console.log(`[AR-UPDATE] AR ${arLedger.code} — paid +${dto.amount}, remaining ${newRemaining}`);
       }
     } catch (err) {
-      console.error('[AR-UPDATE] Lá»—i cáº­p nháº­t AR:', err);
+      console.error('[AR-UPDATE] Lỗi cập nhật AR:', err);
     }
 
     // 5. Webhook n8n
@@ -1229,7 +1255,7 @@ export class BookingsService {
 
   private async createBookingRecord(
     dto: CreateBookingDto,
-    customerId: string,
+    customerId: string | null,
     staffId: string,
   ) {
     const include = {
@@ -1267,7 +1293,7 @@ export class BookingsService {
       }
     }
 
-    throw new ConflictException('KhÃ´ng thá»ƒ sinh mÃ£ booking má»›i. Vui lÃ²ng thá»­ láº¡i.');
+    throw new ConflictException('Không thể sinh mã booking mới. Vui lòng thử lại.');
   }
 
   private isBookingCodeConflict(error: unknown) {
@@ -1294,7 +1320,7 @@ export class BookingsService {
   }
 
   // FIX 2: Xá»­ lÃ½ contactPhone rá»—ng â†’ sinh phone unique táº¡m
-  private async resolveCustomerId(dto: CreateBookingDto) {
+  private async resolveCustomerId(dto: CreateBookingDto): Promise<string | null> {
     const providedCustomerId = dto.customerId?.trim();
     const providedCustomerCode = dto.customerCode?.trim().toUpperCase();
 
@@ -1333,22 +1359,21 @@ export class BookingsService {
         await this.customers.ensureCustomerCode(existingByPhone.id);
         return existingByPhone.id;
       }
+
+      const newCustomer = await this.customers.create({
+        data: {
+          fullName: dto.contactName || 'Chưa có tên',
+          phone,
+          customerCode: providedCustomerCode,
+          tags: [],
+        },
+        select: { id: true },
+      });
+      return newCustomer.id;
     }
 
     // 4. Táº¡o khÃ¡ch má»›i â€” sinh phone unique náº¿u rá»—ng
-    const newCustomer = await this.customers.create({
-      data: {
-        fullName: dto.contactName || 'KhÃ¡ch hÃ ng má»›i',
-        phone: phone && phone.length >= 5
-          ? phone
-          : `TEMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        customerCode: providedCustomerCode,
-        tags: [],
-      },
-      select: { id: true },
-    });
-    return newCustomer.id;
-    return newCustomer.id;
+    return null;
   }
 
   // POST /bookings/:id/adjustments - Ghi nháº­n hoÃ n/Ä‘á»•i vÃ©
@@ -1388,7 +1413,6 @@ export class BookingsService {
         const charge = Number(dto.chargeToCustomer ?? 0);
         const fee = Number(dto.changeFee ?? 0);
 
-        // 2a. AR bổ sung: thu thêm khách
         if (charge > 0 && booking.customer) {
           const issueDate = new Date();
           await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
@@ -1405,13 +1429,13 @@ export class BookingsService {
             issueDate,
             dueDate: this.buildReceivableDueDate(issueDate, booking.customer.type),
             status: 'ACTIVE',
-            description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
+            category: 'TICKET_CHANGE' as any,
+            description: `Phụ thu đổi vé — Booking ${booking.bookingCode}`,
             createdBy: userId,
           }));
           console.log(`[CHANGE-AR] +${charge} phụ thu KH ${booking.contactName}`);
         }
 
-        // 2b. AP bổ sung: phí đổi trả NCC
         if (fee > 0 && booking.supplier) {
           const supplier = booking.supplier;
           const dueDate = new Date();
@@ -1428,15 +1452,15 @@ export class BookingsService {
             paidAmount: 0,
             remaining: fee,
             issueDate: new Date(),
-            dueDate: dueDate,
+            dueDate,
             status: 'ACTIVE',
-            description: `PhÃ­ Ä‘á»•i vÃ© (tráº£ NCC) â€” Booking ${booking.bookingCode}`,
+            category: 'TICKET_CHANGE' as any,
+            description: `Phí đổi vé (trả NCC) — Booking ${booking.bookingCode}`,
             createdBy: userId,
           }));
           console.log(`[CHANGE-AP] +${fee} phí đổi trả NCC ${supplier.name}`);
         }
 
-        // 2c. Chuyển trạng thái → CHANGED
         if (booking.status !== 'CHANGED') {
           await tx.booking.update({
             where: { id: booking.id },
@@ -1452,14 +1476,106 @@ export class BookingsService {
             },
           });
         }
-      } else {
-        // 3. HOÀN VÉ (REFUND_CASH / REFUND_CREDIT)
+      } else if (dto.type === 'REFUND_NAMED') {
+        if (!booking.customerId) {
+          throw new BadRequestException('Booking chưa có khách hàng để tạo credit định danh.');
+        }
+
+        const firstTicket = booking.tickets?.[0];
+        const creditAmount = Number(dto.airlineRefund ?? dto.refundAmount ?? 0);
+
+        if (creditAmount <= 0) {
+          throw new BadRequestException('Số tiền credit định danh phải lớn hơn 0.');
+        }
+
+        await this.namedCreditService.create({
+          bookingId: booking.id,
+          customerId: booking.customerId,
+          passengerName: dto.passengerName || booking.contactName,
+          airline: firstTicket?.airline ?? 'UNKNOWN',
+          ticketNumber: firstTicket?.eTicketNumber ?? undefined,
+          pnr: booking.pnr ?? undefined,
+          creditAmount,
+          expiryDate: dto.expiryDate || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          notes: dto.notes,
+          createdBy: userId,
+        }, tx);
+
+        await tx.booking.update({
+          where: { id: booking.id },
+          data: { status: 'REFUNDED' },
+        });
+        await tx.bookingStatusLog.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: booking.status,
+            toStatus: 'REFUNDED',
+            changedBy: userId,
+            reason: `Hoàn định danh: Credit ${creditAmount} trên hãng ${firstTicket?.airline ?? 'UNKNOWN'}`,
+          },
+        });
+      } else if (dto.type === 'HLKG' || dto.type === 'SERVICE') {
+        const charge = Number(dto.chargeToCustomer ?? 0);
+        const cost = Number(dto.changeFee ?? 0);
+        const category = dto.type === 'HLKG' ? 'HLKG' : 'SERVICE';
+        const categoryLabel = dto.type === 'HLKG' ? 'Hành lý ký gửi' : 'Dịch vụ HK';
+        const serviceSuffix = dto.serviceCode ? ` (Mã: ${dto.serviceCode})` : '';
+
+        if (charge > 0 && booking.customer) {
+          const issueDate = new Date();
+          await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
+            code,
+            direction: 'RECEIVABLE',
+            partyType: this.getReceivablePartyType(booking.customer.type) as any,
+            customerId: booking.customer.id,
+            customerCode: booking.customer.customerCode,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: charge,
+            paidAmount: 0,
+            remaining: charge,
+            issueDate,
+            dueDate: this.buildReceivableDueDate(issueDate, booking.customer.type),
+            status: 'ACTIVE',
+            category: category as any,
+            serviceCode: dto.serviceCode ?? null,
+            description: `${categoryLabel} — Booking ${booking.bookingCode}${serviceSuffix}`,
+            createdBy: userId,
+          }));
+          console.log(`[${category}-AR] +${charge} thu KH — ${dto.serviceCode || 'N/A'}`);
+        }
+
+        if (cost > 0 && booking.supplier) {
+          const supplier = booking.supplier;
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + (supplier.paymentTerms ?? 15));
+
+          await this.createLedgerWithGeneratedCode(tx, 'PAYABLE', (code) => ({
+            code,
+            direction: 'PAYABLE',
+            partyType: supplier.type as any,
+            supplierId: supplier.id,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: cost,
+            paidAmount: 0,
+            remaining: cost,
+            issueDate: new Date(),
+            dueDate,
+            status: 'ACTIVE',
+            category: category as any,
+            serviceCode: dto.serviceCode ?? null,
+            description: `${categoryLabel} (trả NCC) — Booking ${booking.bookingCode}${serviceSuffix}`,
+            createdBy: userId,
+          }));
+          console.log(`[${category}-AP] +${cost} trả NCC — ${dto.serviceCode || 'N/A'}`);
+        }
+      } else if (dto.type === 'REFUND_CASH' || dto.type === 'REFUND_CREDIT') {
         const refundToCustomer = Number(dto.refundAmount ?? 0);
         const airlineRefund = Number(dto.airlineRefund ?? 0);
         const penaltyFee = Number(dto.penaltyFee ?? 0);
         const apgFee = Number(dto.apgServiceFee ?? 0);
 
-        // 3a. Điều chỉnh AR gốc: giảm/xóa công nợ khách
         const existingAR = await tx.accountsLedger.findFirst({
           where: { bookingId: booking.id, direction: 'RECEIVABLE' },
           orderBy: { createdAt: 'asc' },
@@ -1469,8 +1585,6 @@ export class BookingsService {
           const arTotal = Number(existingAR.totalAmount);
           const arPaid = Number(existingAR.paidAmount);
 
-          // Schema công nợ hiện chưa có trạng thái CANCELLED,
-          // nên dùng WRITTEN_OFF cho trường hợp xóa nợ chưa thu.
           if (arPaid < arTotal) {
             await tx.accountsLedger.update({
               where: { id: existingAR.id },
@@ -1485,7 +1599,6 @@ export class BookingsService {
           }
         }
 
-        // 3b. Điều chỉnh AP gốc: giảm công nợ NCC về phần phí hoàn phải trả
         const existingAP = await tx.accountsLedger.findFirst({
           where: { bookingId: booking.id, direction: 'PAYABLE' },
           orderBy: { createdAt: 'asc' },
@@ -1517,7 +1630,6 @@ export class BookingsService {
           }
         }
 
-        // 3c. CashFlow: NCC hoàn tiền cho APG (INFLOW)
         if (airlineRefund > 0) {
           try {
             await tx.cashFlowEntry.create({
@@ -1540,7 +1652,6 @@ export class BookingsService {
           }
         }
 
-        // 3d. CashFlow: APG hoàn tiền cho KH (OUTFLOW) - chỉ khi hoàn tiền mặt
         if (dto.type === 'REFUND_CASH' && refundToCustomer > 0) {
           try {
             await tx.cashFlowEntry.create({
@@ -1563,7 +1674,6 @@ export class BookingsService {
           }
         }
 
-        // 3e. Chuyển trạng thái → REFUNDED
         await tx.booking.update({
           where: { id: booking.id },
           data: { status: 'REFUNDED' },
@@ -1577,6 +1687,8 @@ export class BookingsService {
             reason: `Hoàn vé (${dto.type}): Hoàn KH ${refundToCustomer}, NCC hoàn ${airlineRefund}, Phí hoàn ${penaltyFee}, Phí APG ${apgFee}`,
           },
         });
+      } else {
+        throw new BadRequestException(`Loại điều chỉnh không được hỗ trợ: ${dto.type}`);
       }
 
       return adjustment;

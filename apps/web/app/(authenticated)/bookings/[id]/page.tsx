@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { authApi, bookingsApi, supplierApi, customersApi, documentsApi, usersApi } from '@/lib/api';
 import {
-  cn, formatVND, formatDateTime, formatTime,
+  cn, formatDate, formatVND, formatDateTime, formatTime, normalizeLegacyVietnameseText,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
   BOOKING_SOURCE_LABELS,
 } from '@/lib/utils';
@@ -20,7 +20,7 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
-import type { Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
+import type { AdjustmentType, Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 import { AdjustmentModal } from '@/components/booking/adjustment-modal';
 import type { BookingAdjustment } from '@/types';
@@ -974,6 +974,7 @@ export default function BookingDetailPage() {
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [defaultAdjustmentType, setDefaultAdjustmentType] = useState<AdjustmentType | undefined>(undefined);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
@@ -1226,7 +1227,7 @@ export default function BookingDetailPage() {
 
   // Auto-edit mode for newly created bookings
   useEffect(() => {
-    if (booking && booking.status === 'NEW' && booking.contactName === 'Khách hàng mới') {
+    if (booking && booking.status === 'NEW' && (!booking.contactName || booking.contactName === 'Khách hàng mới')) {
       startEditing();
     }
   }, [booking, startEditing]);
@@ -1324,14 +1325,21 @@ export default function BookingDetailPage() {
   const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0);
   const totalRemaining = totalSellPrice - totalPaid;
   const hasFinancialLock = (bk.payments?.length ?? 0) > 0 || (bk.ledgers?.length ?? 0) > 0;
+  const hasCustomer = Boolean(bk.customerId) && bk.contactName !== 'Khách hàng mới';
+  const hasSupplier = Boolean(bk.supplierId);
+  const isReady = hasCustomer && hasSupplier;
   const canAddTicket  = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
   const canEditItinerary = canAddTicket && !hasFinancialLock;
-  const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
+  const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status) && isReady;
   const selectedStaff =
     staffOptions.find((user) => user.id === bookingMetaForm.staffId)
     ?? bk.staff
     ?? currentUser
     ?? null;
+  const closeAdjustmentModal = () => {
+    setShowAdjustmentModal(false);
+    setDefaultAdjustmentType(undefined);
+  };
 
   return (
     <div className="max-w-[1320px] space-y-3.5">
@@ -1375,7 +1383,8 @@ export default function BookingDetailPage() {
                   {ALL_STATUSES.map((st) => {
                     const isCurrent = st.key === bk.status;
                     const allowed = !isCurrent;
-                    const isDisabled = false;
+                    const requiresReady = st.key === 'PENDING_PAYMENT' || st.key === 'ISSUED';
+                    const isDisabled = requiresReady && !isReady;
                     const Icon = st.icon;
 
                     return (
@@ -1383,14 +1392,14 @@ export default function BookingDetailPage() {
                         key={st.key}
                         disabled={isDisabled}
                         onClick={() => {
-                          if (isCurrent) return;
+                          if (isCurrent || isDisabled) return;
                           setShowStatusDropdown(false);
                           setConfirmAction({ status: st.key, label: `Chuyển sang ${st.label}` });
                         }}
                         className={cn(
                           'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors text-left',
                           isCurrent && 'bg-accent/60 font-semibold',
-                          !isCurrent && allowed && 'hover:bg-accent cursor-pointer',
+                          !isCurrent && allowed && !isDisabled && 'hover:bg-accent cursor-pointer',
                           isDisabled && 'opacity-30 cursor-not-allowed',
                         )}
                       >
@@ -1401,8 +1410,11 @@ export default function BookingDetailPage() {
                           {st.label}
                         </span>
                         {isCurrent && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
-                        {!isCurrent && allowed && (
+                        {!isCurrent && allowed && !isDisabled && (
                           <span className="text-[10px] text-primary font-medium flex-shrink-0">Chọn</span>
+                        )}
+                        {!isCurrent && isDisabled && (
+                          <span className="text-[10px] text-amber-500 font-medium flex-shrink-0">Thiếu KH/NCC</span>
                         )}
                       </button>
                     );
@@ -1463,7 +1475,22 @@ export default function BookingDetailPage() {
             {/* PDF document buttons */}
             {['ISSUED', 'COMPLETED', 'CHANGED'].includes(bk.status) && (
               <button
-                onClick={() => setShowAdjustmentModal(true)}
+                onClick={() => {
+                  setDefaultAdjustmentType('HLKG');
+                  setShowAdjustmentModal(true);
+                }}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 text-[12px] font-medium text-fuchsia-400 transition-colors hover:bg-fuchsia-500/15"
+                title="Ghi nhận nghiệp vụ HLKG"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> HLKG
+              </button>
+            )}
+            {['ISSUED', 'COMPLETED', 'CHANGED'].includes(bk.status) && (
+              <button
+                onClick={() => {
+                  setDefaultAdjustmentType('CHANGE');
+                  setShowAdjustmentModal(true);
+                }}
                 className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 text-[12px] font-medium text-orange-400 transition-colors hover:bg-orange-500/15"
                 title="Ghi nhận nghiệp vụ hoàn vé hoặc đổi vé"
               >
@@ -1544,6 +1571,29 @@ export default function BookingDetailPage() {
           </div>
         }
       />
+
+      {(!hasCustomer || !hasSupplier) && (
+        <div className="space-y-2">
+          {!hasCustomer && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+              <div>
+                <p className="font-medium text-amber-100">Booking chưa liên kết khách hàng hợp lệ.</p>
+                <p className="mt-1 text-xs text-amber-200/80">Cần chọn khách hàng trước khi ghi nhận thanh toán hoặc chuyển sang Chờ thanh toán / Đã xuất vé.</p>
+              </div>
+            </div>
+          )}
+          {!hasSupplier && (
+            <div className="flex items-start gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
+              <div>
+                <p className="font-medium text-orange-100">Booking chưa gắn nhà cung cấp / hãng.</p>
+                <p className="mt-1 text-xs text-orange-200/80">Cần chọn NCC trước khi chuyển sang Chờ thanh toán hoặc Đã xuất vé.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main grid */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -2286,7 +2336,9 @@ export default function BookingDetailPage() {
                     </div>
 
                     {adj.notes && (
-                      <p className="mt-2 italic text-xs text-muted-foreground">{adj.notes}</p>
+                      <p className="mt-2 italic text-xs text-muted-foreground">
+                        {normalizeLegacyVietnameseText(adj.notes)}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -2336,6 +2388,62 @@ export default function BookingDetailPage() {
               </div>
             </div>
           )}
+
+          {(bk.creditsCreated ?? []).length > 0 && (
+            <div className="order-4 card p-3.5">
+              <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5">
+                <h3 className="text-[13px] font-medium text-foreground">Định danh tạo từ booking ({bk.creditsCreated!.length})</h3>
+              </div>
+              <div className="space-y-3">
+                {bk.creditsCreated!.map((credit) => (
+                  <div key={credit.id} className="rounded-xl border border-border p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{credit.passengerName}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono">{credit.airline}</span>
+                          {credit.ticketNumber && <span>Vé: {credit.ticketNumber}</span>}
+                          {credit.pnr && <span className="font-mono">{credit.pnr}</span>}
+                          {credit.customer?.fullName && <span>Khách: {credit.customer.fullName}</span>}
+                        </div>
+                      </div>
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium',
+                          credit.status === 'PARTIAL'
+                            ? 'bg-amber-500/10 text-amber-500'
+                            : 'bg-emerald-500/10 text-emerald-500',
+                        )}
+                      >
+                        {credit.status === 'PARTIAL' ? 'Đã dùng một phần' : 'Còn hiệu lực'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div className="rounded-lg bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Giá trị còn lại</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-500">{formatVND(credit.remainingAmount)}</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Tổng credit</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{formatVND(credit.creditAmount)}</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Hạn dùng</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(credit.expiryDate)}</p>
+                      </div>
+                    </div>
+
+                    {credit.notes && (
+                      <p className="mt-2 text-xs italic text-muted-foreground">
+                        {normalizeLegacyVietnameseText(credit.notes)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: Timeline + Staff */}
@@ -2365,7 +2473,7 @@ export default function BookingDetailPage() {
                   time: h.createdAt,
                   type: 'status' as const,
                   label: `${BOOKING_STATUS_LABELS[h.fromStatus as BookingStatus] ?? h.fromStatus} → ${BOOKING_STATUS_LABELS[h.toStatus as BookingStatus] ?? h.toStatus}`,
-                  detail: h.reason || undefined,
+                  detail: normalizeLegacyVietnameseText(h.reason) || undefined,
                 })),
                 ...(bk.ledgers ?? []).map(l => ({
                   time: l.createdAt || new Date().toISOString(),
@@ -2561,7 +2669,7 @@ export default function BookingDetailPage() {
       {showAddTicket && (
         <AddTicketModal
           bookingId={bk.id}
-          customerId={bk.customerId}
+          customerId={bk.customerId ?? ''}
           onClose={() => setShowAddTicket(false)}
         />
       )}
@@ -2571,7 +2679,7 @@ export default function BookingDetailPage() {
         <AddPaymentModal
           bookingId={bk.id}
           totalSellPrice={totalSellPrice}
-          hasCustomer={!!bk.customer}
+          hasCustomer={hasCustomer}
           onClose={() => setShowAddPayment(false)}
         />
       )}
@@ -2579,7 +2687,7 @@ export default function BookingDetailPage() {
       {showSmartImport && (
         <SmartImportModal
           bookingId={bk.id}
-          customerId={bk.customerId}
+          customerId={bk.customerId ?? ''}
           isOpen={showSmartImport}
           onClose={() => setShowSmartImport(false)}
           onSuccess={() => {
@@ -2594,7 +2702,8 @@ export default function BookingDetailPage() {
         <AdjustmentModal
           bookingId={bk.id}
           isOpen={showAdjustmentModal}
-          onClose={() => setShowAdjustmentModal(false)}
+          defaultType={defaultAdjustmentType}
+          onClose={closeAdjustmentModal}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['booking', id] });
             queryClient.invalidateQueries({ queryKey: ['ledger'] });

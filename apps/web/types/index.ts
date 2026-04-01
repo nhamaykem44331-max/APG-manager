@@ -34,7 +34,13 @@ export type BookingStatus =
   | 'REFUNDED'
   | 'CANCELLED';
 
-export type AdjustmentType = 'CHANGE' | 'REFUND_CREDIT' | 'REFUND_CASH';
+export type AdjustmentType =
+  | 'CHANGE'
+  | 'REFUND_CREDIT'
+  | 'REFUND_CASH'
+  | 'REFUND_NAMED'
+  | 'HLKG'
+  | 'SERVICE';
 
 export type BookingSource =
   | 'WEBSITE' | 'ZALO' | 'MESSENGER' | 'PHONE' | 'WALK_IN' | 'REFERRAL';
@@ -75,6 +81,7 @@ export type VipTier = 'NORMAL' | 'SILVER' | 'GOLD' | 'PLATINUM';
 export type Airline = 'VN' | 'VJ' | 'QH' | 'BL' | 'VU' | 'OTHER';
 
 export type DebtStatus = 'ACTIVE' | 'PARTIAL_PAID' | 'PAID' | 'OVERDUE' | 'WRITTEN_OFF';
+export type LedgerCategory = 'TICKET' | 'TICKET_CHANGE' | 'TICKET_REFUND' | 'HLKG' | 'SERVICE';
 
 // ===== MODELS =====
 
@@ -111,12 +118,15 @@ export interface Customer {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  bookings?: Booking[];
+  ledgers?: AccountsLedger[];
+  namedCredits?: NamedCredit[];
 }
 
 export interface Booking {
   id: string;
   bookingCode: string;
-  customerId: string;
+  customerId?: string | null;
   staffId: string;
   status: BookingStatus;
   source: BookingSource;
@@ -143,10 +153,11 @@ export interface Booking {
   payments?: Payment[];
   statusHistory?: BookingStatusLog[];
   // Nhà cung cấp vé
-  supplierId?: string;
+  supplierId?: string | null;
   supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type' | 'contactName'>;
   ledgers?: { id: string; code: string; direction: string; status: string; remaining: number; totalAmount: number; createdAt: string }[];
   adjustments?: BookingAdjustment[];
+  creditsCreated?: NamedCredit[];
 }
 
 export interface BookingAdjustment {
@@ -160,9 +171,32 @@ export interface BookingAdjustment {
   penaltyFee: number;
   apgServiceFee: number;
   fundAccount?: string | null;
+  passengerName?: string;
+  expiryDate?: string;
+  serviceCode?: string;
   notes?: string;
   createdBy?: string;
   createdAt: string;
+}
+
+export interface NamedCredit {
+  id: string;
+  bookingId: string;
+  customerId: string;
+  passengerName: string;
+  airline: string;
+  ticketNumber?: string;
+  pnr?: string;
+  creditAmount: number;
+  usedAmount: number;
+  remainingAmount: number;
+  expiryDate: string;
+  status: 'ACTIVE' | 'PARTIAL' | 'USED' | 'EXPIRED';
+  usedInBookingId?: string;
+  notes?: string;
+  createdAt: string;
+  customer?: { id: string; fullName: string; phone: string };
+  booking?: { id: string; bookingCode: string; pnr?: string };
 }
 
 export interface Ticket {
@@ -500,11 +534,13 @@ export interface AccountsLedger {
   code: string;
   direction: LedgerDirection;
   partyType: LedgerPartyType;
-  customerId?: string;
-  supplierId?: string;
+  customerId?: string | null;
+  supplierId?: string | null;
   customerCode?: string;
   bookingId?: string;
   bookingCode?: string;
+  category?: LedgerCategory;
+  serviceCode?: string | null;
   totalAmount: number;
   paidAmount: number;
   remaining: number;

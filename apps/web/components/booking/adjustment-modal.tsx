@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { RefreshCw, X } from 'lucide-react';
 import { MoneyInput } from '@/components/ui/money-input';
@@ -11,11 +11,12 @@ import type { AdjustmentType } from '@/types';
 interface AdjustmentModalProps {
   bookingId: string;
   isOpen: boolean;
+  defaultType?: AdjustmentType;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: AdjustmentModalProps) {
+export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuccess }: AdjustmentModalProps) {
   const [type, setType] = useState<AdjustmentType>('CHANGE');
   const [chargeToCustomer, setChargeToCustomer] = useState('');
   const [changeFee, setChangeFee] = useState('');
@@ -24,7 +25,16 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
   const [penaltyFee, setPenaltyFee] = useState('');
   const [apgServiceFee, setApgServiceFee] = useState('');
   const [fundAccount, setFundAccount] = useState('BANK_HTX');
+  const [passengerName, setPassengerName] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [serviceCode, setServiceCode] = useState('');
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (isOpen && defaultType) {
+      setType(defaultType);
+    }
+  }, [isOpen, defaultType]);
 
   const resetForm = () => {
     setType('CHANGE');
@@ -35,6 +45,9 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
     setPenaltyFee('');
     setApgServiceFee('');
     setFundAccount('BANK_HTX');
+    setPassengerName('');
+    setExpiryDate('');
+    setServiceCode('');
     setNotes('');
   };
 
@@ -54,6 +67,9 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
       penaltyFee: Number(penaltyFee || 0),
       apgServiceFee: Number(apgServiceFee || 0),
       fundAccount,
+      passengerName: passengerName || undefined,
+      expiryDate: expiryDate || undefined,
+      serviceCode: serviceCode || undefined,
       notes,
     }),
     onSuccess: () => {
@@ -108,7 +124,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
               <RefreshCw className="h-4 w-4 text-blue-500" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">Ghi nhận Hoàn / Đổi vé</h2>
+              <h2 className="text-base font-semibold text-foreground">Ghi nhận Hoàn / Điều chỉnh vé</h2>
             </div>
           </div>
           <button
@@ -130,7 +146,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                   type="button"
                   onClick={() => setType('CHANGE')}
                   className={cn(
-                    'rounded-lg border px-3 py-2 text-sm transition-all',
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
                     type === 'CHANGE'
                       ? 'border-blue-500 bg-blue-500/10 font-semibold text-blue-600'
                       : 'border-border text-muted-foreground hover:bg-muted',
@@ -140,27 +156,63 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType('REFUND_CREDIT')}
+                  onClick={() => setType('REFUND_NAMED')}
                   className={cn(
-                    'rounded-lg border px-3 py-2 text-sm transition-all',
-                    type === 'REFUND_CREDIT'
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
+                    type === 'REFUND_NAMED'
                       ? 'border-orange-500 bg-orange-500/10 font-semibold text-orange-600'
                       : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  Hoàn bảo lưu
+                  Hoàn Định Danh
                 </button>
                 <button
                   type="button"
                   onClick={() => setType('REFUND_CASH')}
                   className={cn(
-                    'rounded-lg border px-3 py-2 text-sm transition-all',
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
                     type === 'REFUND_CASH'
                       ? 'border-red-500 bg-red-500/10 font-semibold text-red-600'
                       : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  Hoàn tiền mặt
+                  Hoàn Tiền Mặt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('HLKG')}
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
+                    type === 'HLKG'
+                      ? 'border-purple-500 bg-purple-500/10 font-semibold text-purple-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  HLKG
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('SERVICE')}
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
+                    type === 'SERVICE'
+                      ? 'border-teal-500 bg-teal-500/10 font-semibold text-teal-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  Dịch vụ HK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('REFUND_CREDIT')}
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-xs transition-all',
+                    type === 'REFUND_CREDIT'
+                      ? 'border-amber-500 bg-amber-500/10 font-semibold text-amber-600'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  Hoàn Bảo Lưu (Tiền)
                 </button>
               </div>
             </div>
@@ -199,6 +251,42 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
               </div>
             )}
 
+            {type === 'REFUND_NAMED' && (
+              <div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-foreground">Tên hành khách (gắn credit)</label>
+                  <input
+                    value={passengerName}
+                    onChange={(e) => setPassengerName(e.target.value)}
+                    placeholder="NGUYEN VAN A"
+                    className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-[13px] uppercase"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Credit chỉ dùng được cho đúng tên này.</p>
+                </div>
+
+                <MoneyInput
+                  label="Số tiền hãng bảo lưu"
+                  value={airlineRefund}
+                  onChange={setAirlineRefund}
+                  placeholder="0"
+                />
+
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-foreground">Hạn sử dụng credit</label>
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-[13px]"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-xs text-orange-600">
+                  Credit định danh không ghi công nợ AR/AP. Chỉ lưu thông tin bảo lưu trên hãng bay. Khi khách dùng lại, cấn trừ ở mục quản lý định danh.
+                </div>
+              </div>
+            )}
+
             {(type === 'REFUND_CREDIT' || type === 'REFUND_CASH') && (
               <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
                 <div className="border-b border-border pb-2">
@@ -215,7 +303,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Số tiền hãng bay thực hoàn (sau trừ phí hoàn). Sẽ ghi CashFlow INFLOW.
+                    Số tiền hãng bay thực hoàn sau khi trừ phí hoàn. Sẽ ghi CashFlow INFLOW.
                   </p>
                 </div>
 
@@ -227,7 +315,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Phí hãng giữ lại khi hoàn. VD: vé 8M, hãng thu 1.5M phí → hoàn 6.5M.
+                    Phí hãng giữ lại khi hoàn. Ví dụ vé 8M, hãng thu 1.5M phí thì hoàn 6.5M.
                   </p>
                 </div>
 
@@ -239,7 +327,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Số tiền APG hoàn lại KH. {type === 'REFUND_CASH' ? 'Sẽ ghi CashFlow OUTFLOW.' : 'Bảo lưu (credit).'}
+                    Số tiền APG hoàn lại khách. {type === 'REFUND_CASH' ? 'Sẽ ghi CashFlow OUTFLOW.' : 'Giữ dạng bảo lưu tiền.'}
                   </p>
                 </div>
 
@@ -251,7 +339,7 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Phí dịch vụ APG thu cho việc xử lý hoàn. APG giữ = NCC hoàn − Hoàn KH.
+                    Phí dịch vụ APG thu cho việc xử lý hoàn. APG giữ lại = NCC hoàn - Hoàn khách.
                   </p>
                 </div>
 
@@ -290,6 +378,44 @@ export function AdjustmentModal({ bookingId, isOpen, onClose, onSuccess }: Adjus
                       {formatVND(retainedByApg)}
                     </span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {(type === 'HLKG' || type === 'SERVICE') && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-foreground">Mã code dịch vụ</label>
+                  <input
+                    value={serviceCode}
+                    onChange={(e) => setServiceCode(e.target.value)}
+                    placeholder="VD: BL-HLKG-001, SVC-SEAT-002"
+                    className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-[13px] uppercase"
+                  />
+                </div>
+
+                <div>
+                  <MoneyInput
+                    label={type === 'HLKG' ? 'Thu khách (HLKG)' : 'Thu khách (Dịch vụ)'}
+                    value={chargeToCustomer}
+                    onChange={setChargeToCustomer}
+                    placeholder="0"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Tạo AR riêng với category {type === 'HLKG' ? 'HLKG' : 'SERVICE'}.
+                  </p>
+                </div>
+
+                <div>
+                  <MoneyInput
+                    label="Trả NCC / Hãng"
+                    value={changeFee}
+                    onChange={setChangeFee}
+                    placeholder="0"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Tạo AP riêng với category {type === 'HLKG' ? 'HLKG' : 'SERVICE'}.
+                  </p>
                 </div>
               </div>
             )}

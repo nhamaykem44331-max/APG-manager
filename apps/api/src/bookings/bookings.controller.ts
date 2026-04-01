@@ -4,6 +4,7 @@ import {
   Param, Body, Query, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
+import { NamedCreditService } from './named-credit.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -18,7 +19,10 @@ import {
 @Controller('bookings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BookingsController {
-  constructor(private bookingsService: BookingsService) {}
+  constructor(
+    private bookingsService: BookingsService,
+    private namedCreditService: NamedCreditService,
+  ) {}
 
   // GET /bookings - Danh sách booking
   @Get()
@@ -27,6 +31,28 @@ export class BookingsController {
   }
 
   // GET /bookings/:id - Chi tiết booking
+  @Get('named-credits/summary')
+  async getNamedCreditSummary() {
+    return this.namedCreditService.getSummary();
+  }
+
+  @Get('named-credits')
+  async getNamedCredits(
+    @Query('status') status?: string,
+    @Query('customerId') customerId?: string,
+    @Query('airline') airline?: string,
+  ) {
+    return this.namedCreditService.findAll({ status, customerId, airline });
+  }
+
+  @Post('named-credits/:id/apply')
+  async applyCredit(
+    @Param('id') id: string,
+    @Body() body: { bookingId: string; amount: number },
+  ) {
+    return this.namedCreditService.applyToBooking(id, body.bookingId, body.amount);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.bookingsService.findOne(id);

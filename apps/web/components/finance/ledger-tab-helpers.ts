@@ -1,6 +1,7 @@
 'use client';
 
-import type { AccountsLedger, DebtStatus } from '@/types';
+import { cn } from '@/lib/utils';
+import type { AccountsLedger, DebtStatus, LedgerCategory } from '@/types';
 
 export type LedgerSortKey = 'remaining:desc' | 'remaining:asc' | 'dueDate:asc' | 'createdAt:desc';
 
@@ -12,6 +13,52 @@ export interface LedgerGroupMetrics {
   createdAt: string;
   latestPaymentAt?: string | null;
   status: DebtStatus;
+}
+
+export interface LedgerCategoryEntry {
+  key: string;
+  category?: LedgerCategory;
+  serviceCode?: string | null;
+}
+
+export const LEDGER_CATEGORY_LABELS: Record<LedgerCategory, string> = {
+  TICKET: 'V\u00e9',
+  TICKET_CHANGE: '\u0110\u1ed5i v\u00e9',
+  TICKET_REFUND: 'Ho\u00e0n v\u00e9',
+  HLKG: 'HLKG',
+  SERVICE: 'D\u1ecbch v\u1ee5',
+};
+
+export function getLedgerCategoryLabel(category?: LedgerCategory) {
+  return category ? LEDGER_CATEGORY_LABELS[category] : 'Kh\u00e1c';
+}
+
+export function getLedgerCategoryBadgeClass(category?: LedgerCategory) {
+  return cn(
+    'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+    category === 'TICKET' && 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
+    category === 'TICKET_CHANGE' && 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300',
+    category === 'TICKET_REFUND' && 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300',
+    category === 'HLKG' && 'border-fuchsia-500/25 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300',
+    category === 'SERVICE' && 'border-teal-500/25 bg-teal-500/10 text-teal-600 dark:text-teal-300',
+    !category && 'border-border bg-muted text-muted-foreground',
+  );
+}
+
+export function getLedgerCategoryEntries(ledgers: AccountsLedger[]): LedgerCategoryEntry[] {
+  const entries = new Map<string, LedgerCategoryEntry>();
+
+  for (const ledger of ledgers) {
+    const category = ledger.category;
+    const serviceCode = ledger.serviceCode ?? null;
+    const key = `${category ?? 'UNKNOWN'}:${serviceCode ?? ''}`;
+
+    if (!entries.has(key)) {
+      entries.set(key, { key, category, serviceCode });
+    }
+  }
+
+  return [...entries.values()];
 }
 
 export function getLedgerBookingRef(ledger: AccountsLedger) {
@@ -95,6 +142,8 @@ export function matchesLedgerSearch(ledger: AccountsLedger, search: string) {
     ledger.description,
     ledger.invoiceNumber,
     ledger.notes,
+    ledger.category,
+    ledger.serviceCode,
     ledger.customerCode,
     ledger.bookingCode,
     ledger.booking?.bookingCode,
