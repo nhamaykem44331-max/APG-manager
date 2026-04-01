@@ -20,7 +20,7 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { AirlineBadge } from '@/components/ui/airline-badge';
 import { getAirportName } from '@/hooks/use-airport-search';
-import type { AdjustmentType, Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
+import type { Booking, BookingStatus, SupplierProfile, Customer, User as AppUser } from '@/types';
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 import { AdjustmentModal } from '@/components/booking/adjustment-modal';
 import type { BookingAdjustment } from '@/types';
@@ -974,7 +974,6 @@ export default function BookingDetailPage() {
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
-  const [defaultAdjustmentType, setDefaultAdjustmentType] = useState<AdjustmentType | undefined>(undefined);
   const [quickImportInitialized, setQuickImportInitialized] = useState(false);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({ code: '', name: '', type: 'AIRLINE' as string, contactName: '' });
@@ -1336,10 +1335,6 @@ export default function BookingDetailPage() {
     ?? bk.staff
     ?? currentUser
     ?? null;
-  const closeAdjustmentModal = () => {
-    setShowAdjustmentModal(false);
-    setDefaultAdjustmentType(undefined);
-  };
 
   return (
     <div className="max-w-[1320px] space-y-3.5">
@@ -1475,26 +1470,11 @@ export default function BookingDetailPage() {
             {/* PDF document buttons */}
             {['ISSUED', 'COMPLETED', 'CHANGED'].includes(bk.status) && (
               <button
-                onClick={() => {
-                  setDefaultAdjustmentType('HLKG');
-                  setShowAdjustmentModal(true);
-                }}
-                className="flex h-8 items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 text-[12px] font-medium text-fuchsia-400 transition-colors hover:bg-fuchsia-500/15"
-                title="Ghi nhận nghiệp vụ HLKG"
+                onClick={() => setShowAdjustmentModal(true)}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 text-[12px] font-medium text-sky-400 transition-colors hover:bg-sky-500/15"
+                title="Ghi nhận nghiệp vụ hàng không"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> HLKG
-              </button>
-            )}
-            {['ISSUED', 'COMPLETED', 'CHANGED'].includes(bk.status) && (
-              <button
-                onClick={() => {
-                  setDefaultAdjustmentType('CHANGE');
-                  setShowAdjustmentModal(true);
-                }}
-                className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 text-[12px] font-medium text-orange-400 transition-colors hover:bg-orange-500/15"
-                title="Ghi nhận nghiệp vụ hoàn vé hoặc đổi vé"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Hoàn, Đổi
+                <RotateCcw className="w-3.5 h-3.5" /> Nghiệp Vụ Hàng Không
               </button>
             )}
             {false && (
@@ -2702,8 +2682,7 @@ export default function BookingDetailPage() {
         <AdjustmentModal
           bookingId={bk.id}
           isOpen={showAdjustmentModal}
-          defaultType={defaultAdjustmentType}
-          onClose={closeAdjustmentModal}
+          onClose={() => setShowAdjustmentModal(false)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['booking', id] });
             queryClient.invalidateQueries({ queryKey: ['ledger'] });

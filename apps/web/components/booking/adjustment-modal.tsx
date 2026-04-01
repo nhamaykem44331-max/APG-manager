@@ -124,7 +124,7 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
               <RefreshCw className="h-4 w-4 text-blue-500" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">Ghi nhận Hoàn / Điều chỉnh vé</h2>
+              <h2 className="text-base font-semibold text-foreground">Ghi nhận Nghiệp Vụ Hàng Không</h2>
             </div>
           </div>
           <button
