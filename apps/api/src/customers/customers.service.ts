@@ -3,6 +3,7 @@ import { Prisma, VipTier } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsArray, IsEnum, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from '../common/prisma.service';
+import { CUSTOMER_REVENUE_STATUSES } from './customer-metrics.constants';
 
 export class CreateCustomerDto {
   @IsString()
@@ -137,6 +138,94 @@ export class CustomersService {
     };
   }
 
+  private resolveVipTier(totalSpent: number): VipTier {
+    if (totalSpent >= 500_000_000) return 'PLATINUM';
+    if (totalSpent >= 100_000_000) return 'GOLD';
+    if (totalSpent >= 50_000_000) return 'SILVER';
+    return 'NORMAL';
+  }
+
+  private async getCustomerMetrics(customerIds: string[]) {
+    if (customerIds.length === 0) {
+      return new Map<string, { totalSpent: number; totalBookings: number; lastBookingDate: Date | null }>();
+    }
+
+    const aggregates = await this.prisma.booking.groupBy({
+      by: ['customerId'],
+      where: {
+        customerId: { in: customerIds },
+        deletedAt: null,
+        status: { in: CUSTOMER_REVENUE_STATUSES },
+      },
+      _sum: { totalSellPrice: true },
+      _count: { id: true },
+      _max: { createdAt: true },
+    });
+
+    return new Map(
+      aggregates.map((item) => [
+        item.customerId ?? '',
+        {
+          totalSpent: Number(item._sum.totalSellPrice ?? 0),
+          totalBookings: item._count.id,
+          lastBookingDate: item._max.createdAt ?? null,
+        },
+      ]),
+    );
+  }
+
+  private mergeCustomerMetrics<T extends { id: string }>(
+    customer: T,
+    metricsByCustomerId: Map<string, { totalSpent: number; totalBookings: number; lastBookingDate: Date | null }>,
+  ) {
+    const metrics = metricsByCustomerId.get(customer.id);
+
+    return {
+      ...customer,
+      totalSpent: metrics?.totalSpent ?? 0,
+      totalBookings: metrics?.totalBookings ?? 0,
+    };
+  }
+
+  async refreshCustomerMetrics(customerId: string) {
+    const metricsByCustomerId = await this.getCustomerMetrics([customerId]);
+    const metrics = metricsByCustomerId.get(customerId) ?? {
+      totalSpent: 0,
+      totalBookings: 0,
+      lastBookingDate: null,
+    };
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        totalSpent: metrics.totalSpent,
+        totalBookings: metrics.totalBookings,
+      },
+    });
+
+    return metrics;
+  }
+
+  async getSummary() {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const [totalCustomers, platinumCustomers, corporateCustomers, newThisMonth] = await Promise.all([
+      this.prisma.customer.count(),
+      this.prisma.customer.count({ where: { vipTier: 'PLATINUM' } }),
+      this.prisma.customer.count({ where: { type: 'CORPORATE' } }),
+      this.prisma.customer.count({ where: { createdAt: { gte: startOfMonth } } }),
+    ]);
+
+    return {
+      totalCustomers,
+      platinumCustomers,
+      corporateCustomers,
+      newThisMonth,
+    };
+  }
+
   async ensureCustomerCode(customerId: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
@@ -210,15 +299,23 @@ export class CustomersService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.customer.findMany({
-        where,
-        orderBy: [{ totalSpent: 'desc' }, { createdAt: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      this.prisma.customer.count({ where }),
-    ]);
+    const customers = await this.prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const metricsByCustomerId = await this.getCustomerMetrics(customers.map((customer) => customer.id));
+    const sortedCustomers = customers
+      .map((customer) => this.mergeCustomerMetrics(customer, metricsByCustomerId))
+      .sort((left, right) => {
+        if (right.totalSpent !== left.totalSpent) {
+          return right.totalSpent - left.totalSpent;
+        }
+        return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      });
+
+    const total = sortedCustomers.length;
+    const data = sortedCustomers.slice((page - 1) * pageSize, page * pageSize);
 
     for (const customer of data) {
       if (!customer.customerCode) {
@@ -236,7 +333,6 @@ export class CustomersService {
         bookings: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
-          take: 20,
           include: {
             tickets: { take: 1 },
             supplier: { select: { code: true, name: true } },
@@ -272,7 +368,8 @@ export class CustomersService {
       customer.customerCode = await this.ensureCustomerCode(id);
     }
 
-    return customer;
+    const metricsByCustomerId = await this.getCustomerMetrics([id]);
+    return this.mergeCustomerMetrics(customer, metricsByCustomerId);
   }
 
   async create(input: CreateCustomerDto | { data: CreateCustomerDto; select?: { id: boolean } }) {
@@ -460,20 +557,13 @@ export class CustomersService {
   }
 
   async autoClassifyVipTier(customerId: string) {
-    const bookingSum = await this.prisma.booking.aggregate({
-      where: { customerId, deletedAt: null, status: { in: ['ISSUED', 'COMPLETED'] } },
-      _sum: { totalSellPrice: true },
-    });
-    const totalSpent = Number(bookingSum._sum.totalSellPrice ?? 0);
-
-    let tier: VipTier = 'NORMAL';
-    if (totalSpent >= 500_000_000) tier = 'PLATINUM';
-    else if (totalSpent >= 100_000_000) tier = 'GOLD';
-    else if (totalSpent >= 50_000_000) tier = 'SILVER';
+    const metrics = await this.refreshCustomerMetrics(customerId);
+    const totalSpent = metrics.totalSpent;
+    const tier = this.resolveVipTier(totalSpent);
 
     await this.prisma.customer.update({
       where: { id: customerId },
-      data: { vipTier: tier, totalSpent },
+      data: { vipTier: tier },
     });
     console.log(`[VIP-TIER] Customer ${customerId}: totalSpent=${totalSpent}, tier=${tier}`);
   }
@@ -483,7 +573,7 @@ export class CustomersService {
 
     const [bookingStats, debtStats, paymentTotal] = await Promise.all([
       this.prisma.booking.aggregate({
-        where: { customerId: id, deletedAt: null, status: { in: ['ISSUED', 'COMPLETED'] } },
+        where: { customerId: id, deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
         _sum: { totalSellPrice: true, profit: true },
         _count: { id: true },
       }),
@@ -502,8 +592,9 @@ export class CustomersService {
     ]);
 
     const bookings = await this.prisma.booking.findMany({
-      where: { customerId: id, status: { in: ['ISSUED', 'COMPLETED'] } },
+      where: { customerId: id, deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
       include: { tickets: true },
+      orderBy: { createdAt: 'desc' },
     });
 
     const routeCount: Record<string, number> = {};
@@ -523,19 +614,22 @@ export class CustomersService {
     const yearlyBookings = bookings.filter((booking) => new Date(booking.createdAt) >= startOfYear);
     const yearlySpend = yearlyBookings.reduce((sum, booking) => sum + Number(booking.totalSellPrice), 0);
 
+    const totalRevenue = Number(bookingStats._sum.totalSellPrice ?? 0);
+    const totalBookings = bookingStats._count.id;
+
     return {
-      totalBookings: bookingStats._count.id,
-      totalRevenue: Number(bookingStats._sum.totalSellPrice ?? 0),
+      totalBookings,
+      totalRevenue,
       totalProfit: Number(bookingStats._sum.profit ?? 0),
       totalPaid: Number(paymentTotal._sum.amount ?? 0),
       outstandingDebt: Number(debtStats._sum.remaining ?? 0),
       activeDebts: debtStats._count.id,
-      totalSpent: customer.totalSpent,
+      totalSpent: totalRevenue,
       yearlySpend,
       vipTier: customer.vipTier,
       topRoutes,
       lastBookingDate: bookings[0]?.createdAt ?? null,
-      averageTicketValue: bookings.length > 0 ? Number(customer.totalSpent) / bookings.length : 0,
+      averageTicketValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
     };
   }
 
@@ -545,7 +639,8 @@ export class CustomersService {
     const result = await this.prisma.booking.aggregate({
       where: {
         customerId,
-        status: { in: ['ISSUED', 'COMPLETED'] },
+        deletedAt: null,
+        status: { in: CUSTOMER_REVENUE_STATUSES },
         createdAt: { gte: startOfYear },
       },
       _sum: { totalSellPrice: true },

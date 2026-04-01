@@ -94,7 +94,7 @@ export default function CustomerDetailPage() {
   useEffect(() => { setMounted(true); }, []);
 
   // Fetch customer data
-  const { data: customer, isLoading } = useQuery({
+  const { data: customer, isLoading, isError: isCustomerError } = useQuery({
     queryKey: ['customer', id],
     queryFn: () => customersApi.get(id),
     select: (r) => r.data as Customer & { bookings?: Booking[]; debts?: unknown[] },
@@ -119,6 +119,7 @@ export default function CustomerDetailPage() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['customers'] }),
+        queryClient.invalidateQueries({ queryKey: ['customers-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['customer', id] }),
       ]);
       router.push('/customers');
@@ -138,7 +139,15 @@ export default function CustomerDetailPage() {
     );
   }
 
-  const cust: Customer = customer ?? SAMPLE_CUSTOMER;
+  if (isCustomerError || !customer) {
+    return (
+      <div className="card p-8 text-center text-sm text-muted-foreground">
+        Khong tim thay khach hang hoac du lieu dang khong kha dung.
+      </div>
+    );
+  }
+
+  const cust: Customer = customer;
   const handleDeleteCustomer = () => {
     const shouldDelete = window.confirm(
       `Xóa khách hàng "${cust.fullName}"?\n\nChỉ nên dùng khi khách chưa có booking, công nợ hoặc hóa đơn liên kết.`,
@@ -312,6 +321,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-summary'] });
       setEditMode(false);
     },
   });
@@ -538,8 +548,8 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
             <div className="space-y-4">
               {[
                 { label: 'Recency (gần đây)', score: rfm.recency, detail: `${rfm.lastBookingDays} ngày trước` },
-                { label: 'Frequency (tần suất)', score: rfm.frequency, detail: `${customer.totalBookings} booking` },
-                { label: 'Monetary (chi tiêu)', score: rfm.monetary, detail: formatVND(Number(customer.totalSpent)) },
+                { label: 'Frequency (tần suất)', score: rfm.frequency, detail: `${stats?.totalBookings ?? customer.totalBookings} booking` },
+                { label: 'Monetary (chi tiêu)', score: rfm.monetary, detail: formatVND(stats?.totalRevenue ?? Number(customer.totalSpent)) },
               ].map((item) => (
                 <div key={item.label}>
                   <div className="flex justify-between text-[11px] uppercase tracking-wide mb-1.5">
@@ -579,7 +589,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
 }
 
 function BookingsTab({ customerId, bookings }: { customerId: string; bookings?: Booking[] }) {
-  const list = bookings ?? SAMPLE_BOOKINGS;
+  const list = bookings ?? [];
 
   return (
     <div className="mx-[-16px] sm:mx-0">
@@ -1029,36 +1039,3 @@ function NotesTab({ customerId }: { customerId: string }) {
   );
 }
 
-// ===== SAMPLE DATA =====
-
-const SAMPLE_CUSTOMER: Customer = {
-  id: '1', fullName: 'Nguyễn Văn Minh', phone: '0901234567',
-  email: 'minh@example.com', type: 'INDIVIDUAL', vipTier: 'GOLD',
-  totalSpent: 85_000_000, totalBookings: 24, tags: ['thường_bay_SGN', 'VIP'],
-  createdAt: '2024-01-15T00:00:00Z', updatedAt: '2026-03-01T00:00:00Z',
-  preferredSeat: 'Cửa sổ',
-};
-
-const SAMPLE_BOOKINGS: Booking[] = [
-  {
-    id: '1', bookingCode: 'APG-260321-023', customerId: 'c1', staffId: 's1',
-    status: 'COMPLETED', source: 'PHONE', contactName: 'Nguyễn Văn Minh',
-    contactPhone: '0901234567', totalSellPrice: 5_700_000, totalNetPrice: 5_100_000,
-    totalFees: 150_000, profit: 450_000, paymentMethod: 'BANK_TRANSFER',
-    paymentStatus: 'PAID', createdAt: '2026-03-21T08:30:00Z', updatedAt: '2026-03-21T10:00:00Z',
-  },
-  {
-    id: '2', bookingCode: 'APG-260315-011', customerId: 'c1', staffId: 's1',
-    status: 'ISSUED', source: 'ZALO', contactName: 'Nguyễn Văn Minh',
-    contactPhone: '0901234567', totalSellPrice: 3_200_000, totalNetPrice: 2_800_000,
-    totalFees: 100_000, profit: 300_000, paymentMethod: 'MOMO',
-    paymentStatus: 'PAID', createdAt: '2026-03-15T14:00:00Z', updatedAt: '2026-03-15T16:00:00Z',
-  },
-  {
-    id: '3', bookingCode: 'APG-260301-005', customerId: 'c1', staffId: 's1',
-    status: 'CANCELLED', source: 'PHONE', contactName: 'Nguyễn Văn Minh',
-    contactPhone: '0901234567', totalSellPrice: 0, totalNetPrice: 0,
-    totalFees: 0, profit: 0, paymentMethod: 'CASH',
-    paymentStatus: 'UNPAID', createdAt: '2026-03-01T09:00:00Z', updatedAt: '2026-03-01T12:00:00Z',
-  },
-];

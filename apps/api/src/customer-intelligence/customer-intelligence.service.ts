@@ -1,6 +1,7 @@
 // APG Manager RMS - Customer Intelligence Service (phân tích khách hàng thông minh)
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { CUSTOMER_REVENUE_STATUSES } from '../customers/customer-metrics.constants';
 
 // Phân loại khách hàng theo RFM
 type RfmSegment =
@@ -34,7 +35,7 @@ export class CustomerIntelligenceService {
       where: { id: customerId },
       include: {
         bookings: {
-          where: { status: { in: ['ISSUED', 'COMPLETED'] } },
+          where: { deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true, totalSellPrice: true },
         },
@@ -55,7 +56,7 @@ export class CustomerIntelligenceService {
     const totalBookings = bookings.length;
 
     // Monetary: tổng chi tiêu
-    const totalSpent = Number(customer.totalSpent);
+    const totalSpent = bookings.reduce((sum, booking) => sum + Number(booking.totalSellPrice), 0);
 
     // Tính điểm 1-5 (chuẩn hóa cho đại lý vé nhỏ)
     const recency = lastBookingDays <= 30 ? 5 : lastBookingDays <= 60 ? 4 : lastBookingDays <= 120 ? 3 : lastBookingDays <= 365 ? 2 : 1;
@@ -84,7 +85,7 @@ export class CustomerIntelligenceService {
     const customers = await this.prisma.customer.findMany({
       include: {
         bookings: {
-          where: { status: { in: ['ISSUED', 'COMPLETED'] } },
+          where: { deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true, totalSellPrice: true },
         },
@@ -109,7 +110,7 @@ export class CustomerIntelligenceService {
         ? Math.floor((now.getTime() - new Date(bookings[0].createdAt).getTime()) / (1000 * 60 * 60 * 24))
         : 999;
 
-      const totalSpent = Number(customer.totalSpent);
+      const totalSpent = bookings.reduce((sum, booking) => sum + Number(booking.totalSellPrice), 0);
       const totalBookings = bookings.length;
 
       const r = lastBookingDays <= 30 ? 5 : lastBookingDays <= 60 ? 4 : lastBookingDays <= 120 ? 3 : lastBookingDays <= 365 ? 2 : 1;

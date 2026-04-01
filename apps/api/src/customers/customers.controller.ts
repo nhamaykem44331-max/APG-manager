@@ -21,6 +21,11 @@ export class CustomersController {
     return this.service.getUpcomingBirthdays();
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.service.getSummary();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

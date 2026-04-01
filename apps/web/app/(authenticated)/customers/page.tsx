@@ -17,7 +17,7 @@ import { FilterBar } from '@/components/ui/filter-bar';
 import { DataTable } from '@/components/ui/data-table';
 import { customersApi } from '@/lib/api';
 import { cn, formatDate, formatVND, VIP_TIER_LABELS } from '@/lib/utils';
-import type { Customer } from '@/types';
+import type { Customer, CustomerSummary } from '@/types';
 
 const VIP_FILTERS = [
   { key: '', label: 'Tất cả' },
@@ -71,6 +71,7 @@ export default function CustomersPage() {
     mutationFn: (data: typeof addForm) => customersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-summary'] });
       setShowAddModal(false);
       setAddForm({
         fullName: '',
@@ -86,6 +87,12 @@ export default function CustomersPage() {
     },
   });
 
+  const { data: summary } = useQuery({
+    queryKey: ['customers-summary'],
+    queryFn: () => customersApi.summary(),
+    select: (response) => response.data as CustomerSummary,
+  });
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['customers', search, vipFilter, typeFilter, page],
     queryFn: () =>
@@ -99,8 +106,8 @@ export default function CustomersPage() {
     select: (response) => response.data,
   });
 
-  const customers: Customer[] = data?.data ?? SAMPLE_CUSTOMERS;
-  const total = data?.total ?? SAMPLE_CUSTOMERS.length;
+  const customers: Customer[] = data?.data ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   if (isError) {
@@ -135,10 +142,10 @@ export default function CustomersPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'Tổng khách', value: total, icon: Users, color: 'text-blue-500' },
-          { label: 'Platinum', value: 3, icon: Star, color: 'text-purple-500' },
-          { label: 'Doanh nghiệp', value: 12, icon: Building2, color: 'text-orange-500' },
-          { label: 'Mới tháng này', value: 8, icon: Plus, color: 'text-green-500' },
+          { label: 'Tổng khách', value: summary?.totalCustomers ?? total, icon: Users, color: 'text-blue-500' },
+          { label: 'Platinum', value: summary?.platinumCustomers ?? 0, icon: Star, color: 'text-purple-500' },
+          { label: 'Doanh nghiệp', value: summary?.corporateCustomers ?? 0, icon: Building2, color: 'text-orange-500' },
+          { label: 'Mới tháng này', value: summary?.newThisMonth ?? 0, icon: Plus, color: 'text-green-500' },
         ].map((item) => (
           <div key={item.label} className="card flex min-h-[88px] flex-col justify-between p-3.5">
             <div className="flex items-start justify-between">
@@ -474,62 +481,3 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const SAMPLE_CUSTOMERS: Customer[] = [
-  {
-    id: '1',
-    fullName: 'Nguyen Van Minh',
-    phone: '0901234567',
-    email: 'minh@example.com',
-    type: 'INDIVIDUAL',
-    vipTier: 'GOLD',
-    customerCode: 'KH000001',
-    totalSpent: 85_000_000,
-    totalBookings: 24,
-    tags: ['thuong_bay_SGN'],
-    createdAt: '2024-01-15T00:00:00Z',
-    updatedAt: '2026-03-01T00:00:00Z',
-  },
-  {
-    id: '2',
-    fullName: 'Cong ty TNHH Thep Mien Bac',
-    phone: '0243456789',
-    email: 'booking@thepmienbac.vn',
-    type: 'CORPORATE',
-    companyName: 'Thep Mien Bac',
-    companyTaxId: '0123456789',
-    vipTier: 'PLATINUM',
-    customerCode: 'KH000002',
-    totalSpent: 450_000_000,
-    totalBookings: 120,
-    tags: ['VIP', 'doanh_nghiep'],
-    createdAt: '2023-06-01T00:00:00Z',
-    updatedAt: '2026-03-10T00:00:00Z',
-  },
-  {
-    id: '3',
-    fullName: 'Tran Thi Hoa',
-    phone: '0912345678',
-    email: 'hoa.tran@gmail.com',
-    type: 'INDIVIDUAL',
-    vipTier: 'SILVER',
-    customerCode: 'KH000003',
-    totalSpent: 18_500_000,
-    totalBookings: 7,
-    tags: [],
-    createdAt: '2025-03-20T00:00:00Z',
-    updatedAt: '2026-02-15T00:00:00Z',
-  },
-  {
-    id: '4',
-    fullName: 'Le Quoc Hung',
-    phone: '0923456789',
-    type: 'INDIVIDUAL',
-    vipTier: 'NORMAL',
-    customerCode: 'KH000004',
-    totalSpent: 5_200_000,
-    totalBookings: 2,
-    tags: [],
-    createdAt: '2026-01-10T00:00:00Z',
-    updatedAt: '2026-01-10T00:00:00Z',
-  },
-];

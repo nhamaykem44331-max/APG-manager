@@ -83,6 +83,18 @@ export class BookingsService {
     private namedCreditService: NamedCreditService,
   ) {}
 
+  private async refreshAffectedCustomers(...customerIds: Array<string | null | undefined>) {
+    const uniqueIds = Array.from(
+      new Set(customerIds.filter((customerId): customerId is string => Boolean(customerId))),
+    );
+
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(uniqueIds.map((customerId) => this.customers.refreshCustomerMetrics(customerId)));
+  }
+
   private async generateLedgerCodeWithClient(
     client: PrismaService | Prisma.TransactionClient,
     direction: 'RECEIVABLE' | 'PAYABLE',
@@ -469,6 +481,10 @@ export class BookingsService {
       await this.syncReceivableLedgerForBooking(id, currentUser.id, { createIfMissing: true });
     }
 
+    if (dto.customerId !== undefined && updatedBooking.customerId !== existingBooking.customerId) {
+      await this.refreshAffectedCustomers(existingBooking.customerId, updatedBooking.customerId);
+    }
+
     return updatedBooking;
   }
 
@@ -676,6 +692,9 @@ export class BookingsService {
         },
       }),
     ]);
+
+    await this.refreshAffectedCustomers(booking.customerId);
+
     return updated;
   }
 
@@ -684,7 +703,7 @@ export class BookingsService {
   async hardDelete(id: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id },
-      select: { id: true, bookingCode: true, status: true, deletedAt: true },
+      select: { id: true, bookingCode: true, status: true, deletedAt: true, customerId: true },
     });
 
     if (!booking) {
@@ -715,6 +734,8 @@ export class BookingsService {
       await tx.ticket.deleteMany({ where: { bookingId: id } });
       await tx.booking.delete({ where: { id } });
     });
+
+    await this.refreshAffectedCustomers(booking.customerId);
 
     return {
       success: true,
@@ -847,6 +868,8 @@ export class BookingsService {
       });
     }
 
+    await this.refreshAffectedCustomers(booking.customerId);
+
     return updated;
   }
 
@@ -945,7 +968,7 @@ export class BookingsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const ticket = await this.prisma.$transaction(async (tx) => {
       if (shouldReplaceExistingPnr) {
         await tx.ticket.deleteMany({ where: { bookingId } });
         await tx.booking.update({
@@ -983,7 +1006,7 @@ export class BookingsService {
 
       const profit = dto.sellPrice - dto.netPrice;
 
-      const ticket = await tx.ticket.create({
+      const createdTicket = await tx.ticket.create({
         data: {
           bookingId,
           passengerId,
@@ -1011,13 +1034,17 @@ export class BookingsService {
 
       await this.recalculateBookingTotalsWithClient(tx, bookingId);
 
-      return ticket;
+      return createdTicket;
     });
+
+    await this.refreshAffectedCustomers(booking.customerId);
+
+    return ticket;
   }
 
   // XÃ³a toÃ n bá»™ vÃ©/hÃ nh trÃ¬nh vÃ  reset tá»•ng tiá»n vá» tráº¡ng thÃ¡i ban Ä‘áº§u
   async clearTickets(bookingId: string) {
-    await this.findOne(bookingId);
+    const booking = await this.findOne(bookingId);
 
     const existingLedgers = await this.prisma.accountsLedger.findMany({
       where: { bookingId },
@@ -1057,6 +1084,8 @@ export class BookingsService {
         },
       });
     });
+
+    await this.refreshAffectedCustomers(booking.customerId);
 
     return this.findOne(bookingId);
   }
@@ -1380,7 +1409,7 @@ export class BookingsService {
   async addAdjustment(bookingId: string, dto: AddAdjustmentDto, userId: string) {
     const booking = await this.findOne(bookingId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const adjustment = await this.prisma.$transaction(async (tx) => {
       const fundAccount = dto.fundAccount ? (dto.fundAccount as any) : null;
 
       // 1. Táº¡o báº£n ghi BookingAdjustment
@@ -1693,5 +1722,9 @@ export class BookingsService {
 
       return adjustment;
     });
+
+    await this.refreshAffectedCustomers(booking.customerId);
+
+    return adjustment;
   }
 }

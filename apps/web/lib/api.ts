@@ -216,6 +216,7 @@ export const bookingsApi = {
 export const customersApi = {
   list: (params?: Record<string, string | number>) =>
     apiClient.get('/customers', { params }),
+  summary: () => apiClient.get('/customers/summary'),
   get: (id: string) => apiClient.get(`/customers/${id}`),
   create: (data: unknown) => apiClient.post('/customers', data),
   update: (id: string, data: unknown) => apiClient.patch(`/customers/${id}`, data),

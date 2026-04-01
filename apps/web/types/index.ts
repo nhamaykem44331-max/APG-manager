@@ -517,6 +517,13 @@ export interface CustomerStats {
   averageTicketValue: number;
 }
 
+export interface CustomerSummary {
+  totalCustomers: number;
+  platinumCustomers: number;
+  corporateCustomers: number;
+  newThisMonth: number;
+}
+
 // ===== PHASE A: ACCOUNTS LEDGER SYSTEM =====
 
 export type LedgerDirection = 'RECEIVABLE' | 'PAYABLE';
