@@ -1646,8 +1646,8 @@ export class BookingsService {
         const charge = Number(dto.chargeToCustomer ?? 0);
         const cost = Number(dto.changeFee ?? 0);
         const category = dto.type === 'HLKG' ? 'HLKG' : 'SERVICE';
-        const categoryLabel = dto.type === 'HLKG' ? 'HÃ nh lÃ½ kÃ½ gá»­i' : 'Dá»‹ch vá»¥ HK';
-        const serviceSuffix = dto.serviceCode ? ` (MÃ£: ${dto.serviceCode})` : '';
+        const categoryLabel = dto.type === 'HLKG' ? 'Hành lý ký gửi' : 'Dịch vụ HK';
+        const serviceSuffix = dto.serviceCode ? ` (Mã: ${dto.serviceCode})` : '';
 
         if (charge > 0 && booking.customer) {
           const issueDate = new Date();
@@ -1667,10 +1667,10 @@ export class BookingsService {
             status: 'ACTIVE',
             category: category as any,
             serviceCode: dto.serviceCode ?? null,
-            description: `${categoryLabel} â€” Booking ${booking.bookingCode}${serviceSuffix}`,
+            description: `${categoryLabel} — Booking ${booking.bookingCode}${serviceSuffix}`,
             createdBy: userId,
           }));
-          console.log(`[${category}-AR] +${charge} thu KH â€” ${dto.serviceCode || 'N/A'}`);
+          console.log(`[${category}-AR] +${charge} thu KH — ${dto.serviceCode || 'N/A'}`);
         }
 
         if (cost > 0 && booking.supplier) {
@@ -1693,10 +1693,10 @@ export class BookingsService {
             status: 'ACTIVE',
             category: category as any,
             serviceCode: dto.serviceCode ?? null,
-            description: `${categoryLabel} (tráº£ NCC) â€” Booking ${booking.bookingCode}${serviceSuffix}`,
+            description: `${categoryLabel} (trả NCC) — Booking ${booking.bookingCode}${serviceSuffix}`,
             createdBy: userId,
           }));
-          console.log(`[${category}-AP] +${cost} tráº£ NCC â€” ${dto.serviceCode || 'N/A'}`);
+          console.log(`[${category}-AP] +${cost} trả NCC — ${dto.serviceCode || 'N/A'}`);
         }
       } else if (dto.type === 'REFUND_CASH' || dto.type === 'REFUND_CREDIT') {
         const refundToCustomer = Number(dto.refundAmount ?? 0);
