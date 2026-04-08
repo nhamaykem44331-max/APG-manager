@@ -364,7 +364,7 @@ export const ledgerApi = {
   get: (id: string) => apiClient.get(`/finance/ledger/${id}`),
   create: (data: unknown) => apiClient.post('/finance/ledger', data),
   update: (id: string, data: unknown) => apiClient.patch(`/finance/ledger/${id}`, data),
-  pay: (id: string, data: { amount: number; method: string; fundAccount?: string; reference?: string; notes?: string }) =>
+  pay: (id: string, data: { amount: number; method: string; fundAccount?: string; reference?: string; paidAt?: string; notes?: string }) =>
     apiClient.post(`/finance/ledger/${id}/pay`, data),
   payBatch: (data: {
     ledgerIds: string[];
@@ -372,6 +372,7 @@ export const ledgerApi = {
     method: string;
     fundAccount?: string;
     reference?: string;
+    paidAt?: string;
     notes?: string;
   }) => apiClient.post('/finance/ledger/pay-batch', data),
   getSummary: () => apiClient.get('/finance/ledger/summary'),

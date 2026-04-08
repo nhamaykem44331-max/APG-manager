@@ -24,6 +24,11 @@ import type { Booking, BookingStatus, SupplierProfile, Customer, User as AppUser
 import { SmartImportModal } from '@/components/booking/smart-import-modal';
 import { AdjustmentModal } from '@/components/booking/adjustment-modal';
 import type { BookingAdjustment } from '@/types';
+import {
+  PAYMENT_METHOD_OPTIONS_WITH_DEBT,
+  PaymentEntryModal,
+  type PaymentEntryPayload,
+} from '@/components/finance/payment-entry-modal';
 
 function getCustomerCodeBadgeClass(type?: string) {
   return type === 'CORPORATE'
@@ -136,15 +141,6 @@ function getAvailableStatusActions(booking: Pick<Booking, 'status' | 'statusHist
     .map((status) => actionMap.get(status))
     .filter((action): action is StatusAction => Boolean(action));
 }
-
-const PAYMENT_METHODS = [
-  { value: 'CASH',          label: 'Tiền mặt' },
-  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
-  { value: 'CREDIT_CARD',   label: 'Thẻ ngân hàng' },
-  { value: 'MOMO',          label: 'MoMo' },
-  { value: 'VNPAY',         label: 'VNPay' },
-  { value: 'DEBT',          label: 'Công nợ' },
-];
 
 const SEAT_CLASSES = ['Economy', 'Business', 'First Class', 'Premium Economy'];
 const PASSENGER_TYPES = [
@@ -427,28 +423,32 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
 // ────────────────────────────────────────────────────
 // Add Payment Modal
 // ────────────────────────────────────────────────────
-function AddPaymentModal({ bookingId, remainingAmount, hasCustomer, onClose }: { bookingId: string; remainingAmount: number; hasCustomer: boolean; onClose: () => void }) {
+function AddPaymentModal({
+  bookingId,
+  remainingAmount,
+  hasCustomer,
+  bookingRef,
+  partyName,
+  onClose,
+}: {
+  bookingId: string;
+  remainingAmount: number;
+  hasCustomer: boolean;
+  bookingRef: string;
+  partyName: string;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    amount: '',
-    method: 'BANK_TRANSFER',
-    fundAccount: 'BANK_HTX',   // Default TK BIDV
-    reference: '',
-    paidAt: new Date().toISOString().slice(0, 16),
-    notes: '',
-  });
   const [error, setError] = useState('');
 
   const mutation = useMutation({
-    mutationFn: () => bookingsApi.addPayment(bookingId, {
-      amount: form.method === 'DEBT' ? remainingAmount : Number(form.amount),
-      method: form.method,
-      fundAccount: form.method === 'DEBT' ? undefined : form.fundAccount,
-      reference: form.method === 'DEBT' ? undefined : (form.reference || undefined),
-      paidAt: form.method === 'DEBT' ? undefined : form.paidAt,
-      notes: form.method === 'DEBT' ? 'Ghi nhận công nợ phải thu' : (form.notes || undefined),
+    mutationFn: (payload: PaymentEntryPayload) => bookingsApi.addPayment(bookingId, {
+      ...payload,
+      notes: payload.method === 'DEBT' ? 'Ghi nhận công nợ phải thu' : payload.notes,
     }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
       onClose();
     },
@@ -458,145 +458,20 @@ function AddPaymentModal({ bookingId, remainingAmount, hasCustomer, onClose }: {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (form.method !== 'DEBT' && (!form.amount || Number(form.amount) <= 0)) {
-      setError('Vui lòng nhập số tiền hợp lệ');
-      return;
-    }
-    if (form.method !== 'DEBT' && Number(form.amount) > remainingAmount) {
-      setError(`Số tiền vượt quá số còn lại (${formatVND(remainingAmount)})`);
-      return;
-    }
-    mutation.mutate();
-  };
-
-  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm(prev => ({ ...prev, [field]: e.target.value }));
-
-  const quickAmounts = remainingAmount > 0
-    ? [
-        { label: '25%', value: Math.round(remainingAmount * 0.25) },
-        { label: '50%', value: Math.round(remainingAmount * 0.5) },
-        { label: '100%', value: remainingAmount },
-      ]
-    : [];
-
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-border flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-            <Banknote className="w-4 h-4 text-emerald-500" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Ghi nhận thanh toán</h2>
-            <p className="text-xs text-muted-foreground">Còn cần thu: <strong>{formatVND(remainingAmount)}</strong></p>
-          </div>
-          <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground">
-            <XCircle className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Amount + quick-fill — hidden for DEBT */}
-          {form.method !== 'DEBT' && (
-            <div className="space-y-2">
-              <MoneyInput
-                label="Số tiền (VND)"
-                required
-                value={form.amount}
-                onChange={(v) => setForm(p => ({ ...p, amount: String(v) }))}
-                placeholder="2.000.000"
-                className="[&_input]:text-[15px] [&_input]:font-bold [&_input]:h-10"
-              />
-              {quickAmounts.length > 0 && (
-                <div className="flex gap-2">
-                  {quickAmounts.map(q => (
-                    <button
-                      key={q.label}
-                      type="button"
-                      onClick={() => setForm(p => ({ ...p, amount: String(q.value) }))}
-                      className="flex-1 py-1.5 text-xs rounded-lg border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                    >
-                      {q.label} · {formatVND(q.value)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <FormSelect label="Hình thức thanh toán" required value={form.method} onChange={(e) => {
-            setForm(p => ({ ...p, method: e.target.value, fundAccount: e.target.value === 'CASH' ? 'CASH_OFFICE' : 'BANK_HTX' }));
-          }}>
-            {PAYMENT_METHODS.filter(m => m.value !== 'DEBT' || hasCustomer).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </FormSelect>
-
-          {/* Công nợ: auto-ghi nhận, ẩn các trường không cần */}
-          {form.method === 'DEBT' ? (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 text-[12px] text-amber-600 dark:text-amber-400">
-              <p className="font-medium">Ghi nhận công nợ</p>
-              <p className="mt-0.5 text-[11px] opacity-80">Số tiền sẽ được tự động ghi vào công nợ phải thu của khách hàng. Không cần chọn quỹ hay mã giao dịch.</p>
-            </div>
-          ) : (
-            <>
-              <FormSelect label="Nhận vào quỹ" required value={form.fundAccount} onChange={set('fundAccount')}>
-                <option value="CASH_OFFICE">Quỹ tiền mặt VP</option>
-                <option value="BANK_HTX">TK BIDV HTX (3900543757)</option>
-                <option value="BANK_PERSONAL">TK MB cá nhân (996106688)</option>
-              </FormSelect>
-
-              <FormInput label="Mã giao dịch / Tham chiếu" placeholder="GD123456..." value={form.reference} onChange={set('reference')} />
-              <FormInput label="Thời gian thanh toán" type="datetime-local" value={form.paidAt} onChange={set('paidAt')} />
-
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-foreground mb-1.5">Ghi chú</label>
-                <textarea
-                  placeholder="Ghi chú thêm..."
-                  value={form.notes}
-                  onChange={set('notes')}
-                  rows={2}
-                  className={cn(
-                    'w-full px-3 py-2 text-[13px] rounded-md border border-border bg-background',
-                    'text-foreground placeholder:text-muted-foreground resize-none',
-                    'focus:outline-none focus:ring-1 focus:ring-primary',
-                  )}
-                />
-              </div>
-            </>
-          )}
-
-          {error && (
-            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-red-500">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={mutation.isPending}
-              className="flex-1 h-9 bg-foreground text-background rounded-md text-[13px] font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Xác nhận
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 h-9 border border-border bg-card rounded-md text-[13px] font-medium text-foreground hover:bg-accent active:scale-[0.98] transition-all duration-150"
-            >
-              Hủy bỏ
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <PaymentEntryModal
+      contextLine={`${bookingRef} · ${partyName}`}
+      remainingAmount={remainingAmount}
+      direction="RECEIVABLE"
+      methods={hasCustomer
+        ? PAYMENT_METHOD_OPTIONS_WITH_DEBT
+        : PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT')}
+      isPending={mutation.isPending}
+      error={error}
+      onClearError={() => setError('')}
+      onSubmit={(payload) => mutation.mutate(payload)}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2741,6 +2616,8 @@ export default function BookingDetailPage() {
           bookingId={bk.id}
           remainingAmount={totalRemaining}
           hasCustomer={hasCustomer}
+          bookingRef={bk.pnr ?? bk.bookingCode}
+          partyName={bk.customer?.fullName ?? bk.contactName}
           onClose={() => setShowAddPayment(false)}
         />
       )}
