@@ -44,7 +44,7 @@ interface ReceivablePnrRow extends LedgerGroupMetrics {
   customerCode?: string | null;
   partyType: LedgerPartyType;
   categoryEntries: LedgerCategoryEntry[];
-  paymentTarget?: AccountsLedger | null;
+  paymentTargets: AccountsLedger[];
 }
 
 interface ReceivableCustomerRow extends LedgerGroupMetrics {
@@ -132,7 +132,7 @@ export function ReceivableTab() {
   const [sort, setSort] = useState<LedgerSortKey>('remaining:desc');
   const [customerFilter, setCustomerFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | LedgerCategory>('ALL');
-  const [paying, setPaying] = useState<AccountsLedger | null>(null);
+  const [paying, setPaying] = useState<AccountsLedger[] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ledger', 'RECEIVABLE', 'full-list'],
@@ -214,7 +214,7 @@ export function ReceivableTab() {
           customerCode: getReceivablePartyCode(first),
           partyType: first.partyType,
           categoryEntries: getLedgerCategoryEntries(bucket),
-          paymentTarget: openLedgers.length === 1 ? openLedgers[0] : null,
+          paymentTargets: openLedgers,
           ...metrics,
       };
     });
@@ -434,9 +434,9 @@ export function ReceivableTab() {
                         <span className={getGroupStatusClass(row.status)}>{DEBT_STATUS_LABELS[row.status]}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        {row.paymentTarget ? (
+                        {row.paymentTargets.length > 0 ? (
                           <button
-                            onClick={() => setPaying(row.paymentTarget ?? null)}
+                            onClick={() => setPaying(row.paymentTargets)}
                             className="whitespace-nowrap rounded-md bg-emerald-600 px-2.5 py-1 text-[10px] text-white hover:bg-emerald-700"
                           >
                             Ghi TT
@@ -522,7 +522,7 @@ export function ReceivableTab() {
         )}
       </div>
 
-      {paying && <PaymentModal ledger={paying} onClose={() => setPaying(null)} />}
+      {paying && <PaymentModal ledgers={paying} onClose={() => setPaying(null)} />}
     </div>
   );
 }

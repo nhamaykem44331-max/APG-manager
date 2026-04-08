@@ -366,6 +366,14 @@ export const ledgerApi = {
   update: (id: string, data: unknown) => apiClient.patch(`/finance/ledger/${id}`, data),
   pay: (id: string, data: { amount: number; method: string; fundAccount?: string; reference?: string; notes?: string }) =>
     apiClient.post(`/finance/ledger/${id}/pay`, data),
+  payBatch: (data: {
+    ledgerIds: string[];
+    amount: number;
+    method: string;
+    fundAccount?: string;
+    reference?: string;
+    notes?: string;
+  }) => apiClient.post('/finance/ledger/pay-batch', data),
   getSummary: () => apiClient.get('/finance/ledger/summary'),
   getAging: (direction?: string) =>
     apiClient.get('/finance/ledger/aging', { params: direction ? { direction } : {} }),

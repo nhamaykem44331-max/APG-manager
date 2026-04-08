@@ -18,7 +18,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import {
-  CreateLedgerDto, PayLedgerDto, ListLedgerDto,
+  CreateLedgerDto, PayLedgerBatchDto, PayLedgerDto, ListLedgerDto,
   CreateCashFlowDto, ListCashFlowDto,
   CreateExpenseDto, ListExpenseDto,
   CreateSupplierDto, UpdateSupplierDto,
@@ -318,6 +318,15 @@ export class FinanceController {
     @Request() req: { user: { id: string } },
   ) {
     return this.ledger.pay(id, dto, req.user.id);
+  }
+
+  @Post('ledger/pay-batch')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  payLedgerBatch(
+    @Body() dto: PayLedgerBatchDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.ledger.payBatch(dto, req.user.id);
   }
 
   // ─── Suppliers (Nhà cung cấp / Đối tác) ───────────────────────────

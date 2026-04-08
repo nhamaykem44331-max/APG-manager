@@ -44,7 +44,7 @@ interface PayablePnrRow extends LedgerGroupMetrics {
   partyType: LedgerPartyType;
   categoryEntries: LedgerCategoryEntry[];
   invoiceNumber?: string | null;
-  paymentTarget?: AccountsLedger | null;
+  paymentTargets: AccountsLedger[];
 }
 
 interface PayableSupplierRow extends LedgerGroupMetrics {
@@ -122,7 +122,7 @@ export function PayableTab() {
   const [sort, setSort] = useState<LedgerSortKey>('remaining:desc');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | LedgerCategory>('ALL');
-  const [paying, setPaying] = useState<AccountsLedger | null>(null);
+  const [paying, setPaying] = useState<AccountsLedger[] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ledger', 'PAYABLE', 'full-list'],
@@ -179,7 +179,7 @@ export function PayableTab() {
     const groups = new Map<string, AccountsLedger[]>();
 
     for (const ledger of filteredLedgers) {
-      const key = getLedgerBookingRef(ledger);
+      const key = `${getLedgerBookingRef(ledger)}::${getPayablePartyKey(ledger)}`;
       const bucket = groups.get(key) ?? [];
       bucket.push(ledger);
       groups.set(key, bucket);
@@ -194,14 +194,14 @@ export function PayableTab() {
 
       return {
         key,
-        bookingRef: key,
+        bookingRef: getLedgerBookingRef(first),
         supplierKey: getPayablePartyKey(first),
         supplierName: getPayablePartyName(first),
         supplierCode: first.supplier?.code,
         partyType: first.partyType,
         categoryEntries: getLedgerCategoryEntries(bucket),
         invoiceNumber: bucket.length === 1 ? first.invoiceNumber : null,
-        paymentTarget: openLedgers.length === 1 ? openLedgers[0] : null,
+        paymentTargets: openLedgers,
         ...metrics,
       };
     });
@@ -402,9 +402,9 @@ export function PayableTab() {
                         <span className={getGroupStatusClass(row.status)}>{DEBT_STATUS_LABELS[row.status]}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        {row.paymentTarget ? (
+                        {row.paymentTargets.length > 0 ? (
                           <button
-                            onClick={() => setPaying(row.paymentTarget ?? null)}
+                            onClick={() => setPaying(row.paymentTargets)}
                             className="whitespace-nowrap rounded-md bg-orange-600 px-2.5 py-1 text-[10px] text-white hover:bg-orange-700"
                           >
                             Ghi TT
@@ -477,7 +477,7 @@ export function PayableTab() {
         )}
       </div>
 
-      {paying && <PaymentModal ledger={paying} onClose={() => setPaying(null)} />}
+      {paying && <PaymentModal ledgers={paying} onClose={() => setPaying(null)} />}
     </div>
   );
 }
