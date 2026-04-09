@@ -975,9 +975,7 @@ export default function BookingDetailPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const globalSaveMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {
-        supplierId: booking?.supplierId ?? null,
-      };
+      const payload: Record<string, unknown> = {};
 
       const currentCreatedAt = toDateTimeLocalValue(booking?.businessDate ?? booking?.createdAt);
       if (bookingMetaForm.createdAt && bookingMetaForm.createdAt !== currentCreatedAt) {
@@ -986,6 +984,10 @@ export default function BookingDetailPage() {
 
       if (isAdmin && bookingMetaForm.staffId && bookingMetaForm.staffId !== booking?.staffId) {
         payload.staffId = bookingMetaForm.staffId;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        return;
       }
 
       await bookingsApi.update(id, payload);

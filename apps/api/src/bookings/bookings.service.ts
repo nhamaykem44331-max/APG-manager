@@ -364,6 +364,8 @@ export class BookingsService {
     const existingBooking = await this.findOne(id); // KiÃ¡Â»Æ’m tra tÃ¡Â»â€œn tÃ¡ÂºÂ¡i
 
     const data: Prisma.BookingUncheckedUpdateInput = {};
+    let normalizedSupplierId: string | null | undefined;
+    let resolvedSupplier: { id: string; name: string; type: Prisma.AccountsLedgerUncheckedUpdateInput['partyType'] } | null = null;
 
     if (dto.contactName !== undefined) data.contactName = dto.contactName;
     if (dto.source !== undefined) data.source = dto.source as Prisma.BookingUncheckedUpdateInput['source'];
@@ -372,7 +374,6 @@ export class BookingsService {
     if (dto.pnr !== undefined) data.pnr = dto.pnr;
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.internalNotes !== undefined) data.internalNotes = dto.internalNotes;
-    if (dto.supplierId !== undefined) data.supplierId = dto.supplierId;
     if (dto.createdAt !== undefined) {
       const createdAt = dto.createdAt.trim();
       if (createdAt) data.businessDate = safeDate(createdAt, 'businessDate');
@@ -401,17 +402,39 @@ export class BookingsService {
       data.staffId = staff.id;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Re-sync AP ledger entries when supplier changes Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (dto.supplierId !== undefined) {
-      try {
-        const newSupplierId = dto.supplierId;
-        const newSupplier = newSupplierId
-          ? await this.prisma.supplierProfile.findUnique({
-              where: { id: newSupplierId },
-              select: { id: true, name: true, type: true },
-            })
-          : null;
+      normalizedSupplierId = typeof dto.supplierId === 'string'
+        ? dto.supplierId.trim() || null
+        : null;
 
+      if (normalizedSupplierId) {
+        const supplier = await this.prisma.supplierProfile.findUnique({
+          where: { id: normalizedSupplierId },
+          select: { id: true, name: true, type: true },
+        });
+
+        if (!supplier) {
+          throw new NotFoundException('Không tìm thấy nhà cung cấp phù hợp.');
+        }
+
+        resolvedSupplier = {
+          id: supplier.id,
+          name: supplier.name,
+          type: supplier.type as Prisma.AccountsLedgerUncheckedUpdateInput['partyType'],
+        };
+      }
+
+      data.supplierId = normalizedSupplierId;
+    }
+
+    const supplierChanged = dto.supplierId !== undefined
+      && (normalizedSupplierId ?? null) !== (existingBooking.supplierId ?? null);
+    const paymentMethodChanged = dto.paymentMethod !== undefined
+      && dto.paymentMethod !== existingBooking.paymentMethod;
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Re-sync AP ledger entries when supplier changes Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    if (supplierChanged) {
+      try {
         // Update all PAYABLE ledger entries for this booking to point to the new supplier
         const existingAP = await this.prisma.accountsLedger.findMany({
           where: { bookingId: id, direction: 'PAYABLE' },
@@ -421,14 +444,16 @@ export class BookingsService {
           await this.prisma.accountsLedger.updateMany({
             where: { bookingId: id, direction: 'PAYABLE' },
             data: {
-              supplierId: newSupplierId,
-              partyType: newSupplier ? (newSupplier.type as any) : null,
-              description: newSupplier
-                ? `Pháº£i tráº£ NCC ${newSupplier.name} â€” Booking ${(await this.findOne(id)).bookingCode}`
+              supplierId: normalizedSupplierId,
+              ...(resolvedSupplier
+                ? { partyType: resolvedSupplier.type }
+                : {}),
+              description: resolvedSupplier
+                ? `Pháº£i tráº£ NCC ${resolvedSupplier.name} â€” Booking ${(await this.findOne(id)).bookingCode}`
                 : undefined,
             },
           });
-          console.log(`[AP-SYNC] Re-synced ${existingAP.length} AP entries to supplier ${newSupplier?.name ?? 'NULL'}`);
+          console.log(`[AP-SYNC] Re-synced ${existingAP.length} AP entries to supplier ${resolvedSupplier?.name ?? 'NULL'}`);
         }
       } catch (err) {
         console.error('[AP-SYNC] Error re-syncing AP entries:', err);
@@ -460,29 +485,49 @@ export class BookingsService {
       data,
     });
 
-    if (dto.supplierId !== undefined || dto.paymentMethod !== undefined) {
+    if (supplierChanged || paymentMethodChanged) {
+      try {
         await this.syncPayableLedgerForBooking(id, currentUser.id);
+      } catch (err) {
+        console.error(`[BookingsService.update] Failed to sync AP for booking ${existingBooking.bookingCode}:`, err);
+      }
     }
 
-    if (dto.customerId !== undefined && data.customerId && data.customerId !== existingBooking.customerId) {
-      const passengerIds = await this.prisma.ticket.findMany({
-        where: { bookingId: id },
-        select: { passengerId: true },
-        distinct: ['passengerId'],
-      });
+    const customerChanged = dto.customerId !== undefined
+      && updatedBooking.customerId !== existingBooking.customerId
+      && Boolean(updatedBooking.customerId);
 
-      if (passengerIds.length > 0) {
-        await this.prisma.passenger.updateMany({
-          where: { id: { in: passengerIds.map((ticket) => ticket.passengerId) } },
-          data: { customerId: data.customerId },
+    if (customerChanged && updatedBooking.customerId) {
+      try {
+        const passengerIds = await this.prisma.ticket.findMany({
+          where: { bookingId: id },
+          select: { passengerId: true },
+          distinct: ['passengerId'],
         });
-      }
 
-      await this.syncReceivableLedgerForBooking(id, currentUser.id, { createIfMissing: true });
+        const linkedPassengerIds = passengerIds
+          .map((ticket) => ticket.passengerId)
+          .filter((passengerId): passengerId is string => Boolean(passengerId));
+
+        if (linkedPassengerIds.length > 0) {
+          await this.prisma.passenger.updateMany({
+            where: { id: { in: linkedPassengerIds } },
+            data: { customerId: updatedBooking.customerId },
+          });
+        }
+
+        await this.syncReceivableLedgerForBooking(id, currentUser.id, { createIfMissing: true });
+      } catch (err) {
+        console.error(`[BookingsService.update] Failed to sync AR for booking ${existingBooking.bookingCode}:`, err);
+      }
     }
 
     if (dto.customerId !== undefined && updatedBooking.customerId !== existingBooking.customerId) {
-      await this.refreshAffectedCustomers(existingBooking.customerId, updatedBooking.customerId);
+      try {
+        await this.refreshAffectedCustomers(existingBooking.customerId, updatedBooking.customerId);
+      } catch (err) {
+        console.error(`[BookingsService.update] Failed to refresh customer metrics for booking ${existingBooking.bookingCode}:`, err);
+      }
     }
 
     return updatedBooking;
