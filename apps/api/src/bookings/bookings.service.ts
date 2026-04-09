@@ -288,56 +288,29 @@ export class BookingsService {
   }
 
   // LÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t booking kÃƒÂ¨m tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ relations
-  async findOne(id: string, options: { skipLedgerRepair?: boolean } = {}) {
-    const include = {
-      customer: true,
-      staff: { select: { id: true, fullName: true, email: true, role: true } },
-      tickets: { include: { passenger: true } },
-      payments: { orderBy: { paidAt: 'desc' as const } },
-      statusHistory: { orderBy: { createdAt: 'asc' as const } },
-      supplier: true,
-      adjustments: { orderBy: { createdAt: 'asc' as const } },
-      creditsCreated: {
-        orderBy: { createdAt: 'desc' as const },
-        include: {
-          customer: { select: { fullName: true } },
-        },
-      },
-      ledgers: {
-        select: {
-          id: true,
-          code: true,
-          direction: true,
-          status: true,
-          remaining: true,
-          totalAmount: true,
-          createdAt: true,
-          category: true,
-        },
-      },
-    } as const;
-
-    let booking = await this.prisma.booking.findFirst({
+  async findOne(id: string) {
+    const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null },
-      include,
+      include: {
+        customer: true,
+        staff: { select: { id: true, fullName: true, email: true, role: true } },
+        tickets: { include: { passenger: true } },
+        payments: { orderBy: { paidAt: 'desc' } },
+        statusHistory: { orderBy: { createdAt: 'asc' } },
+        supplier: true,
+        adjustments: { orderBy: { createdAt: 'asc' } },
+        creditsCreated: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { fullName: true } },
+          },
+        },
+        ledgers: { select: { id: true, code: true, direction: true, status: true, remaining: true, totalAmount: true, createdAt: true } },
+      },
     });
 
     if (!booking) {
       throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
-    }
-
-    if (!options.skipLedgerRepair) {
-      const repaired = await this.ensurePrimaryTicketLedgersForBooking(booking);
-      if (repaired) {
-        booking = await this.prisma.booking.findFirst({
-          where: { id, deletedAt: null },
-          include,
-        });
-
-        if (!booking) {
-          throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
-        }
-      }
     }
 
     if (booking.customer && !booking.customer.customerCode) {
@@ -933,13 +906,6 @@ export class BookingsService {
       }
     }
 
-    if (targetStatus === 'ISSUED') {
-      const activeTicketCount = (booking.tickets ?? []).filter((ticket) => ticket.status === 'ACTIVE').length;
-      if (activeTicketCount === 0) {
-        throw new BadRequestException('Vui lòng thêm hành trình/vé trước khi chuyển booking sang trạng thái đã xuất vé.');
-      }
-    }
-
     // KiÃ¡Â»Æ’m tra chuyÃ¡Â»Æ’n trÃ¡ÂºÂ¡ng thÃƒÂ¡i cÃƒÂ³ hÃ¡Â»Â£p lÃ¡Â»â€¡ khÃƒÂ´ng
     if (!allowedTransitions.includes(targetStatus)) {
       throw new BadRequestException(
@@ -1090,63 +1056,6 @@ export class BookingsService {
     return (booking.payments?.length ?? 0) > 0 || (booking.ledgers?.length ?? 0) > 0;
   }
 
-  private hasPrimaryTicketLedger(
-    ledgers: Array<{ direction: 'RECEIVABLE' | 'PAYABLE'; category?: string | null }>,
-    direction: 'RECEIVABLE' | 'PAYABLE',
-  ) {
-    return ledgers.some(
-      (ledger) => ledger.direction === direction && (!ledger.category || ledger.category === 'TICKET'),
-    );
-  }
-
-  private async ensurePrimaryTicketLedgersForBooking(booking: {
-    id: string;
-    bookingCode: string;
-    staffId: string;
-    status: BookingStatus;
-    customerId?: string | null;
-    supplierId?: string | null;
-    totalSellPrice: Prisma.Decimal | number;
-    totalNetPrice: Prisma.Decimal | number;
-    tickets?: Array<{ status?: string | null }>;
-    ledgers?: Array<{ direction: 'RECEIVABLE' | 'PAYABLE'; category?: string | null }>;
-  }) {
-    const statusRequiresLedger = ['ISSUED', 'COMPLETED', 'CHANGED'].includes(booking.status);
-    const hasActiveTickets = (booking.tickets ?? []).some((ticket) => ticket.status === 'ACTIVE');
-
-    if (!statusRequiresLedger || !hasActiveTickets) {
-      return false;
-    }
-
-    const ledgers = booking.ledgers ?? [];
-    const needsReceivable = Boolean(booking.customerId)
-      && Number(booking.totalSellPrice ?? 0) > 0
-      && !this.hasPrimaryTicketLedger(ledgers, 'RECEIVABLE');
-    const needsPayable = Boolean(booking.supplierId)
-      && Number(booking.totalNetPrice ?? 0) > 0
-      && !this.hasPrimaryTicketLedger(ledgers, 'PAYABLE');
-
-    if (!needsReceivable && !needsPayable) {
-      return false;
-    }
-
-    try {
-      if (needsReceivable) {
-        await this.syncReceivableLedgerForBooking(booking.id, booking.staffId, { createIfMissing: true });
-      }
-
-      if (needsPayable) {
-        await this.syncPayableLedgerForBooking(booking.id, booking.staffId);
-      }
-
-      console.log(`[LEDGER-REPAIR] Backfilled primary ledgers for booking ${booking.bookingCode}`);
-      return true;
-    } catch (error) {
-      console.error(`[LEDGER-REPAIR] Failed to backfill primary ledgers for booking ${booking.bookingCode}:`, error);
-      return false;
-    }
-  }
-
   private async recalculateBookingTotalsWithClient(
     client: Prisma.TransactionClient | PrismaService,
     bookingId: string,
@@ -1159,7 +1068,7 @@ export class BookingsService {
       (acc, t) => ({
         totalSellPrice: acc.totalSellPrice + Number(t.sellPrice),
         totalNetPrice: acc.totalNetPrice + Number(t.netPrice),
-        totalFees: acc.totalFees + Number(t.serviceFee ?? 0),
+        totalFees: 0,
         profit: acc.profit + Number(t.profit),
       }),
       { totalSellPrice: 0, totalNetPrice: 0, totalFees: 0, profit: 0 },
@@ -1272,15 +1181,6 @@ export class BookingsService {
 
       return createdTicket;
     });
-
-    if (['ISSUED', 'COMPLETED', 'CHANGED'].includes(booking.status)) {
-      try {
-        await this.syncReceivableLedgerForBooking(booking.id, booking.staffId, { createIfMissing: true });
-        await this.syncPayableLedgerForBooking(booking.id, booking.staffId);
-      } catch (error) {
-        console.error(`[ADD-TICKET] Failed to sync ledgers for issued booking ${booking.bookingCode}:`, error);
-      }
-    }
 
     await this.refreshAffectedCustomers(booking.customerId);
 
