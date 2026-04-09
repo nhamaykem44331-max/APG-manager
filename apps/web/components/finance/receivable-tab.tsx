@@ -343,7 +343,7 @@ export function ReceivableTab() {
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">
             {viewMode === 'PNR'
-              ? 'Danh sách nợ chia theo từng PNR để thu tiền trực tiếp.'
+              ? 'Danh sách nợ chia theo từng PNR để ghi nhận thu tiền thật trực tiếp.'
               : 'Công nợ được gộp theo từng khách hàng để xem tổng số phải thu.'}
           </p>
 
@@ -376,7 +376,7 @@ export function ReceivableTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['PNR / Booking', 'Khách hàng', 'Loại', 'Tổng nợ', 'Đã thu', 'Ngày thanh toán', 'Còn lại', 'Hạn', 'Trạng thái', ''].map((header) => (
+                  {['PNR / Booking', 'Khách hàng', 'Loại', 'Tổng nợ', 'Đã thu thật', 'Ngày thu thật', 'Còn lại', 'Hạn', 'Trạng thái', ''].map((header) => (
                     <th key={header} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap">
                       {header}
                     </th>
@@ -456,7 +456,7 @@ export function ReceivableTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['Khách hàng', 'Loại', 'PNR', 'Tổng nợ', 'Đã thu', 'Còn lại', 'Thanh toán gần nhất', 'Trạng thái', ''].map((header) => (
+                  {['Khách hàng', 'Loại', 'PNR', 'Tổng nợ', 'Đã thu thật', 'Còn lại', 'Thu thật gần nhất', 'Trạng thái', ''].map((header) => (
                     <th key={header} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap">
                       {header}
                     </th>

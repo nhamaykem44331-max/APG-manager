@@ -253,7 +253,7 @@ export default function CustomerDetailPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Doanh thu', value: formatVND(stats?.totalRevenue ?? Number(cust.totalSpent)), icon: TrendingUp, color: 'text-emerald-500' },
-          { label: 'Đã thanh toán', value: formatVND(stats?.totalPaid ?? 0), icon: Plane, color: 'text-blue-500' },
+          { label: 'Đã thu thật', value: formatVND(stats?.totalPaid ?? 0), icon: Plane, color: 'text-blue-500' },
           { label: 'Công nợ còn', value: formatVND(stats?.outstandingDebt ?? 0), icon: CreditCard, color: stats?.outstandingDebt ? 'text-red-500' : 'text-emerald-500' },
           { label: 'Lợi nhuận', value: formatVND(stats?.totalProfit ?? 0), icon: Activity, color: 'text-purple-500' },
         ].map((s) => (

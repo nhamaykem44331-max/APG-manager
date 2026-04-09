@@ -2730,7 +2730,7 @@ function InvoiceLinkageCard({ invoice }: { invoice: InvoiceRecord }) {
         <div>
           <h3 className="text-sm font-semibold text-foreground">Liên kết nghiệp vụ và công nợ</h3>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
-            Phase 2 nối hóa đơn với booking/PNR và AR/AP ledger để theo dõi đối soát, đã thu và còn lại.
+            Phase 2 nối hóa đơn với booking/PNR và AR/AP ledger để theo dõi đối soát, thu/chi thật và còn lại.
           </p>
         </div>
         {paymentSummary && (
@@ -2756,7 +2756,10 @@ function InvoiceLinkageCard({ invoice }: { invoice: InvoiceRecord }) {
       {paymentSummary && (
         <div className="mt-4 grid gap-2 rounded-lg border border-dashed border-border/80 bg-muted/20 p-3 md:grid-cols-2 xl:grid-cols-4">
           <InfoItem label="Tổng sổ cái" value={formatVND(paymentSummary.totalAmount)} />
-          <InfoItem label="Đã thanh toán" value={formatVND(paymentSummary.paidAmount)} />
+          <InfoItem
+            label={invoice.direction === 'OUTGOING' ? 'Đã thu thật' : 'Đã trả thật'}
+            value={formatVND(paymentSummary.paidAmount)}
+          />
           <InfoItem label="Còn lại" value={formatVND(paymentSummary.remainingAmount)} />
           <InfoItem label="Quá hạn" value={formatVND(paymentSummary.overdueAmount)} />
         </div>
@@ -2815,7 +2818,7 @@ function InvoiceLinkageCard({ invoice }: { invoice: InvoiceRecord }) {
                 <div className="text-right">
                   <p className="text-[13px] font-semibold text-foreground">{formatVND(ledger.remaining)}</p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    Đã thanh toán {formatVND(ledger.paidAmount)}
+                    {invoice.direction === 'OUTGOING' ? 'Đã thu thật' : 'Đã trả thật'} {formatVND(ledger.paidAmount)}
                   </p>
                 </div>
               </div>
@@ -3214,7 +3217,7 @@ function DebtStatementWorkspace({
           sub={`${statement?.rows.length ?? 0} dòng PNR`}
         />
         <SummaryCard
-          label="Đã thu"
+          label="Đã thu thật"
           value={formatVND(statement?.summary.paidAmount ?? 0)}
           sub={`Còn lại ${formatVND(statement?.summary.remainingAmount ?? 0)}`}
         />

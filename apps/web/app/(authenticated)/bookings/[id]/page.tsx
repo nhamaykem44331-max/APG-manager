@@ -499,6 +499,11 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
       <div>
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium text-foreground">{methodLabel[payment.method] ?? payment.method}</p>
+          {isDebtEntry && (
+            <span className="text-[10px] text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+              Ghi nợ
+            </span>
+          )}
           {fundLabel && (
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {fundLabel}
@@ -513,9 +518,9 @@ function PaymentRow({ payment }: { payment: NonNullable<Booking['payments']>[num
       <div className="flex items-center gap-2">
         <p className={cn(
           'text-sm font-bold',
-          isDebtEntry ? 'text-red-400' : 'text-emerald-500',
+          isDebtEntry ? 'text-amber-500' : 'text-emerald-500',
         )}>
-          {isDebtEntry ? '-' : '+'}{formatVND(payment.amount)}
+          {isDebtEntry ? formatVND(payment.amount) : `+${formatVND(payment.amount)}`}
         </p>
         {!isDebtEntry && (
           <a
@@ -570,6 +575,9 @@ function FinancialSummaryCard({
   const changeCost = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.changeFee || 0) : 0), 0);
   const changeRevenue = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.chargeToCustomer || 0) : 0), 0);
   const refundAmount = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.refundAmount || 0) : 0), 0);
+  const actualPayments = (booking.payments ?? []).filter((payment) => payment.method !== 'DEBT');
+  const debtPayments = (booking.payments ?? []).filter((payment) => payment.method === 'DEBT');
+  const debtRecordedTotal = debtPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
 
   return (
     <div className="card p-3.5">
@@ -606,7 +614,7 @@ function FinancialSummaryCard({
 
       <div className="mt-3.5 space-y-2.5 border-t border-border pt-3.5">
         <div className="flex items-center justify-between">
-          <span className="text-[13px] text-muted-foreground">Trạng thái thanh toán</span>
+          <span className="text-[13px] text-muted-foreground">Trạng thái thu tiền thật</span>
           <span
             className={cn(
               'rounded-full px-2.5 py-0.5 text-[11px] font-medium',
@@ -624,19 +632,35 @@ function FinancialSummaryCard({
         </div>
         {totalSellPrice > 0 && (
           <div className="flex items-center justify-between text-[13px]">
-            <span className="text-muted-foreground">Đã thu / Còn lại</span>
+            <span className="text-muted-foreground">Đã thu thật / Còn lại</span>
             <span className="font-medium">
               <span className="text-emerald-500">{formatVND(totalPaid)}</span>
               {totalRemaining > 0 && <span className="text-red-400"> / -{formatVND(totalRemaining)}</span>}
             </span>
           </div>
         )}
+        {debtRecordedTotal > 0 && (
+          <div className="flex items-center justify-between text-[13px]">
+            <span className="text-muted-foreground">Đã ghi công nợ</span>
+            <span className="font-medium text-amber-500">{formatVND(debtRecordedTotal)}</span>
+          </div>
+        )}
       </div>
 
-      {(booking.payments ?? []).length > 0 && (
+      {(actualPayments.length > 0 || debtPayments.length > 0) && (
         <div className="mt-3 border-t border-border pt-2.5">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử nhận tiền</p>
-          {(booking.payments ?? []).map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+          {actualPayments.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử thu tiền thật</p>
+              {actualPayments.map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+            </div>
+          )}
+          {debtPayments.length > 0 && (
+            <div className={cn(actualPayments.length > 0 && 'mt-3 border-t border-border/50 pt-3')}>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử ghi nhận công nợ</p>
+              {debtPayments.map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+            </div>
+          )}
         </div>
       )}
 
@@ -1235,6 +1259,8 @@ export default function BookingDetailPage() {
     + (changeRevenue - changeCost)
     + (refundAirline + refundServiceFee - refundAmount - refundPenalty);
   const validPayments = (bk.payments ?? []).filter(p => p.method !== 'DEBT');
+  const debtPayments = (bk.payments ?? []).filter(p => p.method === 'DEBT');
+  const debtRecordedTotal = debtPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
   const bookingPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0);
   const receivableLedgers = (bk.ledgers ?? []).filter((ledger) => ledger.direction === 'RECEIVABLE');
   const fallbackReceivable = totalSellPrice + serviceRevenue + changeRevenue - refundAmount;
@@ -2134,34 +2160,50 @@ export default function BookingDetailPage() {
             {/* Payment status */}
             <div className="mt-3.5 space-y-2.5 border-t border-border pt-3.5">
               <div className="flex items-center justify-between">
-                <span className="text-[13px] text-muted-foreground">Trạng thái thanh toán</span>
+                <span className="text-[13px] text-muted-foreground">Trạng thái thu tiền thật</span>
                 <span className={cn(
                   'px-2.5 py-0.5 rounded-full text-[11px] font-medium',
-                  bk.paymentStatus === 'PAID'    && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                  bk.paymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-                  bk.paymentStatus === 'UNPAID'  && 'bg-red-500/10 text-red-600 dark:text-red-400',
+                  effectivePaymentStatus === 'PAID'    && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                  effectivePaymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                  effectivePaymentStatus === 'UNPAID'  && 'bg-red-500/10 text-red-600 dark:text-red-400',
                 )}>
-                  {bk.paymentStatus === 'PAID'    ? '✅ Đã thanh toán đủ'
-                   : bk.paymentStatus === 'PARTIAL' ? '⚠ Thanh toán một phần'
+                  {effectivePaymentStatus === 'PAID'    ? '✅ Đã thanh toán đủ'
+                   : effectivePaymentStatus === 'PARTIAL' ? '⚠ Thanh toán một phần'
                    : '❌ Chưa thanh toán'}
                 </span>
               </div>
               {Number(bk.totalSellPrice) > 0 && (
                 <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-muted-foreground">Đã thu / Còn lại</span>
+                  <span className="text-muted-foreground">Đã thu thật / Còn lại</span>
                   <span className="font-medium">
                     <span className="text-emerald-500">{formatVND(totalPaid)}</span>
                     {totalRemaining > 0 && <span className="text-red-400"> / -{formatVND(totalRemaining)}</span>}
                   </span>
                 </div>
               )}
+              {debtRecordedTotal > 0 && (
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-muted-foreground">Đã ghi công nợ</span>
+                  <span className="font-medium text-amber-500">{formatVND(debtRecordedTotal)}</span>
+                </div>
+              )}
             </div>
 
             {/* Payments list */}
-            {(bk.payments ?? []).length > 0 && (
+            {(validPayments.length > 0 || debtPayments.length > 0) && (
               <div className="mt-3 border-t border-border pt-2.5">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Lịch sử nhận tiền</p>
-                {(bk.payments ?? []).map(p => <PaymentRow key={p.id} payment={p} />)}
+                {validPayments.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử thu tiền thật</p>
+                    {validPayments.map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+                  </div>
+                )}
+                {debtPayments.length > 0 && (
+                  <div className={cn(validPayments.length > 0 && 'mt-3 border-t border-border/50 pt-3')}>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Lịch sử ghi nhận công nợ</p>
+                    {debtPayments.map((payment) => <PaymentRow key={payment.id} payment={payment} />)}
+                  </div>
+                )}
               </div>
             )}
             {canAddPayment && (
@@ -2553,7 +2595,7 @@ export default function BookingDetailPage() {
                 <span className="font-medium font-tabular text-emerald-500">+{formatVND(bk.profit)}</span>
               </div>
               <div className="flex items-center justify-between py-2">
-                <span className="text-muted-foreground">Đã thu</span>
+                <span className="text-muted-foreground">Đã thu thật</span>
                 <span className={cn('font-medium font-tabular', totalPaid >= Number(bk.totalSellPrice) ? 'text-emerald-500' : 'text-amber-500')}>
                   {formatVND(totalPaid)}
                 </span>

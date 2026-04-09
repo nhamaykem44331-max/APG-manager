@@ -244,6 +244,7 @@ export class ReportsController {
           payments: {
             where: { paidAt: { lt: endOfRange } },
             select: {
+              method: true,
               paidAt: true,
               amount: true,
             },
@@ -489,7 +490,7 @@ export class ReportsController {
           },
           payments: {
             where: { paidAt: { lt: endExclusive } },
-            select: { paidAt: true, amount: true },
+            select: { method: true, paidAt: true, amount: true },
           },
         },
       }),
