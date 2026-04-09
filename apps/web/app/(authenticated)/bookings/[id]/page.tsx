@@ -427,6 +427,7 @@ function AddPaymentModal({
   bookingId,
   remainingAmount,
   hasCustomer,
+  allowDebtEntry,
   bookingRef,
   partyName,
   onClose,
@@ -434,6 +435,7 @@ function AddPaymentModal({
   bookingId: string;
   remainingAmount: number;
   hasCustomer: boolean;
+  allowDebtEntry: boolean;
   bookingRef: string;
   partyName: string;
   onClose: () => void;
@@ -463,7 +465,7 @@ function AddPaymentModal({
       contextLine={`${bookingRef} · ${partyName}`}
       remainingAmount={remainingAmount}
       direction="RECEIVABLE"
-      methods={hasCustomer
+      methods={hasCustomer && allowDebtEntry
         ? PAYMENT_METHOD_OPTIONS_WITH_DEBT
         : PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT')}
       isPending={mutation.isPending}
@@ -2618,6 +2620,7 @@ export default function BookingDetailPage() {
           bookingId={bk.id}
           remainingAmount={totalRemaining}
           hasCustomer={hasCustomer}
+          allowDebtEntry={receivableLedgers.length === 0}
           bookingRef={bk.pnr ?? bk.bookingCode}
           partyName={bk.customer?.fullName ?? bk.contactName}
           onClose={() => setShowAddPayment(false)}

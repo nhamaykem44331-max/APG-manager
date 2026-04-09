@@ -289,6 +289,12 @@ export class BookingsService {
 
   // LÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t booking kÃƒÂ¨m tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ relations
   async findOne(id: string) {
+    try {
+      await this.updatePaymentStatusWithClient(this.prisma, id);
+    } catch (error) {
+      console.error(`[BookingsService.findOne] Failed to reconcile receivable payments for booking ${id}:`, error);
+    }
+
     const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null },
       include: {
@@ -574,6 +580,141 @@ export class BookingsService {
     });
   }
 
+  private async reconcileReceivablePaymentsWithLedgers(
+    client: PrismaService | Prisma.TransactionClient,
+    bookingId: string,
+  ) {
+    const [payments, receivableLedgers] = await Promise.all([
+      client.payment.findMany({
+        where: {
+          bookingId,
+          method: { not: 'DEBT' },
+        },
+        orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          amount: true,
+          method: true,
+          reference: true,
+          paidAt: true,
+          notes: true,
+        },
+      }),
+      client.accountsLedger.findMany({
+        where: {
+          bookingId,
+          direction: 'RECEIVABLE',
+          status: { not: 'WRITTEN_OFF' },
+        },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          code: true,
+          totalAmount: true,
+          paidAmount: true,
+          remaining: true,
+          dueDate: true,
+          createdAt: true,
+          category: true,
+        },
+      }),
+    ]);
+
+    if (payments.length === 0 || receivableLedgers.length === 0) {
+      return false;
+    }
+
+    const actualPaidTotal = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const recordedPaidTotal = receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.paidAmount), 0);
+
+    if (actualPaidTotal <= recordedPaidTotal) {
+      return false;
+    }
+
+    let alreadyRepresented = recordedPaidTotal;
+    const missingPaymentSegments = payments
+      .map((payment) => {
+        const amount = Number(payment.amount);
+        const represented = Math.min(amount, alreadyRepresented);
+        alreadyRepresented -= represented;
+
+        return {
+          ...payment,
+          amount: amount - represented,
+        };
+      })
+      .filter((payment) => payment.amount > 0);
+
+    if (missingPaymentSegments.length === 0) {
+      return false;
+    }
+
+    const mutableLedgers = this.orderLedgerAllocations(
+      receivableLedgers.map((ledger) => ({
+        ...ledger,
+        totalAmount: Number(ledger.totalAmount),
+        paidAmount: Number(ledger.paidAmount),
+        remaining: Number(ledger.remaining),
+      })),
+    );
+
+    let changed = false;
+
+    for (const payment of missingPaymentSegments) {
+      let unallocated = payment.amount;
+
+      for (const ledger of mutableLedgers) {
+        if (unallocated <= 0) {
+          break;
+        }
+
+        const allocatable = Math.min(unallocated, Number(ledger.remaining));
+        if (allocatable <= 0) {
+          continue;
+        }
+
+        const nextPaid = Number(ledger.paidAmount) + allocatable;
+        const nextRemaining = Math.max(0, Number(ledger.totalAmount) - nextPaid);
+        const nextStatus = this.getLedgerStatus(Number(ledger.totalAmount), nextPaid, ledger.dueDate);
+
+        await client.accountsLedger.update({
+          where: { id: ledger.id },
+          data: {
+            paidAmount: nextPaid,
+            remaining: nextRemaining,
+            status: nextStatus as never,
+          },
+        });
+
+        await client.ledgerPayment.create({
+          data: {
+            ledgerId: ledger.id,
+            amount: allocatable,
+            method: payment.method,
+            reference: payment.reference,
+            paidAt: payment.paidAt,
+            paidBy: null,
+            notes: payment.notes
+              ? `${payment.notes} [BOOKING_PAYMENT_BACKFILL]`
+              : 'BOOKING_PAYMENT_BACKFILL',
+          },
+        });
+
+        ledger.paidAmount = nextPaid;
+        ledger.remaining = nextRemaining;
+        unallocated -= allocatable;
+        changed = true;
+      }
+
+      if (unallocated > 0) {
+        console.warn(
+          `[RECEIVABLE-RECONCILE] Booking ${bookingId} con ${unallocated} VND payment chua phan bo vao AR ledger.`,
+        );
+      }
+    }
+
+    return changed;
+  }
+
   private async resolveBookingPaymentStatusSnapshot(
     client: PrismaService | Prisma.TransactionClient,
     bookingId: string,
@@ -617,6 +758,8 @@ export class BookingsService {
     client: PrismaService | Prisma.TransactionClient,
     bookingId: string,
   ) {
+    await this.reconcileReceivablePaymentsWithLedgers(client, bookingId);
+
     const snapshot = await this.resolveBookingPaymentStatusSnapshot(client, bookingId);
     if (!snapshot) {
       return;
@@ -699,6 +842,7 @@ export class BookingsService {
         where: { id: existingAR.id },
         data: ledgerData,
       });
+      await this.reconcileReceivablePaymentsWithLedgers(this.prisma, bookingId);
       console.log(`[AR-SYNC] Synced AR ${existingAR.code} to customer ${booking.customer.fullName}`);
       return;
     }
@@ -714,6 +858,7 @@ export class BookingsService {
         ...ledgerData,
       }),
     );
+    await this.reconcileReceivablePaymentsWithLedgers(this.prisma, bookingId);
     console.log(`[AR-AUTO] Created AR ${createdLedger.code} for booking ${booking.bookingCode} -> ${booking.customer.fullName}`);
   }
 
@@ -1239,6 +1384,7 @@ export class BookingsService {
   // Ghi nhÃ¡ÂºÂ­n thanh toÃƒÂ¡n
   async addPayment(bookingId: string, dto: AddPaymentDto) {
     const booking = await this.findOne(bookingId);
+    const hasReceivableLedger = (booking.ledgers ?? []).some((ledger) => ledger.direction === 'RECEIVABLE');
 
     if (!booking.customerId || !booking.customer || booking.contactName === 'Khách hàng mới') {
       throw new BadRequestException('Vui lòng chọn khách hàng trước khi ghi nhận thanh toán.');
@@ -1250,6 +1396,10 @@ export class BookingsService {
 
     if (dto.method !== 'DEBT' && !dto.fundAccount) {
       throw new BadRequestException('Vui lòng chọn quỹ nhận tiền cho giao dịch này.');
+    }
+
+    if (dto.method === 'DEBT' && hasReceivableLedger) {
+      throw new BadRequestException('Booking này đã có công nợ phải thu. Hãy dùng Ghi thanh toán để thu phần còn lại.');
     }
 
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
@@ -1868,6 +2018,7 @@ export class BookingsService {
     });
 
     await this.refreshAffectedCustomers(booking.customerId);
+    await this.updatePaymentStatus(bookingId);
 
     return adjustment;
   }
