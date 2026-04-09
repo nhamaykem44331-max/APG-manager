@@ -41,6 +41,26 @@ function resolveBusinessDate(value?: string | Date | null) {
   return value ? safeDate(String(value), 'businessDate') : new Date();
 }
 
+type DebtLinkedLedgerPayment = {
+  id: string;
+  amount: Prisma.Decimal;
+  method: Prisma.$Enums.PaymentMethod;
+  paidAt: Date;
+  notes: string | null;
+};
+
+type DebtTrackableReceivableLedger = {
+  id: string;
+  code: string;
+  totalAmount: Prisma.Decimal;
+  remaining: Prisma.Decimal;
+  dueDate: Date;
+  createdAt: Date;
+  issueDate: Date;
+  category: Prisma.$Enums.LedgerCategory;
+  payments: DebtLinkedLedgerPayment[];
+};
+
 // MÃƒÂ¡y trÃ¡ÂºÂ¡ng thÃƒÂ¡i booking - quy Ã„â€˜Ã¡Â»â€¹nh chuyÃ¡Â»Æ’n trÃ¡ÂºÂ¡ng thÃƒÂ¡i hÃ¡Â»Â£p lÃ¡Â»â€¡
 const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   NEW:             ['PROCESSING', 'CANCELLED'],
@@ -317,7 +337,12 @@ export class BookingsService {
       booking.customer.customerCode = await this.customers.ensureCustomerCode(booking.customer.id);
     }
 
-    return booking;
+    const debtRecordableAmount = await this.calculateDebtRecordableAmount(this.prisma, booking.id);
+
+    return {
+      ...booking,
+      debtRecordableAmount,
+    };
   }
 
   // TÃ¡ÂºÂ¡o booking mÃ¡Â»â€ºi
@@ -572,6 +597,107 @@ export class BookingsService {
 
       return a.createdAt.getTime() - b.createdAt.getTime();
     });
+  }
+
+  private async getDebtTrackableReceivables(
+    client: PrismaService | Prisma.TransactionClient,
+    bookingId: string,
+  ): Promise<DebtTrackableReceivableLedger[]> {
+    return client.accountsLedger.findMany({
+      where: {
+        bookingId,
+        direction: 'RECEIVABLE',
+        status: { not: 'WRITTEN_OFF' },
+      },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        code: true,
+        totalAmount: true,
+        remaining: true,
+        dueDate: true,
+        createdAt: true,
+        issueDate: true,
+        category: true,
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            method: true,
+            paidAt: true,
+            notes: true,
+          },
+        },
+      },
+    });
+  }
+
+  private getDebtLinkedAmountForLedger(ledger: Pick<DebtTrackableReceivableLedger, 'payments'>) {
+    return (ledger.payments ?? [])
+      .filter((payment) => payment.method === 'DEBT')
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+  }
+
+  private calculateDebtRecordableAmountFromLedgers(ledgers: DebtTrackableReceivableLedger[]) {
+    return ledgers.reduce((sum, ledger) => (
+      sum + Math.max(0, Number(ledger.remaining) - this.getDebtLinkedAmountForLedger(ledger))
+    ), 0);
+  }
+
+  private async calculateDebtRecordableAmount(
+    client: PrismaService | Prisma.TransactionClient,
+    bookingId: string,
+  ) {
+    const receivableLedgers = await this.getDebtTrackableReceivables(client, bookingId);
+    return this.calculateDebtRecordableAmountFromLedgers(receivableLedgers);
+  }
+
+  private async linkDebtPaymentToReceivables(
+    client: Prisma.TransactionClient,
+    bookingCode: string,
+    paymentId: string,
+    amount: number,
+    paidAt: Date,
+    receivableLedgers: DebtTrackableReceivableLedger[],
+  ) {
+    const linkedAmounts = new Map<string, number>(
+      receivableLedgers.map((ledger) => [ledger.id, this.getDebtLinkedAmountForLedger(ledger)]),
+    );
+    const orderedLedgers = this.orderLedgerAllocations(receivableLedgers);
+    let unallocated = amount;
+
+    for (const ledger of orderedLedgers) {
+      if (unallocated <= 0) {
+        break;
+      }
+
+      const alreadyLinked = linkedAmounts.get(ledger.id) ?? 0;
+      const availableToLink = Math.max(0, Number(ledger.remaining) - alreadyLinked);
+      const allocatable = Math.min(unallocated, availableToLink);
+      if (allocatable <= 0) {
+        continue;
+      }
+
+      await client.ledgerPayment.create({
+        data: {
+          ledgerId: ledger.id,
+          amount: allocatable,
+          method: 'DEBT',
+          paidAt,
+          reference: paymentId,
+          notes: `Linked debt payment ${paymentId} for booking ${bookingCode}`,
+        },
+      });
+
+      linkedAmounts.set(ledger.id, alreadyLinked + allocatable);
+      unallocated -= allocatable;
+    }
+
+    if (unallocated > 0) {
+      throw new BadRequestException(
+        `Khong con cong no moi de ghi nhan (${unallocated.toLocaleString('vi-VN')} VND chua duoc lien ket).`,
+      );
+    }
   }
 
   private async resolveBookingPaymentStatusSnapshot(
@@ -1255,32 +1381,13 @@ export class BookingsService {
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
 
     const payment = await this.prisma.$transaction(async (tx) => {
-      const createdPayment = await tx.payment.create({
-        data: {
-          bookingId,
-          amount: dto.amount,
-          method: dto.method,
-          fundAccount: dto.fundAccount as any || null,
-          reference: dto.reference,
-          paidAt,
-          notes: dto.notes,
-        },
-      });
-
       if (dto.method === 'DEBT') {
-        const existingAR = await tx.accountsLedger.findFirst({
-          where: {
-            bookingId,
-            direction: 'RECEIVABLE',
-            status: { notIn: ['PAID', 'WRITTEN_OFF'] as any },
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        let receivableLedgers = await this.getDebtTrackableReceivables(tx, bookingId);
 
-        if (!existingAR) {
+        if (receivableLedgers.length === 0) {
           const customer = await tx.customer.findUnique({
             where: { id: booking.customerId! },
-            select: { fullName: true, customerCode: true, type: true },
+            select: { customerCode: true, type: true },
           });
 
           const issueDate = booking.issuedAt ?? new Date();
@@ -1304,11 +1411,57 @@ export class BookingsService {
             description: `Cong no ve ${booking.bookingCode}`,
             createdBy: null,
           }));
+
+          receivableLedgers = await this.getDebtTrackableReceivables(tx, bookingId);
         }
+
+        const debtRecordableAmount = this.calculateDebtRecordableAmountFromLedgers(receivableLedgers);
+        if (debtRecordableAmount <= 0) {
+          throw new BadRequestException('Khong con cong no moi de ghi nhan.');
+        }
+
+        if (dto.amount > debtRecordableAmount) {
+          throw new BadRequestException(
+            `So tien vuot qua phan cong no chua ghi nhan (${debtRecordableAmount.toLocaleString('vi-VN')} VND).`,
+          );
+        }
+
+        const createdPayment = await tx.payment.create({
+          data: {
+            bookingId,
+            amount: dto.amount,
+            method: dto.method,
+            fundAccount: null,
+            reference: dto.reference,
+            paidAt,
+            notes: dto.notes,
+          },
+        });
+
+        await this.linkDebtPaymentToReceivables(
+          tx,
+          booking.bookingCode,
+          createdPayment.id,
+          dto.amount,
+          paidAt,
+          receivableLedgers,
+        );
 
         await this.updatePaymentStatusWithClient(tx, bookingId);
         return createdPayment;
       }
+
+      const createdPayment = await tx.payment.create({
+        data: {
+          bookingId,
+          amount: dto.amount,
+          method: dto.method,
+          fundAccount: dto.fundAccount as any || null,
+          reference: dto.reference,
+          paidAt,
+          notes: dto.notes,
+        },
+      });
 
       await tx.cashFlowEntry.create({
         data: {

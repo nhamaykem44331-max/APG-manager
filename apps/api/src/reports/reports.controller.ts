@@ -327,7 +327,7 @@ export class ReportsController {
       const effectiveIssueDate = getLedgerTimelineDate(ledger);
       const totalAmount = Number(ledger.totalAmount ?? 0);
       const paidBeforeMonth = ledger.payments
-        .filter((payment) => payment.paidAt < startOfMonth)
+        .filter((payment) => payment.method !== 'DEBT' && payment.paidAt < startOfMonth)
         .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
 
       if (effectiveIssueDate < startOfMonth) {
@@ -342,7 +342,7 @@ export class ReportsController {
       }
 
       for (const payment of ledger.payments) {
-        if (payment.paidAt < startOfMonth) {
+        if (payment.method === 'DEBT' || payment.paidAt < startOfMonth) {
           continue;
         }
 
@@ -517,7 +517,7 @@ export class ReportsController {
       const effectiveIssueDate = getLedgerTimelineDate(ledger);
       const totalAmount = Number(ledger.totalAmount ?? 0);
       const paidBeforeRange = ledger.payments
-        .filter((payment) => payment.paidAt < startDate)
+        .filter((payment) => payment.method !== 'DEBT' && payment.paidAt < startDate)
         .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
 
       if (effectiveIssueDate < startDate) {
@@ -532,7 +532,7 @@ export class ReportsController {
       }
 
       ledger.payments.forEach((payment) => {
-        if (payment.paidAt < startDate) {
+        if (payment.method === 'DEBT' || payment.paidAt < startDate) {
           return;
         }
 

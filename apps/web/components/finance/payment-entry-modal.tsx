@@ -35,6 +35,7 @@ export const PAYMENT_METHOD_OPTIONS_WITH_DEBT: PaymentMethodOption[] = [
 interface PaymentEntryModalProps {
   contextLine?: string;
   remainingAmount: number;
+  debtRemainingAmount?: number;
   direction: 'RECEIVABLE' | 'PAYABLE';
   methods: PaymentMethodOption[];
   isPending?: boolean;
@@ -53,6 +54,7 @@ function getDefaultPaidAtValue() {
 export function PaymentEntryModal({
   contextLine,
   remainingAmount,
+  debtRemainingAmount,
   direction,
   methods,
   isPending = false,
@@ -72,7 +74,12 @@ export function PaymentEntryModal({
   const [localError, setLocalError] = useState('');
 
   const isDebt = form.method === 'DEBT';
-  const summaryLabel = direction === 'PAYABLE' ? 'Còn cần trả' : 'Còn cần thu';
+  const activeRemainingAmount = isDebt ? Math.max(0, debtRemainingAmount ?? remainingAmount) : remainingAmount;
+  const summaryLabel = isDebt
+    ? 'Cần ghi nhận công nợ'
+    : direction === 'PAYABLE'
+      ? 'Còn cần trả'
+      : 'Còn cần thu';
   const fundLabel = direction === 'PAYABLE' ? 'Chi từ quỹ' : 'Thu vào quỹ';
   const visibleError = localError || error;
 
@@ -119,8 +126,13 @@ export function PaymentEntryModal({
       return;
     }
 
+    if (isDebt && activeRemainingAmount <= 0) {
+      setLocalError('Không còn công nợ mới cần ghi nhận');
+      return;
+    }
+
     onSubmit({
-      amount: isDebt ? remainingAmount : Number(form.amount),
+      amount: isDebt ? activeRemainingAmount : Number(form.amount),
       method: form.method,
       fundAccount: isDebt ? undefined : form.fundAccount,
       reference: isDebt ? undefined : form.reference.trim() || undefined,
@@ -142,7 +154,7 @@ export function PaymentEntryModal({
               <p className="truncate text-xs text-muted-foreground">{contextLine}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              {summaryLabel}: <strong>{formatVND(remainingAmount)}</strong>
+              {summaryLabel}: <strong>{formatVND(activeRemainingAmount)}</strong>
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -202,7 +214,7 @@ export function PaymentEntryModal({
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-[12px] text-amber-600 dark:text-amber-400">
               <p className="font-medium">Ghi nhận công nợ</p>
               <p className="mt-0.5 text-[11px] opacity-80">
-                Số tiền sẽ được ghi nhận vào công nợ phải thu mà không cần nhập quỹ hay thời gian thanh toán.
+                Hệ thống chỉ ghi nhận phần công nợ phát sinh mới, chưa từng được liên kết vào AR trước đó.
               </p>
             </div>
           ) : (

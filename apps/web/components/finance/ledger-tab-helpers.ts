@@ -68,6 +68,7 @@ export function getLedgerBookingRef(ledger: AccountsLedger) {
 export function getLedgerLatestPaymentAt(ledgers: AccountsLedger[]) {
   return ledgers
     .flatMap((ledger) => ledger.payments ?? [])
+    .filter((payment) => payment.method !== 'DEBT')
     .map((payment) => payment.paidAt)
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
 }

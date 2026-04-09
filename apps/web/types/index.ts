@@ -138,6 +138,7 @@ export interface Booking {
   profit: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  debtRecordableAmount?: number;
   pnr?: string;
   gdsBookingId?: string;
   notes?: string;

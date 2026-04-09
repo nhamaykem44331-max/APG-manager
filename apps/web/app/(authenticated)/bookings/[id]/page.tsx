@@ -426,6 +426,7 @@ function AddTicketModal({ bookingId, customerId, onClose }: { bookingId: string;
 function AddPaymentModal({
   bookingId,
   remainingAmount,
+  debtRemainingAmount,
   hasCustomer,
   bookingRef,
   partyName,
@@ -433,6 +434,7 @@ function AddPaymentModal({
 }: {
   bookingId: string;
   remainingAmount: number;
+  debtRemainingAmount: number;
   hasCustomer: boolean;
   bookingRef: string;
   partyName: string;
@@ -462,9 +464,10 @@ function AddPaymentModal({
     <PaymentEntryModal
       contextLine={`${bookingRef} · ${partyName}`}
       remainingAmount={remainingAmount}
+      debtRemainingAmount={debtRemainingAmount}
       direction="RECEIVABLE"
       methods={hasCustomer
-        ? PAYMENT_METHOD_OPTIONS_WITH_DEBT
+        ? PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT' || debtRemainingAmount > 0)
         : PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT')}
       isPending={mutation.isPending}
       error={error}
@@ -1241,6 +1244,7 @@ export default function BookingDetailPage() {
   const totalRemaining = receivableLedgers.length > 0
     ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.remaining), 0)
     : Math.max(0, fallbackReceivable - bookingPaid);
+  const debtRecordableAmount = Math.max(0, Number(bk.debtRecordableAmount ?? totalRemaining));
   const totalPaid = receivableLedgers.length > 0
     ? Math.max(0, totalReceivable - totalRemaining)
     : bookingPaid;
@@ -2617,6 +2621,7 @@ export default function BookingDetailPage() {
         <AddPaymentModal
           bookingId={bk.id}
           remainingAmount={totalRemaining}
+          debtRemainingAmount={debtRecordableAmount}
           hasCustomer={hasCustomer}
           bookingRef={bk.pnr ?? bk.bookingCode}
           partyName={bk.customer?.fullName ?? bk.contactName}
