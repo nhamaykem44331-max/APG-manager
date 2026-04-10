@@ -202,6 +202,7 @@ export class BookingsService {
       customer: { select: { id: true, fullName: true, vipTier: true, customerCode: true, type: true, phone: true } },
       staff: { select: { id: true, fullName: true } },
       tickets: { orderBy: { departureTime: 'asc' as const } },
+      adjustments: { orderBy: { createdAt: 'asc' as const } },
     };
 
     if (status) where.status = status as BookingStatus;
@@ -290,6 +291,7 @@ export class BookingsService {
           customer: { select: { id: true, fullName: true, vipTier: true, customerCode: true, type: true, phone: true } },
           staff: { select: { id: true, fullName: true } },
           tickets: { orderBy: { departureTime: 'asc' } }, // GiÃ¡Â»Â¯ Ã„â€˜ÃƒÂºng thÃ¡Â»Â© tÃ¡Â»Â± hÃƒÂ nh trÃƒÂ¬nh Ã„â€˜Ã¡Â»Æ’ hiÃ¡Â»Æ’n thÃ¡Â»â€¹ route/khÃ¡Â»Å¸i hÃƒÂ nh chÃƒÂ­nh xÃƒÂ¡c
+          adjustments: { orderBy: { createdAt: 'asc' } },
         },
         orderBy: { [sortColumn]: order },
         skip: (page - 1) * pageSize,

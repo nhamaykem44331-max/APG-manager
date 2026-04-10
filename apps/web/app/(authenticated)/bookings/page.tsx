@@ -84,6 +84,26 @@ function formatProfit(value: number) {
   return formatVND(0);
 }
 
+function calculateBookingDisplayProfit(booking: Booking) {
+  const adjustments = booking.adjustments ?? [];
+  const serviceRevenue = adjustments.reduce((sum, adj) => sum + ((adj.type === 'HLKG' || adj.type === 'SERVICE') ? Number(adj.chargeToCustomer || 0) : 0), 0);
+  const serviceCost = adjustments.reduce((sum, adj) => sum + ((adj.type === 'HLKG' || adj.type === 'SERVICE') ? Number(adj.changeFee || 0) : 0), 0);
+  const changeRevenue = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.chargeToCustomer || 0) : 0), 0);
+  const changeCost = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.changeFee || 0) : 0), 0);
+  const refundAmount = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.refundAmount || 0) : 0), 0);
+  const refundAirline = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.airlineRefund || 0) : 0), 0);
+  const refundPenalty = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.penaltyFee || 0) : 0), 0);
+  const refundServiceFee = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.apgServiceFee || 0) : 0), 0);
+  const baseProfit = (booking.tickets?.length ?? 0) > 0
+    ? (booking.tickets ?? []).reduce((sum, ticket) => sum + Number(ticket.profit || 0), 0)
+    : Number(booking.profit ?? 0);
+
+  return baseProfit
+    + (serviceRevenue - serviceCost)
+    + (changeRevenue - changeCost)
+    + (refundAirline + refundServiceFee - refundAmount - refundPenalty);
+}
+
 type BookingSortField = 'createdAt' | 'departureTime';
 type BookingSortOrder = 'asc' | 'desc';
 type BookingPeriodFilter = 'all' | 'day' | 'month' | 'year';
@@ -335,7 +355,7 @@ export default function BookingsPage() {
       header: 'Lãi/Lỗ',
       className: 'w-[96px] text-right',
       cell: (b) => {
-        const profit = Number(b.profit ?? 0);
+        const profit = calculateBookingDisplayProfit(b);
 
         return (
           <span

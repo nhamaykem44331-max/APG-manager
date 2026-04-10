@@ -2069,7 +2069,7 @@ export default function BookingDetailPage() {
                       </div>
                       <div className="text-right">
                         <p className="text-[13px] font-bold font-tabular text-foreground">{formatVND(flight.sellPrice)}</p>
-                        <p className="text-[11px] font-tabular text-emerald-500">+{formatVND(flight.profit)} (Tổng)</p>
+                        <p className="text-[11px] font-tabular text-emerald-500">+{formatVND(groupedFlights.length === 1 ? totalProfit : flight.profit)} (Tổng)</p>
                       </div>
                     </div>
 
@@ -2146,7 +2146,7 @@ export default function BookingDetailPage() {
                 { label: 'Giá bán (khách)',    value: formatVND(bk.totalSellPrice),  bold: false },
                 { label: 'Giá net (hãng bay)', value: formatVND(bk.totalNetPrice),   bold: false },
                 { label: 'Phí dịch vụ',        value: formatVND(bk.totalFees),       bold: false },
-                { label: 'Lợi nhuận',           value: `+${formatVND(bk.profit)}`,   bold: true,  green: true },
+                { label: 'Lợi nhuận',           value: `+${formatVND(totalProfit)}`,  bold: true,  green: true },
               ].map((row, idx, arr) => (
                 <div key={row.label} className={cn('flex items-center justify-between py-2', idx !== arr.length - 1 && 'border-b border-border/50')}>
                   <span className="text-muted-foreground">{row.label}</span>
@@ -2592,7 +2592,7 @@ export default function BookingDetailPage() {
               </div>
               <div className="flex items-center justify-between border-b border-border/50 py-2">
                 <span className="text-muted-foreground">Lợi nhuận</span>
-                <span className="font-medium font-tabular text-emerald-500">+{formatVND(bk.profit)}</span>
+                <span className="font-medium font-tabular text-emerald-500">+{formatVND(totalProfit)}</span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <span className="text-muted-foreground">Đã thu thật</span>
