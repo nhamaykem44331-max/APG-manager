@@ -63,9 +63,11 @@ export function PaymentEntryModal({
   onSubmit,
   onClose,
 }: PaymentEntryModalProps) {
+  const hasDebtOption = methods.some((method) => method.value === 'DEBT');
+  const shouldDefaultToDebt = remainingAmount <= 0 && (debtRemainingAmount ?? 0) > 0 && hasDebtOption;
   const [form, setForm] = useState({
     amount: '',
-    method: methods[0]?.value ?? 'BANK_TRANSFER',
+    method: shouldDefaultToDebt ? 'DEBT' : (methods[0]?.value ?? 'BANK_TRANSFER'),
     fundAccount: 'BANK_HTX',
     reference: '',
     paidAt: getDefaultPaidAtValue(),

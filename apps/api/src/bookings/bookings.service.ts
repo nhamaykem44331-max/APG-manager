@@ -61,6 +61,14 @@ type DebtTrackableReceivableLedger = {
   payments: DebtLinkedLedgerPayment[];
 };
 
+type BookingDebtFallbackSnapshot = {
+  totalReceivable: number;
+  actualPaid: number;
+  remainingAfterActualPayment: number;
+  debtRecorded: number;
+  debtRecordableAmount: number;
+};
+
 // MÃƒÂ¡y trÃ¡ÂºÂ¡ng thÃƒÂ¡i booking - quy Ã„â€˜Ã¡Â»â€¹nh chuyÃ¡Â»Æ’n trÃ¡ÂºÂ¡ng thÃƒÂ¡i hÃ¡Â»Â£p lÃ¡Â»â€¡
 const STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   NEW:             ['PROCESSING', 'CANCELLED'],
@@ -646,12 +654,87 @@ export class BookingsService {
     ), 0);
   }
 
+  private async calculateBookingDebtFallbackSnapshot(
+    client: PrismaService | Prisma.TransactionClient,
+    bookingId: string,
+  ): Promise<BookingDebtFallbackSnapshot> {
+    const booking = await client.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        totalSellPrice: true,
+        payments: {
+          select: {
+            amount: true,
+            method: true,
+          },
+        },
+        adjustments: {
+          select: {
+            type: true,
+            chargeToCustomer: true,
+            refundAmount: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      return {
+        totalReceivable: 0,
+        actualPaid: 0,
+        remainingAfterActualPayment: 0,
+        debtRecorded: 0,
+        debtRecordableAmount: 0,
+      };
+    }
+
+    const adjustmentReceivable = booking.adjustments.reduce((sum, adjustment) => {
+      switch (adjustment.type) {
+        case 'CHANGE':
+        case 'HLKG':
+        case 'SERVICE':
+          return sum + Number(adjustment.chargeToCustomer ?? 0);
+        case 'REFUND_CASH':
+        case 'REFUND_CREDIT':
+          return sum - Number(adjustment.refundAmount ?? 0);
+        default:
+          return sum;
+      }
+    }, 0);
+
+    const totalReceivable = Math.max(0, Number(booking.totalSellPrice ?? 0) + adjustmentReceivable);
+    const actualPaid = Math.min(
+      totalReceivable,
+      booking.payments
+        .filter((payment) => payment.method !== 'DEBT')
+        .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0),
+    );
+    const remainingAfterActualPayment = Math.max(0, totalReceivable - actualPaid);
+    const debtRecorded = booking.payments
+      .filter((payment) => payment.method === 'DEBT')
+      .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    const debtRecordableAmount = Math.max(0, remainingAfterActualPayment - debtRecorded);
+
+    return {
+      totalReceivable,
+      actualPaid,
+      remainingAfterActualPayment,
+      debtRecorded,
+      debtRecordableAmount,
+    };
+  }
+
   private async calculateDebtRecordableAmount(
     client: PrismaService | Prisma.TransactionClient,
     bookingId: string,
   ) {
     const receivableLedgers = await this.getDebtTrackableReceivables(client, bookingId);
-    return this.calculateDebtRecordableAmountFromLedgers(receivableLedgers);
+    if (receivableLedgers.length > 0) {
+      return this.calculateDebtRecordableAmountFromLedgers(receivableLedgers);
+    }
+
+    const fallbackSnapshot = await this.calculateBookingDebtFallbackSnapshot(client, bookingId);
+    return fallbackSnapshot.debtRecordableAmount;
   }
 
   private async linkDebtPaymentToReceivables(
@@ -1387,6 +1470,17 @@ export class BookingsService {
         let receivableLedgers = await this.getDebtTrackableReceivables(tx, bookingId);
 
         if (receivableLedgers.length === 0) {
+          const fallbackSnapshot = await this.calculateBookingDebtFallbackSnapshot(tx, bookingId);
+          if (fallbackSnapshot.debtRecordableAmount <= 0) {
+            throw new BadRequestException('Khong con cong no moi de ghi nhan.');
+          }
+
+          if (dto.amount > fallbackSnapshot.debtRecordableAmount) {
+            throw new BadRequestException(
+              `So tien vuot qua phan cong no chua ghi nhan (${fallbackSnapshot.debtRecordableAmount.toLocaleString('vi-VN')} VND).`,
+            );
+          }
+
           const customer = await tx.customer.findUnique({
             where: { id: booking.customerId! },
             select: { customerCode: true, type: true },
@@ -1394,6 +1488,11 @@ export class BookingsService {
 
           const issueDate = booking.issuedAt ?? new Date();
           const dueDate = this.buildReceivableDueDate(issueDate, customer?.type ?? booking.customer.type);
+          const status = this.getLedgerStatus(
+            fallbackSnapshot.debtRecordableAmount,
+            0,
+            dueDate,
+          );
 
           await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
             code,
@@ -1403,12 +1502,12 @@ export class BookingsService {
             bookingCode: booking.bookingCode,
             customerId: booking.customerId!,
             customerCode: customer?.customerCode ?? booking.customer?.customerCode ?? null,
-            totalAmount: dto.amount,
+            totalAmount: fallbackSnapshot.debtRecordableAmount,
             paidAmount: 0,
-            remaining: dto.amount,
+            remaining: fallbackSnapshot.debtRecordableAmount,
             issueDate,
             dueDate,
-            status: 'ACTIVE',
+            status: status as any,
             category: 'TICKET' as any,
             description: `Cong no ve ${booking.bookingCode}`,
             createdBy: null,

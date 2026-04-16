@@ -442,6 +442,13 @@ function AddPaymentModal({
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  const canRecordDebt = hasCustomer && debtRemainingAmount > 0;
+  const paymentMethods = hasCustomer
+    ? PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => {
+        if (item.value === 'DEBT') return canRecordDebt;
+        return remainingAmount > 0 || !canRecordDebt;
+      })
+    : PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT');
 
   const mutation = useMutation({
     mutationFn: (payload: PaymentEntryPayload) => bookingsApi.addPayment(bookingId, {
@@ -466,9 +473,7 @@ function AddPaymentModal({
       remainingAmount={remainingAmount}
       debtRemainingAmount={debtRemainingAmount}
       direction="RECEIVABLE"
-      methods={hasCustomer
-        ? PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT' || debtRemainingAmount > 0)
-        : PAYMENT_METHOD_OPTIONS_WITH_DEBT.filter((item) => item.value !== 'DEBT')}
+      methods={paymentMethods}
       isPending={mutation.isPending}
       error={error}
       onClearError={() => setError('')}
@@ -1287,7 +1292,7 @@ export default function BookingDetailPage() {
   const canEditItinerary = canAddTicket && !hasFinancialLock;
   const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status)
     && isReady
-    && (totalRemaining > 0 || receivableLedgers.length === 0);
+    && (totalRemaining > 0 || debtRecordableAmount > 0 || receivableLedgers.length === 0);
   const selectedStaff =
     staffOptions.find((user) => user.id === bookingMetaForm.staffId)
     ?? bk.staff
