@@ -1,0 +1,101 @@
+# Coding Guidelines (Karpathy-Inspired)
+
+Các nguyên tắc bắt buộc khi viết code cho APG Manager RMS. Áp dụng cho mọi thay đổi trong repo.
+
+Tradeoff: Các nguyên tắc này ưu tiên sự cẩn thận hơn tốc độ. Với task rất nhỏ như sửa typo hoặc one-liner, dùng phán đoán nhưng vẫn phải giữ đúng intent của user.
+
+## 1. Think Before Coding
+
+Không đoán mò. Không che giấu sự mơ hồ. Trình bày tradeoffs.
+
+Trước khi implement:
+
+- Nêu rõ giả định. Nếu không chắc và quyết định có rủi ro, hỏi lại.
+- Nếu có nhiều cách hiểu, trình bày các cách hiểu chính, không tự chọn âm thầm.
+- Nếu có hướng đơn giản hơn, nói ra. Push back khi yêu cầu có nguy cơ làm phức tạp hoặc phá kiến trúc.
+- Nếu gặp điểm confusing có thể gây sai dữ liệu tài chính, auth, hoặc production behavior, dừng và làm rõ.
+
+## 2. Simplicity First
+
+Code tối thiểu để giải quyết vấn đề. Không code đầu cơ.
+
+- Không thêm feature ngoài yêu cầu.
+- Không tạo abstraction cho code dùng một lần.
+- Không thêm flexibility hoặc configurability khi chưa được yêu cầu.
+- Không xử lý error cho scenario bất khả thi nếu nó làm code khó hiểu hơn.
+- Nếu giải pháp 50 dòng đủ rõ, không viết 200 dòng.
+
+Tự hỏi: "Senior engineer có nói code này overcomplicated không?" Nếu có, simplify.
+
+## 3. Surgical Changes
+
+Chỉ sửa cái cần sửa. Chỉ dọn mess do thay đổi của mình tạo ra.
+
+Khi edit code có sẵn:
+
+- Không "cải tiến" code bên cạnh, comments, hoặc formatting không liên quan.
+- Không refactor thứ đang chạy tốt nếu user không yêu cầu.
+- Match style hiện tại, kể cả khi bạn sẽ làm khác trong project mới.
+- Nếu thấy dead code không liên quan, mention trong báo cáo, không tự xóa.
+
+Khi thay đổi của bạn tạo orphan:
+
+- Xóa imports, variables, functions mà chính thay đổi của bạn làm unused.
+- Không xóa dead code có sẵn trừ khi được yêu cầu rõ ràng.
+
+Kiểm tra: Mỗi dòng thay đổi phải trace trực tiếp về yêu cầu của user.
+
+## 4. Goal-Driven Execution
+
+Định nghĩa tiêu chí thành công. Loop cho đến khi verify xong.
+
+Chuyển task thành goal có thể verify:
+
+- "Thêm validation" -> viết hoặc chạy kiểm tra cho invalid inputs, rồi làm pass.
+- "Fix bug" -> tái hiện case lỗi bằng dữ liệu cụ thể, rồi verify case đó đúng.
+- "Refactor X" -> đảm bảo behavior trước và sau không đổi bằng type-check/test/manual smoke phù hợp.
+
+Với task nhiều bước, nêu plan ngắn:
+
+1. [Bước] -> verify: [kiểm tra]
+2. [Bước] -> verify: [kiểm tra]
+3. [Bước] -> verify: [kiểm tra]
+
+## Project-Specific: APG Manager RMS
+
+### Tech Stack
+
+- Monorepo: npm workspaces + Turborepo.
+- Frontend: Next.js App Router, React 18, Tailwind, TanStack Query, Zustand trong `apps/web/`.
+- Backend: NestJS 10, Prisma 5, PostgreSQL trong `apps/api/`.
+- Auth: JWT + RBAC.
+- Deploy: Vercel hoặc domain frontend, Render backend, Supabase database.
+- Shared package workspace được khai báo trong `package.json`, nhưng hiện repo chưa có thư mục `packages/`; đừng tạo shared package mới nếu chưa có yêu cầu rõ.
+
+### Quy tắc bắt buộc
+
+- TypeScript strict. Tránh `any`; nếu bất khả kháng, giải thích lý do và giới hạn phạm vi.
+- UI tiếng Việt, mobile-first, dark mode support.
+- Component có loading/error/empty state khi gọi dữ liệu async.
+- Comment code bằng tiếng Việt hoặc tiếng Anh ngắn gọn khi logic khó đọc; không comment điều hiển nhiên.
+- Không sửa Prisma schema mà không tạo migration file phù hợp.
+- Không thay đổi auth flow JWT/RBAC trừ khi được yêu cầu rõ ràng.
+- Không commit secrets, API keys, database URLs, hoặc token.
+- Giữ đúng cấu trúc module trong `apps/web` và `apps/api`.
+- n8n webhooks ở VPS riêng; backend chỉ expose endpoint hoặc trigger webhook, không nhồi logic automation lớn vào NestJS nếu chưa được yêu cầu.
+
+### Conventions
+
+- API endpoints dùng REST và prefix `/api/v1/`.
+- State/data fetching frontend: TanStack Query cho server state, Zustand cho client state.
+- Component naming: PascalCase. File naming: kebab-case.
+- Prisma models: PascalCase. Database tables/columns dùng snake_case qua Prisma mapping khi cần.
+- Khi thay đổi UI, kiểm tra cả desktop và mobile.
+- Khi thay đổi tài chính, phân biệt rõ "ghi công nợ" với "đã thu/chi tiền thật".
+
+### Verification Expectations
+
+- Frontend change: ưu tiên `npm run type-check --workspace @apg-manager/web`.
+- Backend change: ưu tiên `npm run type-check --workspace @apg-manager/api`; nếu API đang có lỗi cũ, nêu rõ lỗi nào không liên quan.
+- Thay đổi tài chính/booking: verify bằng case dữ liệu cụ thể như PNR/booking id khi có thể.
+- Thay đổi production/deploy: không gọi là deployed cho đến khi URL production trả behavior đúng.
