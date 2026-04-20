@@ -14,6 +14,7 @@ import {
   LEDGER_PARTY_LABELS,
 } from '@/lib/utils';
 import { PaymentModal } from './payment-modal';
+import { PnrCopyChip } from '@/components/ui/pnr-copy-chip';
 import {
   getLedgerBookingRef,
   getLedgerCategoryBadgeClass,
@@ -388,7 +389,9 @@ export function ReceivableTab() {
                   const isOverdue = row.status === 'OVERDUE';
                   return (
                     <tr key={row.key} className={cn('transition-colors hover:bg-muted/30', isOverdue && 'bg-red-500/5')}>
-                      <td className="px-4 py-2.5 font-mono text-xs font-semibold text-primary">{row.bookingRef}</td>
+                      <td className="px-4 py-2.5">
+                        <PnrCopyChip value={row.bookingRef} />
+                      </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1.5">
                           {row.partyType === 'CUSTOMER_INDIVIDUAL' ? (

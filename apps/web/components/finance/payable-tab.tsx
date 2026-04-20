@@ -13,6 +13,7 @@ import {
   LEDGER_PARTY_LABELS,
 } from '@/lib/utils';
 import { PaymentModal } from './payment-modal';
+import { PnrCopyChip } from '@/components/ui/pnr-copy-chip';
 import {
   getLedgerBookingRef,
   getLedgerCategoryBadgeClass,
@@ -376,7 +377,7 @@ export function PayableTab() {
                   return (
                     <tr key={row.key} className={cn('transition-colors hover:bg-muted/30', isOverdue && 'bg-red-500/5')}>
                       <td className="px-4 py-2.5">
-                        <p className="font-mono text-xs font-semibold text-orange-500">{row.bookingRef}</p>
+                        <PnrCopyChip value={row.bookingRef} variant="orange" />
                         {row.invoiceNumber && (
                           <p className="mt-0.5 text-[10px] text-muted-foreground">Hóa đơn: {row.invoiceNumber}</p>
                         )}
