@@ -1,7 +1,7 @@
 // APG Manager RMS - Danh sách Booking
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   type LucideIcon, ArrowDown, ArrowUp, ArrowUpDown, Banknote, Ban, CalendarDays, CheckCircle2, CreditCard, Download, FileText, Filter, Loader2, Plane, Plus, RefreshCw, RotateCcw, Ticket, X
@@ -154,6 +154,7 @@ export default function BookingsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [isSheetSyncOpen, setIsSheetSyncOpen] = useState(false);
+  const [copiedPnr, setCopiedPnr] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -244,6 +245,33 @@ export default function BookingsPage() {
     setSortOrder(field === 'departureTime' ? 'asc' : 'desc');
   };
 
+  const handleCopyPnr = async (event: MouseEvent<HTMLButtonElement>, pnr: string) => {
+    event.stopPropagation();
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(pnr);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = pnr;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setCopiedPnr(pnr);
+      window.setTimeout(() => {
+        setCopiedPnr((current) => (current === pnr ? '' : current));
+      }, 1400);
+    } catch (error) {
+      console.error('Copy PNR failed:', error);
+    }
+  };
+
   const renderSortHeader = (label: string, field: BookingSortField) => {
     const isActive = sortBy === field;
     const Icon = !isActive ? ArrowUpDown : sortOrder === 'asc' ? ArrowUp : ArrowDown;
@@ -285,9 +313,24 @@ export default function BookingsPage() {
   const columns: ColumnDef<Booking>[] = [
     {
       header: 'PNR',
-      className: 'w-[92px]',
+      className: 'w-[118px]',
       cell: (b) => b.pnr
-        ? <span className="font-mono font-bold text-[13px] text-foreground tracking-[0.18em]">{b.pnr}</span>
+        ? (
+          <button
+            type="button"
+            onClick={(event) => handleCopyPnr(event, b.pnr!)}
+            title={copiedPnr === b.pnr ? 'Đã copy PNR' : 'Bấm để copy PNR'}
+            aria-label={`Copy PNR ${b.pnr}`}
+            className={cn(
+              'inline-flex min-w-[84px] items-center justify-center rounded-lg border px-2.5 py-1.5 font-mono text-[12px] font-black tracking-[0.22em] shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_8px_24px_rgba(6,182,212,0.10)] transition-all duration-150 active:scale-[0.98]',
+              copiedPnr === b.pnr
+                ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-300 shadow-[0_0_0_1px_rgba(52,211,153,0.18),0_0_24px_rgba(52,211,153,0.18)]'
+                : 'border-cyan-400/35 bg-[linear-gradient(135deg,rgba(6,182,212,0.16),rgba(59,130,246,0.10))] text-cyan-50 hover:border-cyan-300/70 hover:bg-cyan-400/15 hover:text-white',
+            )}
+          >
+            {b.pnr}
+          </button>
+        )
         : <span className="text-muted-foreground text-[11px] italic">Chưa có PNR</span>,
     },
     {
