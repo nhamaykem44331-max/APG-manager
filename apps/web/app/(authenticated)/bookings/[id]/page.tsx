@@ -569,6 +569,7 @@ function FinancialSummaryCard({
   canAddPayment: boolean;
   onAddPayment: () => void;
 }) {
+  const isRefundedAndSettled = booking.status === 'REFUNDED' && totalRemaining <= 0;
   const sellLabel = passengerCount > 0 ? `Giá bán (Thu khách) x ${passengerCount}` : 'Giá bán (Thu khách)';
   const netLabel = passengerCount > 0 ? `Giá net (NCC) x ${passengerCount}` : 'Giá net (NCC)';
   const adjustments = booking.adjustments ?? [];
@@ -623,12 +624,15 @@ function FinancialSummaryCard({
           <span
             className={cn(
               'rounded-full px-2.5 py-0.5 text-[11px] font-medium',
-              paymentStatus === 'PAID' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-              paymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-              paymentStatus === 'UNPAID' && 'bg-red-500/10 text-red-600 dark:text-red-400',
+              isRefundedAndSettled && 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+              !isRefundedAndSettled && paymentStatus === 'PAID' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+              !isRefundedAndSettled && paymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+              !isRefundedAndSettled && paymentStatus === 'UNPAID' && 'bg-red-500/10 text-red-600 dark:text-red-400',
             )}
           >
-            {paymentStatus === 'PAID'
+            {isRefundedAndSettled
+              ? 'Đã đóng sổ hoàn vé'
+              : paymentStatus === 'PAID'
               ? 'Đã thanh toán đủ'
               : paymentStatus === 'PARTIAL'
                 ? 'Thanh toán một phần'
@@ -1279,7 +1283,8 @@ export default function BookingDetailPage() {
   const totalPaid = receivableLedgers.length > 0
     ? Math.max(0, totalReceivable - totalRemaining)
     : bookingPaid;
-  const effectivePaymentStatus: Booking['paymentStatus'] = totalRemaining <= 0 && totalReceivable > 0
+  const isRefundedAndSettled = bk.status === 'REFUNDED' && totalRemaining <= 0;
+  const effectivePaymentStatus: Booking['paymentStatus'] = totalRemaining <= 0 && (totalReceivable > 0 || bk.status === 'REFUNDED')
     ? 'PAID'
     : totalPaid > 0
       ? 'PARTIAL'
@@ -2168,11 +2173,13 @@ export default function BookingDetailPage() {
                 <span className="text-[13px] text-muted-foreground">Trạng thái thu tiền thật</span>
                 <span className={cn(
                   'px-2.5 py-0.5 rounded-full text-[11px] font-medium',
-                  effectivePaymentStatus === 'PAID'    && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                  effectivePaymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-                  effectivePaymentStatus === 'UNPAID'  && 'bg-red-500/10 text-red-600 dark:text-red-400',
+                  isRefundedAndSettled && 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+                  !isRefundedAndSettled && effectivePaymentStatus === 'PAID'    && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                  !isRefundedAndSettled && effectivePaymentStatus === 'PARTIAL' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                  !isRefundedAndSettled && effectivePaymentStatus === 'UNPAID'  && 'bg-red-500/10 text-red-600 dark:text-red-400',
                 )}>
-                  {effectivePaymentStatus === 'PAID'    ? '✅ Đã thanh toán đủ'
+                  {isRefundedAndSettled ? 'Đã đóng sổ hoàn vé'
+                   : effectivePaymentStatus === 'PAID'    ? '✅ Đã thanh toán đủ'
                    : effectivePaymentStatus === 'PARTIAL' ? '⚠ Thanh toán một phần'
                    : '❌ Chưa thanh toán'}
                 </span>
@@ -2315,7 +2322,7 @@ export default function BookingDetailPage() {
                           )}
                           {Number(adj.apgServiceFee) > 0 && (
                             <div className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">Phí xử lý APG:</span>
+                              <span className="text-muted-foreground">Phí APG thu khách:</span>
                               <span className="font-tabular text-emerald-500">+{formatVND(adj.apgServiceFee)}</span>
                             </div>
                           )}

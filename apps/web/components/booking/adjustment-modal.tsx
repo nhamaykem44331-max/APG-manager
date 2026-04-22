@@ -101,7 +101,11 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
 
   if (!isOpen) return null;
 
-  const retainedByApg = Number(airlineRefund || 0) - Number(refundAmount || 0);
+  const airlineRefundAmount = Number(airlineRefund || 0);
+  const customerRefundAmount = Number(refundAmount || 0);
+  const apgFeeAmount = Number(apgServiceFee || 0);
+  const apgCashDelta = airlineRefundAmount - customerRefundAmount;
+  const totalApgBenefit = apgCashDelta + apgFeeAmount;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -333,13 +337,13 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
 
                 <div>
                   <MoneyInput
-                    label="Phí xử lý APG giữ lại"
+                    label="Phí APG thu khách"
                     value={apgServiceFee}
                     onChange={setApgServiceFee}
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Phí dịch vụ APG thu cho việc xử lý hoàn. APG giữ lại = NCC hoàn - Hoàn khách.
+                    Khoản phí APG thu thêm từ khách cho nghiệp vụ hoàn vé. Khoản này tách riêng với chênh lệch quỹ hoàn.
                   </p>
                 </div>
 
@@ -361,21 +365,38 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
                 <div className="mt-1 space-y-1 rounded-lg bg-muted/60 p-3 text-xs">
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">NCC hoàn APG:</span>
-                    <span className="font-tabular text-emerald-500">+{formatVND(Number(airlineRefund || 0))}</span>
+                    <span className="font-tabular text-emerald-500">+{formatVND(airlineRefundAmount)}</span>
                   </div>
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">APG hoàn KH:</span>
-                    <span className="font-tabular text-red-500">-{formatVND(Number(refundAmount || 0))}</span>
+                    <span className="font-tabular text-red-500">-{formatVND(customerRefundAmount)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Phí APG thu khách:</span>
+                    <span className="font-tabular text-emerald-500">+{formatVND(apgFeeAmount)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Chênh lệch quỹ hoàn:</span>
+                    <span
+                      className={cn(
+                        'font-tabular',
+                        apgCashDelta >= 0 ? 'text-emerald-500' : 'text-red-500',
+                      )}
+                    >
+                      {apgCashDelta >= 0 ? '+' : '-'}
+                      {formatVND(Math.abs(apgCashDelta))}
+                    </span>
                   </div>
                   <div className="mt-1 flex justify-between gap-3 border-t border-border pt-2">
-                    <span className="font-medium text-foreground">APG giữ lại:</span>
+                    <span className="font-medium text-foreground">Kết quả APG từ nghiệp vụ hoàn:</span>
                     <span
                       className={cn(
                         'font-tabular font-medium',
-                        retainedByApg >= 0 ? 'text-emerald-500' : 'text-red-500',
+                        totalApgBenefit >= 0 ? 'text-emerald-500' : 'text-red-500',
                       )}
                     >
-                      {formatVND(retainedByApg)}
+                      {totalApgBenefit >= 0 ? '+' : '-'}
+                      {formatVND(Math.abs(totalApgBenefit))}
                     </span>
                   </div>
                 </div>

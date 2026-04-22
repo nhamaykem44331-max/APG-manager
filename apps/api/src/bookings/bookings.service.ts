@@ -596,6 +596,41 @@ export class BookingsService {
     };
   }
 
+  private async closeBookingLedgersForRefund(
+    client: PrismaService | Prisma.TransactionClient,
+    bookingId: string,
+    direction: 'RECEIVABLE' | 'PAYABLE',
+  ) {
+    const ledgers = await client.accountsLedger.findMany({
+      where: {
+        bookingId,
+        direction,
+        remaining: { gt: 0 },
+      },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    for (const ledger of ledgers) {
+      const paidAmount = Number(ledger.paidAmount);
+      const nextStatus = paidAmount > 0 ? 'PAID' : 'WRITTEN_OFF';
+      const nextDescription = ledger.description.includes('[HOÀN VÉ - ĐÓNG SỔ]')
+        ? ledger.description
+        : `${ledger.description} [HOÀN VÉ - ĐÓNG SỔ]`;
+
+      await client.accountsLedger.update({
+        where: { id: ledger.id },
+        data: {
+          totalAmount: paidAmount,
+          remaining: 0,
+          status: nextStatus as any,
+          description: nextDescription,
+        },
+      });
+    }
+
+    return ledgers.length;
+  }
+
   private orderLedgerAllocations<T extends { dueDate: Date; createdAt: Date; category?: string | null }>(ledgers: T[]) {
     return [...ledgers].sort((a, b) => {
       const dueDelta = a.dueDate.getTime() - b.dueDate.getTime();
@@ -789,7 +824,7 @@ export class BookingsService {
     client: PrismaService | Prisma.TransactionClient,
     bookingId: string,
   ) {
-    const [booking, receivableLedgers, payments] = await Promise.all([
+    const [booking, receivableLedgers, fallbackSnapshot] = await Promise.all([
       client.booking.findUnique({ where: { id: bookingId } }),
       client.accountsLedger.findMany({
         where: {
@@ -799,7 +834,7 @@ export class BookingsService {
         },
         select: { totalAmount: true, paidAmount: true },
       }),
-      client.payment.findMany({ where: { bookingId } }),
+      this.calculateBookingDebtFallbackSnapshot(client, bookingId),
     ]);
 
     if (!booking) {
@@ -809,15 +844,14 @@ export class BookingsService {
     const hasReceivableLedger = receivableLedgers.length > 0;
     const totalDue = hasReceivableLedger
       ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.totalAmount), 0)
-      : Number(booking.totalSellPrice);
+      : fallbackSnapshot.totalReceivable;
     const totalPaid = hasReceivableLedger
       ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.paidAmount), 0)
-      : payments
-          .filter((payment) => payment.method !== 'DEBT')
-          .reduce((sum, payment) => sum + Number(payment.amount), 0);
+      : fallbackSnapshot.actualPaid;
 
     let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
-    if (totalDue > 0 && totalPaid >= totalDue) paymentStatus = 'PAID';
+    if (totalDue <= 0) paymentStatus = 'PAID';
+    else if (totalPaid >= totalDue) paymentStatus = 'PAID';
     else if (totalPaid > 0) paymentStatus = 'PARTIAL';
     else paymentStatus = 'UNPAID';
 
@@ -2003,59 +2037,13 @@ export class BookingsService {
         const penaltyFee = Number(dto.penaltyFee ?? 0);
         const apgFee = Number(dto.apgServiceFee ?? 0);
 
-        const existingAR = await tx.accountsLedger.findFirst({
-          where: { bookingId: booking.id, direction: 'RECEIVABLE' },
-          orderBy: { createdAt: 'asc' },
-        });
+        const [closedReceivables, closedPayables] = await Promise.all([
+          this.closeBookingLedgersForRefund(tx, booking.id, 'RECEIVABLE'),
+          this.closeBookingLedgersForRefund(tx, booking.id, 'PAYABLE'),
+        ]);
 
-        if (existingAR) {
-          const arTotal = Number(existingAR.totalAmount);
-          const arPaid = Number(existingAR.paidAmount);
-
-          if (arPaid < arTotal) {
-            await tx.accountsLedger.update({
-              where: { id: existingAR.id },
-              data: {
-                totalAmount: arPaid,
-                remaining: 0,
-                status: arPaid > 0 ? 'PAID' : 'WRITTEN_OFF',
-                description: `${existingAR.description} [HOÃ€N VÃ‰ - AR Ä‘iá»u chá»‰nh]`,
-              },
-            });
-            console.log(`[REFUND-AR] AR ${existingAR.code}: giáº£m tá»« ${arTotal} â†’ ${arPaid} (xÃ³a ná»£)`);
-          }
-        }
-
-        const existingAP = await tx.accountsLedger.findFirst({
-          where: { bookingId: booking.id, direction: 'PAYABLE' },
-          orderBy: { createdAt: 'asc' },
-        });
-
-        if (existingAP) {
-          const apTotal = Number(existingAP.totalAmount);
-          const apPaid = Number(existingAP.paidAmount);
-
-          if (apPaid < apTotal) {
-            const newApTotal = apPaid + penaltyFee;
-            const newApRemaining = Math.max(0, newApTotal - apPaid);
-            const newApStatus = newApRemaining <= 0
-              ? 'PAID'
-              : apPaid > 0
-                ? 'PARTIAL_PAID'
-                : 'ACTIVE';
-
-            await tx.accountsLedger.update({
-              where: { id: existingAP.id },
-              data: {
-                totalAmount: Math.max(0, newApTotal),
-                remaining: newApRemaining,
-                status: newApStatus as any,
-                description: `${existingAP.description} [HOÃ€N VÃ‰ - AP Ä‘iá»u chá»‰nh]`,
-              },
-            });
-            console.log(`[REFUND-AP] AP ${existingAP.code}: giáº£m tá»« ${apTotal} â†’ ${newApTotal}`);
-          }
-        }
+        console.log(`[REFUND-AR] Dong ${closedReceivables} ledger phai thu cho booking ${booking.bookingCode}`);
+        console.log(`[REFUND-AP] Dong ${closedPayables} ledger phai tra cho booking ${booking.bookingCode}`);
 
         if (airlineRefund > 0) {
           try {
@@ -2105,13 +2093,14 @@ export class BookingsService {
           where: { id: booking.id },
           data: { status: 'REFUNDED' },
         });
+        await this.updatePaymentStatusWithClient(tx, booking.id);
         await tx.bookingStatusLog.create({
           data: {
             bookingId: booking.id,
             fromStatus: booking.status,
             toStatus: 'REFUNDED',
             changedBy: userId,
-            reason: `HoÃ n vÃ© (${dto.type}): HoÃ n KH ${refundToCustomer}, NCC hoÃ n ${airlineRefund}, PhÃ­ hoÃ n ${penaltyFee}, PhÃ­ APG ${apgFee}`,
+            reason: `Hoàn vé (${dto.type}): Hoàn KH ${refundToCustomer}, NCC hoàn ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
           },
         });
       } else {

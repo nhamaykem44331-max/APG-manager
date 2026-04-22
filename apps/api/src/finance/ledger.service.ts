@@ -82,7 +82,9 @@ export class LedgerService {
     const hasReceivableLedger = receivableLedgers.length > 0;
     const totalDue = hasReceivableLedger
       ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.totalAmount), 0)
-      : Number(booking.totalSellPrice);
+      : booking.status === 'REFUNDED'
+        ? 0
+        : Number(booking.totalSellPrice);
     const totalPaid = hasReceivableLedger
       ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.paidAmount), 0)
       : payments
@@ -90,7 +92,8 @@ export class LedgerService {
           .reduce((sum, payment) => sum + Number(payment.amount), 0);
 
     let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
-    if (totalDue > 0 && totalPaid >= totalDue) paymentStatus = 'PAID';
+    if (totalDue <= 0) paymentStatus = 'PAID';
+    else if (totalPaid >= totalDue) paymentStatus = 'PAID';
     else if (totalPaid > 0) paymentStatus = 'PARTIAL';
     else paymentStatus = 'UNPAID';
 
@@ -526,21 +529,21 @@ export class LedgerService {
 
     const [arData, apData, arOverdue, apOverdue] = await Promise.all([
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'RECEIVABLE', status: { not: 'PAID' } },
+        where: { direction: 'RECEIVABLE', status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
         _sum: { remaining: true },
         _count: true,
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'PAYABLE', status: { not: 'PAID' } },
+        where: { direction: 'PAYABLE', status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
         _sum: { remaining: true },
         _count: true,
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'RECEIVABLE', dueDate: { lt: now }, status: { not: 'PAID' } },
+        where: { direction: 'RECEIVABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
         _sum: { remaining: true },
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'PAYABLE', dueDate: { lt: now }, status: { not: 'PAID' } },
+        where: { direction: 'PAYABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
         _sum: { remaining: true },
       }),
     ]);
@@ -566,7 +569,7 @@ export class LedgerService {
       : {};
 
     const ledgers = await this.prisma.accountsLedger.findMany({
-      where: { ...directionFilter, status: { not: 'PAID' } },
+      where: { ...directionFilter, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
       select: { direction: true, remaining: true, dueDate: true },
     });
 
@@ -602,7 +605,7 @@ export class LedgerService {
   async getOverdue() {
     const now = new Date();
     return this.prisma.accountsLedger.findMany({
-      where: { dueDate: { lt: now }, status: { not: 'PAID' } },
+      where: { dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
       orderBy: { dueDate: 'asc' },
       include: {
         customer: { select: { id: true, fullName: true, phone: true, customerCode: true, type: true } },

@@ -175,7 +175,7 @@ export function ReceivableTab() {
 
   const filteredLedgers = useMemo(
     () =>
-      ledgers.filter((ledger) => {
+      outstandingLedgers.filter((ledger) => {
         if (customerFilter !== 'ALL' && getReceivablePartyKey(ledger) !== customerFilter) {
           return false;
         }
@@ -184,7 +184,7 @@ export function ReceivableTab() {
         }
         return matchesLedgerSearch(ledger, search);
       }),
-    [ledgers, search, customerFilter, categoryFilter],
+    [outstandingLedgers, search, customerFilter, categoryFilter],
   );
 
   const pnrRows = useMemo<ReceivablePnrRow[]>(() => {

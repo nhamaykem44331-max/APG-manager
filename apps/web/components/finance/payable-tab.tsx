@@ -164,7 +164,7 @@ export function PayableTab() {
 
   const filteredLedgers = useMemo(
     () =>
-      ledgers.filter((ledger) => {
+      outstandingLedgers.filter((ledger) => {
         if (supplierFilter !== 'ALL' && getPayablePartyKey(ledger) !== supplierFilter) {
           return false;
         }
@@ -173,7 +173,7 @@ export function PayableTab() {
         }
         return matchesLedgerSearch(ledger, search);
       }),
-    [ledgers, search, supplierFilter, categoryFilter],
+    [outstandingLedgers, search, supplierFilter, categoryFilter],
   );
 
   const pnrRows = useMemo<PayablePnrRow[]>(() => {
