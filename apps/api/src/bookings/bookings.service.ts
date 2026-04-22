@@ -639,6 +639,73 @@ export class BookingsService {
     return ledgers.length;
   }
 
+  private async createRefundHistoryLedger(
+    client: PrismaService | Prisma.TransactionClient,
+    params: {
+      booking: Awaited<ReturnType<BookingsService['findOne']>>;
+      userId: string;
+      direction: 'RECEIVABLE' | 'PAYABLE';
+      amount: number;
+    },
+  ) {
+    const { booking, userId, direction, amount } = params;
+    if (amount <= 0) {
+      return null;
+    }
+
+    const issueDate = booking.createdAt ? new Date(booking.createdAt) : new Date();
+
+    if (direction === 'RECEIVABLE') {
+      if (!booking.customer) {
+        return null;
+      }
+
+      return this.createLedgerWithGeneratedCode(client, 'RECEIVABLE', (code) => ({
+        code,
+        direction: 'RECEIVABLE',
+        partyType: this.getReceivablePartyType(booking.customer!.type) as any,
+        customerId: booking.customer!.id,
+        customerCode: booking.customer!.customerCode,
+        bookingId: booking.id,
+        bookingCode: booking.bookingCode,
+        totalAmount: amount,
+        paidAmount: 0,
+        remaining: 0,
+        issueDate,
+        dueDate: this.buildReceivableDueDate(issueDate, booking.customer!.type),
+        status: 'REFUNDED' as any,
+        category: 'TICKET' as any,
+        description: `Công nợ vé gốc — Booking ${booking.bookingCode} [HOÀN VÉ - ĐÃ HOÀN]`,
+        createdBy: userId,
+      }));
+    }
+
+    if (!booking.supplier) {
+      return null;
+    }
+
+    const dueDate = new Date(issueDate);
+    dueDate.setDate(dueDate.getDate() + (booking.supplier.paymentTerms ?? 15));
+
+    return this.createLedgerWithGeneratedCode(client, 'PAYABLE', (code) => ({
+      code,
+      direction: 'PAYABLE',
+      partyType: booking.supplier!.type as any,
+      supplierId: booking.supplier!.id,
+      bookingId: booking.id,
+      bookingCode: booking.bookingCode,
+      totalAmount: amount,
+      paidAmount: 0,
+      remaining: 0,
+      issueDate,
+      dueDate,
+      status: 'REFUNDED' as any,
+      category: 'TICKET' as any,
+      description: `Công nợ vé gốc phải trả NCC — Booking ${booking.bookingCode} [HOÀN VÉ - ĐÃ HOÀN]`,
+      createdBy: userId,
+    }));
+  }
+
   private orderLedgerAllocations<T extends { dueDate: Date; createdAt: Date; category?: string | null }>(ledgers: T[]) {
     return [...ledgers].sort((a, b) => {
       const dueDelta = a.dueDate.getTime() - b.dueDate.getTime();
@@ -2042,6 +2109,24 @@ export class BookingsService {
           this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'RECEIVABLE'),
           this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'PAYABLE'),
         ]);
+
+        if (refundedReceivables === 0) {
+          await this.createRefundHistoryLedger(tx, {
+            booking,
+            userId,
+            direction: 'RECEIVABLE',
+            amount: refundToCustomer,
+          });
+        }
+
+        if (refundedPayables === 0) {
+          await this.createRefundHistoryLedger(tx, {
+            booking,
+            userId,
+            direction: 'PAYABLE',
+            amount: airlineRefund,
+          });
+        }
 
         console.log(`[REFUND-AR] Marked ${refundedReceivables} ticket receivable ledger(s) as refunded for booking ${booking.bookingCode}`);
         console.log(`[REFUND-AP] Marked ${refundedPayables} ticket payable ledger(s) as refunded for booking ${booking.bookingCode}`);
