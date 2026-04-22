@@ -42,7 +42,7 @@ export class FinanceService {
       activeLedgerSummary,
       timelineBookings,
       monthTickets,
-    ] = await Promise.all([
+    ] = await this.prisma.$transaction([
       // Thống kê tháng
       this.prisma.booking.aggregate({
         where: {
@@ -173,7 +173,7 @@ export class FinanceService {
 
     const where = status ? { status: status as Prisma.EnumDebtStatusFilter } : {};
 
-    const [data, total] = await Promise.all([
+    const [data, total] = await this.prisma.$transaction([
       this.prisma.debt.findMany({
         where,
         include: {

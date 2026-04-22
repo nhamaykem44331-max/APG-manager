@@ -59,7 +59,7 @@ export class ReportsController {
     const tomorrowStart = addReportDays(todayStart, 1);
     const yesterdayStart = addReportDays(todayStart, -1);
 
-    const [today, yesterday] = await Promise.all([
+    const [today, yesterday] = await this.prisma.$transaction([
       this.prisma.booking.aggregate({
         where: {
           status: { in: ['ISSUED', 'COMPLETED'] },
@@ -127,7 +127,7 @@ export class ReportsController {
       pendingBookings,
       recentBookingsRaw,
       timelineLedgers,
-    ] = await Promise.all([
+    ] = await this.prisma.$transaction([
       this.prisma.booking.findMany({
         where: monthBookingWhere,
         select: {
@@ -450,7 +450,7 @@ export class ReportsController {
     const startDate = addReportDays(endExclusive, -days);
 
     // Lấy tất cả booking trong khoảng thời gian bằng 1 query
-    const [bookings, ledgers] = await Promise.all([
+    const [bookings, ledgers] = await this.prisma.$transaction([
       this.prisma.booking.findMany({
         where: {
           deletedAt: null,

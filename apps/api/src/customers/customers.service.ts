@@ -211,7 +211,7 @@ export class CustomersService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [totalCustomers, platinumCustomers, corporateCustomers, newThisMonth] = await Promise.all([
+    const [totalCustomers, platinumCustomers, corporateCustomers, newThisMonth] = await this.prisma.$transaction([
       this.prisma.customer.count(),
       this.prisma.customer.count({ where: { vipTier: 'PLATINUM' } }),
       this.prisma.customer.count({ where: { type: 'CORPORATE' } }),
@@ -482,7 +482,7 @@ export class CustomersService {
     }
 
     // Đếm dữ liệu liên kết (bookings chỉ đếm chưa soft-delete)
-    const [activeBookings, debts, ledgers, invoices, exportBatches] = await Promise.all([
+    const [activeBookings, debts, ledgers, invoices, exportBatches] = await this.prisma.$transaction([
       this.prisma.booking.count({ where: { customerId: id, deletedAt: null } }),
       this.prisma.debt.count({ where: { customerId: id } }),
       this.prisma.accountsLedger.count({ where: { customerId: id } }),
@@ -569,9 +569,8 @@ export class CustomersService {
   }
 
   async getStats(id: string) {
-    const customer = await this.prisma.customer.findUniqueOrThrow({ where: { id } });
-
-    const [bookingStats, debtStats, paymentTotal] = await Promise.all([
+    const [customer, bookingStats, debtStats, paymentTotal, bookings] = await this.prisma.$transaction([
+      this.prisma.customer.findUniqueOrThrow({ where: { id } }),
       this.prisma.booking.aggregate({
         where: { customerId: id, deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
         _sum: { totalSellPrice: true, profit: true },
@@ -593,13 +592,12 @@ export class CustomersService {
         },
         _sum: { amount: true },
       }),
+      this.prisma.booking.findMany({
+        where: { customerId: id, deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
+        include: { tickets: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
-
-    const bookings = await this.prisma.booking.findMany({
-      where: { customerId: id, deletedAt: null, status: { in: CUSTOMER_REVENUE_STATUSES } },
-      include: { tickets: true },
-      orderBy: { createdAt: 'desc' },
-    });
 
     const routeCount: Record<string, number> = {};
     bookings.forEach((booking) => {

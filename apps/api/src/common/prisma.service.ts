@@ -8,19 +8,21 @@ function buildRuntimeDatasourceUrl(rawUrl?: string) {
 
   try {
     const url = new URL(rawUrl);
+    const connectionLimit = process.env.PRISMA_CONNECTION_LIMIT?.trim() || '2';
+    const poolTimeout = process.env.PRISMA_POOL_TIMEOUT?.trim() || '30';
+    const connectTimeout = process.env.PRISMA_CONNECT_TIMEOUT?.trim() || '15';
+    const applicationName = process.env.PRISMA_APPLICATION_NAME?.trim() || 'apg-manager-api';
 
     // Supabase starter + Render rolling deploy is sensitive to Prisma's default pool size.
     // Keep the pool small to avoid boot failures during zero-downtime deploys.
-    if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT ?? '2');
-    }
+    // Always override the runtime values because legacy Render DATABASE_URL values may
+    // already embed an unsafe pool size such as connection_limit=9.
+    url.searchParams.set('connection_limit', connectionLimit);
+    url.searchParams.set('pool_timeout', poolTimeout);
+    url.searchParams.set('connect_timeout', connectTimeout);
 
-    if (!url.searchParams.has('pool_timeout')) {
-      url.searchParams.set('pool_timeout', process.env.PRISMA_POOL_TIMEOUT ?? '30');
-    }
-
-    if (!url.searchParams.has('connect_timeout')) {
-      url.searchParams.set('connect_timeout', process.env.PRISMA_CONNECT_TIMEOUT ?? '15');
+    if (!url.searchParams.has('application_name')) {
+      url.searchParams.set('application_name', applicationName);
     }
 
     return url.toString();

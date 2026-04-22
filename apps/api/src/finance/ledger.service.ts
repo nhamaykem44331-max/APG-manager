@@ -147,7 +147,7 @@ export class LedgerService {
       ? { [dto.sortBy]: dto.sortOrder || 'desc' }
       : { dueDate: 'asc' as const };
 
-    const [data, total] = await Promise.all([
+    const [data, total] = await this.prisma.$transaction([
       this.prisma.accountsLedger.findMany({
         where,
         skip,
@@ -527,7 +527,7 @@ export class LedgerService {
   async getSummary() {
     const now = new Date();
 
-    const [arData, apData, arOverdue, apOverdue] = await Promise.all([
+    const [arData, apData, arOverdue, apOverdue] = await this.prisma.$transaction([
       this.prisma.accountsLedger.aggregate({
         where: { direction: 'RECEIVABLE', status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
         _sum: { remaining: true },

@@ -255,7 +255,7 @@ export class BookingsService {
       if (dto.dateFrom) conditions.push(Prisma.sql`COALESCE(b.business_date, b.created_at) >= ${parseFilterStart(dto.dateFrom)}`);
       if (dto.dateTo) conditions.push(Prisma.sql`COALESCE(b.business_date, b.created_at) <= ${parseFilterEnd(dto.dateTo)}`);
 
-      const [idRows, total] = await Promise.all([
+      const [idRows, total] = await this.prisma.$transaction([
         this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
           SELECT b.id
           FROM bookings b
@@ -292,7 +292,7 @@ export class BookingsService {
 
     const sortColumn = sortBy === 'createdAt' ? 'businessDate' : sortBy;
 
-    const [data, total] = await Promise.all([
+    const [data, total] = await this.prisma.$transaction([
       this.prisma.booking.findMany({
         where,
         include: {
