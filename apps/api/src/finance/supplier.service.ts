@@ -21,7 +21,7 @@ export class SupplierService {
     // Lấy tổng nợ bằng 1 query riêng thay vì include toàn bộ ledger rows
     const debtSums = await this.prisma.accountsLedger.groupBy({
       by: ['supplierId'],
-      where: { status: { not: 'PAID' }, supplierId: { not: null } },
+      where: { status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any }, supplierId: { not: null } },
       _sum: { remaining: true },
     });
     const debtMap = Object.fromEntries(

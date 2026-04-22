@@ -68,7 +68,7 @@ export class LedgerService {
         where: {
           bookingId,
           direction: 'RECEIVABLE',
-          status: { not: 'WRITTEN_OFF' },
+          status: { notIn: ['WRITTEN_OFF', 'REFUNDED'] as any },
         },
         select: { totalAmount: true, paidAmount: true },
       }),
@@ -529,21 +529,21 @@ export class LedgerService {
 
     const [arData, apData, arOverdue, apOverdue] = await Promise.all([
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'RECEIVABLE', status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+        where: { direction: 'RECEIVABLE', status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
         _sum: { remaining: true },
         _count: true,
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'PAYABLE', status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+        where: { direction: 'PAYABLE', status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
         _sum: { remaining: true },
         _count: true,
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'RECEIVABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+        where: { direction: 'RECEIVABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
         _sum: { remaining: true },
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { direction: 'PAYABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+        where: { direction: 'PAYABLE', dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
         _sum: { remaining: true },
       }),
     ]);
@@ -569,7 +569,7 @@ export class LedgerService {
       : {};
 
     const ledgers = await this.prisma.accountsLedger.findMany({
-      where: { ...directionFilter, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+      where: { ...directionFilter, status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
       select: { direction: true, remaining: true, dueDate: true },
     });
 
@@ -605,7 +605,7 @@ export class LedgerService {
   async getOverdue() {
     const now = new Date();
     return this.prisma.accountsLedger.findMany({
-      where: { dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF'] as any } },
+      where: { dueDate: { lt: now }, status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any } },
       orderBy: { dueDate: 'asc' },
       include: {
         customer: { select: { id: true, fullName: true, phone: true, customerCode: true, type: true } },

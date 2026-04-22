@@ -15,6 +15,8 @@ import {
   cn, formatDate, formatVND, formatDateTime, formatTime, normalizeLegacyVietnameseText,
   BOOKING_STATUS_LABELS, BOOKING_STATUS_CLASSES,
   BOOKING_SOURCE_LABELS,
+  DEBT_STATUS_CLASSES,
+  DEBT_STATUS_LABELS,
 } from '@/lib/utils';
 import { MoneyInput } from '@/components/ui/money-input';
 import { PageHeader } from '@/components/ui/page-header';
@@ -29,6 +31,35 @@ import {
   PaymentEntryModal,
   type PaymentEntryPayload,
 } from '@/components/finance/payment-entry-modal';
+
+type BookingLedger = NonNullable<Booking['ledgers']>[number];
+
+function isActiveReceivableLedger(ledger: Pick<BookingLedger, 'direction' | 'status'>) {
+  return ledger.direction === 'RECEIVABLE'
+    && ledger.status !== 'WRITTEN_OFF'
+    && ledger.status !== 'REFUNDED';
+}
+
+function getLedgerDebtRecordedAmount(ledger: Pick<BookingLedger, 'payments'>) {
+  return (ledger.payments ?? [])
+    .filter((payment) => payment.method === 'DEBT')
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+}
+
+function getActiveDebtRecordedTotal(booking: Pick<Booking, 'ledgers' | 'payments'>) {
+  const receivableLedgerHistory = (booking.ledgers ?? []).filter((ledger) => ledger.direction === 'RECEIVABLE');
+  if (receivableLedgerHistory.length > 0) {
+    const activeReceivableLedgers = receivableLedgerHistory.filter(isActiveReceivableLedger);
+    return activeReceivableLedgers.reduce(
+      (sum, ledger) => sum + getLedgerDebtRecordedAmount(ledger),
+      0,
+    );
+  }
+
+  return (booking.payments ?? [])
+    .filter((payment) => payment.method === 'DEBT')
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+}
 
 function getCustomerCodeBadgeClass(type?: string) {
   return type === 'CORPORATE'
@@ -581,9 +612,12 @@ function FinancialSummaryCard({
   const changeCost = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.changeFee || 0) : 0), 0);
   const changeRevenue = adjustments.reduce((sum, adj) => sum + (adj.type === 'CHANGE' ? Number(adj.chargeToCustomer || 0) : 0), 0);
   const refundAmount = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.refundAmount || 0) : 0), 0);
+  const refundAirline = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.airlineRefund || 0) : 0), 0);
+  const refundPenalty = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.penaltyFee || 0) : 0), 0);
+  const refundServiceFee = adjustments.reduce((sum, adj) => sum + ((adj.type === 'REFUND_CASH' || adj.type === 'REFUND_CREDIT') ? Number(adj.apgServiceFee || 0) : 0), 0);
   const actualPayments = (booking.payments ?? []).filter((payment) => payment.method !== 'DEBT');
   const debtPayments = (booking.payments ?? []).filter((payment) => payment.method === 'DEBT');
-  const debtRecordedTotal = debtPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const debtRecordedTotal = getActiveDebtRecordedTotal(booking);
 
   return (
     <div className="card p-3.5">
@@ -604,8 +638,17 @@ function FinancialSummaryCard({
           ...(changeRevenue > 0
             ? [{ label: 'Phụ thu đổi vé (Thu khách)', value: formatVND(changeRevenue), green: false }]
             : []),
+          ...(refundAirline > 0
+            ? [{ label: 'Đảo AP vé gốc', value: formatVND(refundAirline), green: false }]
+            : []),
           ...(refundAmount > 0
-            ? [{ label: 'Khách được hoàn', value: formatVND(refundAmount), green: false }]
+            ? [{ label: 'Đảo AR vé gốc', value: formatVND(refundAmount), green: false }]
+            : []),
+          ...(refundPenalty > 0
+            ? [{ label: 'Phí hoàn hãng', value: formatVND(refundPenalty), green: false }]
+            : []),
+          ...(refundServiceFee > 0
+            ? [{ label: 'Phí APG thu khách', value: formatVND(refundServiceFee), green: false }]
             : []),
           { label: 'Lợi nhuận', value: `+${formatVND(totalProfit)}`, green: true },
         ].map((row, idx, arr) => (
@@ -1269,10 +1312,10 @@ export default function BookingDetailPage() {
     + (refundAirline + refundServiceFee - refundAmount - refundPenalty);
   const validPayments = (bk.payments ?? []).filter(p => p.method !== 'DEBT');
   const debtPayments = (bk.payments ?? []).filter(p => p.method === 'DEBT');
-  const debtRecordedTotal = debtPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const debtRecordedTotal = getActiveDebtRecordedTotal(bk);
   const bookingPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0);
-  const receivableLedgers = (bk.ledgers ?? []).filter((ledger) => ledger.direction === 'RECEIVABLE');
-  const fallbackReceivable = totalSellPrice + serviceRevenue + changeRevenue - refundAmount;
+  const receivableLedgers = (bk.ledgers ?? []).filter(isActiveReceivableLedger);
+  const fallbackReceivable = totalSellPrice + serviceRevenue + changeRevenue - refundAmount + refundServiceFee;
   const totalReceivable = receivableLedgers.length > 0
     ? receivableLedgers.reduce((sum, ledger) => sum + Number(ledger.totalAmount), 0)
     : fallbackReceivable;
@@ -1295,9 +1338,9 @@ export default function BookingDetailPage() {
   const isReady = hasCustomer && hasSupplier;
   const canAddTicket  = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status);
   const canEditItinerary = canAddTicket && !hasFinancialLock;
-  const canAddPayment = !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(bk.status)
+  const canAddPayment = !['COMPLETED', 'CANCELLED'].includes(bk.status)
     && isReady
-    && (totalRemaining > 0 || debtRecordableAmount > 0 || receivableLedgers.length === 0);
+    && (totalRemaining > 0 || debtRecordableAmount > 0 || (receivableLedgers.length === 0 && bk.status !== 'REFUNDED'));
   const selectedStaff =
     staffOptions.find((user) => user.id === bookingMetaForm.staffId)
     ?? bk.staff
@@ -2304,7 +2347,7 @@ export default function BookingDetailPage() {
                           <>
                           {Number(adj.airlineRefund) > 0 && (
                             <div className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">NCC hoàn APG:</span>
+                              <span className="text-muted-foreground">Đảo AP vé gốc:</span>
                               <span className="font-tabular text-emerald-500">+{formatVND(adj.airlineRefund)}</span>
                             </div>
                           )}
@@ -2316,7 +2359,7 @@ export default function BookingDetailPage() {
                           )}
                           {Number(adj.refundAmount) > 0 && (
                             <div className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">Hoàn KH:</span>
+                              <span className="text-muted-foreground">Đảo AR vé gốc:</span>
                               <span className="font-tabular text-red-500">-{formatVND(adj.refundAmount)}</span>
                             </div>
                           )}
@@ -2362,20 +2405,27 @@ export default function BookingDetailPage() {
                       <span className="font-mono text-muted-foreground">{l.code}</span>
                     </div>
                     <div className="text-right">
-                      <span className={cn(
-                        'font-medium font-tabular',
-                        l.status === 'PAID' ? 'text-emerald-500' : 'text-foreground',
-                      )}>
-                        {formatVND(l.remaining)}
-                      </span>
+                      {(() => {
+                        const displayAmount = l.status === 'REFUNDED'
+                          ? Number(l.totalAmount)
+                          : Number(l.remaining);
+
+                        return (
+                          <span
+                            className={cn(
+                              'font-medium font-tabular',
+                              l.status === 'PAID' ? 'text-emerald-500' : l.status === 'REFUNDED' ? 'text-pink-400' : 'text-foreground',
+                            )}
+                          >
+                            {formatVND(displayAmount)}
+                          </span>
+                        );
+                      })()}
                       <span className={cn(
                         'ml-2 px-1.5 py-0.5 rounded text-[10px]',
-                        l.status === 'PAID' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                        l.status === 'ACTIVE' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-                        l.status === 'OVERDUE' && 'bg-red-500/10 text-red-600 dark:text-red-400',
-                        l.status === 'PARTIAL_PAID' && 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+                        DEBT_STATUS_CLASSES[l.status],
                       )}>
-                        {l.status}
+                        {DEBT_STATUS_LABELS[l.status]}
                       </span>
                     </div>
                   </div>
@@ -2477,7 +2527,14 @@ export default function BookingDetailPage() {
                   label: l.direction === 'RECEIVABLE'
                     ? `Auto: Tạo AR ${l.code} — ${formatVND(l.totalAmount)}`
                     : `Auto: Tạo AP ${l.code} — ${formatVND(l.totalAmount)}`,
-                  detail: l.status === 'PAID' ? 'Đã TT' : l.status === 'PARTIAL_PAID' ? 'TT 1 phần' : 'Chưa TT',
+                  detail:
+                    l.status === 'PAID'
+                      ? 'Đã TT'
+                      : l.status === 'PARTIAL_PAID'
+                        ? 'TT 1 phần'
+                        : l.status === 'REFUNDED'
+                          ? 'Đã hoàn'
+                          : 'Chưa TT',
                 })),
               ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 

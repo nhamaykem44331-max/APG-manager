@@ -804,7 +804,7 @@ export class InvoiceService {
       this.prisma.accountsLedger.aggregate({
         where: {
           direction: 'RECEIVABLE',
-          status: { not: 'PAID' },
+          status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any },
         },
         _count: true,
         _sum: { remaining: true },
@@ -812,7 +812,7 @@ export class InvoiceService {
       this.prisma.accountsLedger.aggregate({
         where: {
           direction: 'PAYABLE',
-          status: { not: 'PAID' },
+          status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any },
         },
         _count: true,
         _sum: { remaining: true },

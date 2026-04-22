@@ -204,7 +204,8 @@ export function ReceivableTab() {
         (ledger) =>
           Number(ledger.remaining) > 0 &&
           ledger.status !== 'PAID' &&
-          ledger.status !== 'WRITTEN_OFF',
+          ledger.status !== 'WRITTEN_OFF' &&
+          ledger.status !== 'REFUNDED',
       );
 
         return {

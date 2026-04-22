@@ -335,7 +335,19 @@ export class BookingsService {
             customer: { select: { fullName: true } },
           },
         },
-        ledgers: { select: { id: true, code: true, direction: true, status: true, remaining: true, totalAmount: true, createdAt: true } },
+        ledgers: {
+          select: {
+            id: true,
+            code: true,
+            direction: true,
+            status: true,
+            remaining: true,
+            totalAmount: true,
+            paidAmount: true,
+            createdAt: true,
+            payments: { orderBy: { paidAt: 'desc' } },
+          },
+        },
       },
     });
 
@@ -596,7 +608,7 @@ export class BookingsService {
     };
   }
 
-  private async closeBookingLedgersForRefund(
+  private async markPrimaryTicketLedgersRefunded(
     client: PrismaService | Prisma.TransactionClient,
     bookingId: string,
     direction: 'RECEIVABLE' | 'PAYABLE',
@@ -604,25 +616,21 @@ export class BookingsService {
     const ledgers = await client.accountsLedger.findMany({
       where: {
         bookingId,
-        direction,
-        remaining: { gt: 0 },
+        ...this.getPrimaryTicketLedgerWhere(direction),
       },
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
     });
 
     for (const ledger of ledgers) {
-      const paidAmount = Number(ledger.paidAmount);
-      const nextStatus = paidAmount > 0 ? 'PAID' : 'WRITTEN_OFF';
-      const nextDescription = ledger.description.includes('[HOÀN VÉ - ĐÓNG SỔ]')
+      const nextDescription = ledger.description.includes('[HOÀN VÉ - ĐÃ HOÀN]')
         ? ledger.description
-        : `${ledger.description} [HOÀN VÉ - ĐÓNG SỔ]`;
+        : `${ledger.description} [HOÀN VÉ - ĐÃ HOÀN]`;
 
       await client.accountsLedger.update({
         where: { id: ledger.id },
         data: {
-          totalAmount: paidAmount,
           remaining: 0,
-          status: nextStatus as any,
+          status: 'REFUNDED' as any,
           description: nextDescription,
         },
       });
@@ -652,7 +660,7 @@ export class BookingsService {
       where: {
         bookingId,
         direction: 'RECEIVABLE',
-        status: { not: 'WRITTEN_OFF' },
+        status: { notIn: ['WRITTEN_OFF', 'REFUNDED'] as any },
       },
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -708,6 +716,7 @@ export class BookingsService {
             type: true,
             chargeToCustomer: true,
             refundAmount: true,
+            apgServiceFee: true,
           },
         },
       },
@@ -731,7 +740,7 @@ export class BookingsService {
           return sum + Number(adjustment.chargeToCustomer ?? 0);
         case 'REFUND_CASH':
         case 'REFUND_CREDIT':
-          return sum - Number(adjustment.refundAmount ?? 0);
+          return sum - Number(adjustment.refundAmount ?? 0) + Number(adjustment.apgServiceFee ?? 0);
         default:
           return sum;
       }
@@ -830,7 +839,7 @@ export class BookingsService {
         where: {
           bookingId,
           direction: 'RECEIVABLE',
-          status: { not: 'WRITTEN_OFF' },
+          status: { notIn: ['WRITTEN_OFF', 'REFUNDED'] as any },
         },
         select: { totalAmount: true, paidAmount: true },
       }),
@@ -1617,7 +1626,7 @@ export class BookingsService {
         where: {
           bookingId,
           direction: 'RECEIVABLE',
-          status: { notIn: ['PAID', 'WRITTEN_OFF'] as any },
+          status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any },
         },
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       });
@@ -1861,14 +1870,6 @@ export class BookingsService {
         },
       });
 
-      const fundLabel = dto.fundAccount === 'CASH_OFFICE'
-        ? 'Tiá»n máº·t VP'
-        : dto.fundAccount === 'BANK_HTX'
-          ? 'TK BIDV HTX'
-          : dto.fundAccount === 'BANK_PERSONAL'
-            ? 'TK MB cÃ¡ nhÃ¢n'
-            : 'N/A';
-
       // 2. Äá»”I VÃ‰ (CHANGE)
       if (dto.type === 'CHANGE') {
         const charge = Number(dto.chargeToCustomer ?? 0);
@@ -2037,56 +2038,59 @@ export class BookingsService {
         const penaltyFee = Number(dto.penaltyFee ?? 0);
         const apgFee = Number(dto.apgServiceFee ?? 0);
 
-        const [closedReceivables, closedPayables] = await Promise.all([
-          this.closeBookingLedgersForRefund(tx, booking.id, 'RECEIVABLE'),
-          this.closeBookingLedgersForRefund(tx, booking.id, 'PAYABLE'),
+        const [refundedReceivables, refundedPayables] = await Promise.all([
+          this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'RECEIVABLE'),
+          this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'PAYABLE'),
         ]);
 
-        console.log(`[REFUND-AR] Dong ${closedReceivables} ledger phai thu cho booking ${booking.bookingCode}`);
-        console.log(`[REFUND-AP] Dong ${closedPayables} ledger phai tra cho booking ${booking.bookingCode}`);
+        console.log(`[REFUND-AR] Marked ${refundedReceivables} ticket receivable ledger(s) as refunded for booking ${booking.bookingCode}`);
+        console.log(`[REFUND-AP] Marked ${refundedPayables} ticket payable ledger(s) as refunded for booking ${booking.bookingCode}`);
 
-        if (airlineRefund > 0) {
-          try {
-            await tx.cashFlowEntry.create({
-              data: {
-                direction: 'INFLOW',
-                category: 'TICKET_REFUND',
-                amount: airlineRefund,
-                pic: 'System',
-                description: `NCC hoÃ n vÃ© - Booking ${booking.bookingCode}`,
-                reference: booking.pnr || booking.bookingCode,
-                date: new Date(),
-                status: 'DONE',
-                fundAccount,
-                notes: `Quá»¹ nháº­n: ${fundLabel}. HÃ£ng hoÃ n ${airlineRefund}, phÃ­ hoÃ n ${penaltyFee}`,
-              },
-            });
-            console.log(`[REFUND-INFLOW] +${airlineRefund} NCC hoÃ n APG vÃ o ${fundLabel}`);
-          } catch (err) {
-            console.error('[REFUND-INFLOW] Lá»—i ghi CashFlow:', err);
-          }
+        if (apgFee > 0 && booking.customer) {
+          const issueDate = new Date();
+          await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
+            code,
+            direction: 'RECEIVABLE',
+            partyType: this.getReceivablePartyType(booking.customer!.type) as any,
+            customerId: booking.customer!.id,
+            customerCode: booking.customer!.customerCode,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: apgFee,
+            paidAmount: 0,
+            remaining: apgFee,
+            issueDate,
+            dueDate: this.buildReceivableDueDate(issueDate, booking.customer!.type),
+            status: 'ACTIVE',
+            category: 'TICKET_REFUND' as any,
+            description: `Phí APG thu khách khi hoàn vé — Booking ${booking.bookingCode}`,
+            createdBy: userId,
+          }));
+          console.log(`[REFUND-FEE-AR] +${apgFee} AR phi APG thu khach`);
         }
 
-        if (dto.type === 'REFUND_CASH' && refundToCustomer > 0) {
-          try {
-            await tx.cashFlowEntry.create({
-              data: {
-                direction: 'OUTFLOW',
-                category: 'TICKET_REFUND',
-                amount: refundToCustomer,
-                pic: 'System',
-                description: `HoÃ n tiá»n KH ${booking.contactName} - Booking ${booking.bookingCode}`,
-                reference: booking.pnr || booking.bookingCode,
-                date: new Date(),
-                status: 'DONE',
-                fundAccount,
-                notes: `Quá»¹ chi: ${fundLabel}. HoÃ n KH ${refundToCustomer}`,
-              },
-            });
-            console.log(`[REFUND-OUTFLOW] -${refundToCustomer} hoÃ n KH ${booking.contactName} tá»« ${fundLabel}`);
-          } catch (err) {
-            console.error('[REFUND-OUTFLOW] Lá»—i ghi CashFlow:', err);
-          }
+        if (penaltyFee > 0 && booking.supplier) {
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + (booking.supplier.paymentTerms ?? 15));
+
+          await this.createLedgerWithGeneratedCode(tx, 'PAYABLE', (code) => ({
+            code,
+            direction: 'PAYABLE',
+            partyType: booking.supplier!.type as any,
+            supplierId: booking.supplier!.id,
+            bookingId: booking.id,
+            bookingCode: booking.bookingCode,
+            totalAmount: penaltyFee,
+            paidAmount: 0,
+            remaining: penaltyFee,
+            issueDate: new Date(),
+            dueDate,
+            status: 'ACTIVE',
+            category: 'TICKET_REFUND' as any,
+            description: `Phí hoàn hãng phải trả NCC — Booking ${booking.bookingCode}`,
+            createdBy: userId,
+          }));
+          console.log(`[REFUND-FEE-AP] +${penaltyFee} AP phi hoan hang`);
         }
 
         await tx.booking.update({
@@ -2100,7 +2104,7 @@ export class BookingsService {
             fromStatus: booking.status,
             toStatus: 'REFUNDED',
             changedBy: userId,
-            reason: `Hoàn vé (${dto.type}): Hoàn KH ${refundToCustomer}, NCC hoàn ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
+            reason: `Hoàn vé (${dto.type}): Đảo AR vé gốc ${refundToCustomer}, Đảo AP vé gốc ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
           },
         });
       } else {

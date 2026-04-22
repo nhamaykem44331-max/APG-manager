@@ -80,7 +80,7 @@ export type VipTier = 'NORMAL' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
 export type Airline = 'VN' | 'VJ' | 'QH' | 'BL' | 'VU' | 'OTHER';
 
-export type DebtStatus = 'ACTIVE' | 'PARTIAL_PAID' | 'PAID' | 'OVERDUE' | 'WRITTEN_OFF';
+export type DebtStatus = 'ACTIVE' | 'PARTIAL_PAID' | 'PAID' | 'OVERDUE' | 'WRITTEN_OFF' | 'REFUNDED';
 export type LedgerCategory = 'TICKET' | 'TICKET_CHANGE' | 'TICKET_REFUND' | 'HLKG' | 'SERVICE';
 
 // ===== MODELS =====
@@ -156,7 +156,7 @@ export interface Booking {
   // Nhà cung cấp vé
   supplierId?: string | null;
   supplier?: Pick<SupplierProfile, 'id' | 'code' | 'name' | 'type' | 'contactName'>;
-  ledgers?: { id: string; code: string; direction: string; status: string; remaining: number; totalAmount: number; createdAt: string }[];
+  ledgers?: AccountsLedger[];
   adjustments?: BookingAdjustment[];
   creditsCreated?: NamedCredit[];
 }

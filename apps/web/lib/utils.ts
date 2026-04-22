@@ -262,6 +262,7 @@ export const DEBT_STATUS_LABELS: Record<string, string> = {
   PAID: 'Đã thanh toán',
   OVERDUE: 'Quá hạn',
   WRITTEN_OFF: 'Xóa nợ',
+  REFUNDED: 'Đã hoàn',
 };
 
 export const DEBT_STATUS_CLASSES: Record<string, string> = {
@@ -270,6 +271,7 @@ export const DEBT_STATUS_CLASSES: Record<string, string> = {
   PAID: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   OVERDUE: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   WRITTEN_OFF: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  REFUNDED: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
 };
 
 // ===== PHASE B: DÒNG TIỀN + CHI PHÍ =====

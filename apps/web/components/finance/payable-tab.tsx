@@ -190,7 +190,10 @@ export function PayableTab() {
       const first = bucket[0];
       const metrics = getLedgerGroupMetrics(bucket);
       const openLedgers = bucket.filter(
-        (ledger) => Number(ledger.remaining) > 0 && ledger.status !== 'WRITTEN_OFF',
+        (ledger) =>
+          Number(ledger.remaining) > 0
+          && ledger.status !== 'WRITTEN_OFF'
+          && ledger.status !== 'REFUNDED',
       );
 
       return {

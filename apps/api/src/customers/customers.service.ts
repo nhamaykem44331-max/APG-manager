@@ -578,7 +578,11 @@ export class CustomersService {
         _count: { id: true },
       }),
       this.prisma.accountsLedger.aggregate({
-        where: { customerId: id, direction: 'RECEIVABLE', status: { not: 'PAID' } },
+        where: {
+          customerId: id,
+          direction: 'RECEIVABLE',
+          status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] as any },
+        },
         _sum: { remaining: true },
         _count: { id: true },
       }),

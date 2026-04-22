@@ -159,6 +159,7 @@ enum DebtStatus {
   PAID
   OVERDUE
   WRITTEN_OFF
+  REFUNDED
 }
 
 enum NamedCreditStatus {

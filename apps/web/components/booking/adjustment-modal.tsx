@@ -103,9 +103,9 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
 
   const airlineRefundAmount = Number(airlineRefund || 0);
   const customerRefundAmount = Number(refundAmount || 0);
+  const penaltyFeeAmount = Number(penaltyFee || 0);
   const apgFeeAmount = Number(apgServiceFee || 0);
-  const apgCashDelta = airlineRefundAmount - customerRefundAmount;
-  const totalApgBenefit = apgCashDelta + apgFeeAmount;
+  const totalApgBenefit = apgFeeAmount - penaltyFeeAmount;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -301,13 +301,13 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
 
                 <div>
                   <MoneyInput
-                    label="NCC / Hãng hoàn cho APG"
+                    label="Giá net vé gốc (NCC)"
                     value={airlineRefund}
                     onChange={setAirlineRefund}
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Số tiền hãng bay thực hoàn sau khi trừ phí hoàn. Sẽ ghi CashFlow INFLOW.
+                    Dùng để đánh dấu ledger AP vé gốc đã hoàn và đưa công nợ vé gốc với NCC về 0.
                   </p>
                 </div>
 
@@ -325,13 +325,13 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
 
                 <div>
                   <MoneyInput
-                    label="APG hoàn cho khách"
+                    label="Giá bán vé gốc (Thu khách)"
                     value={refundAmount}
                     onChange={setRefundAmount}
                     placeholder="0"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Số tiền APG hoàn lại khách. {type === 'REFUND_CASH' ? 'Sẽ ghi CashFlow OUTFLOW.' : 'Giữ dạng bảo lưu tiền.'}
+                    Dùng để đánh dấu ledger AR vé gốc đã hoàn và đưa công nợ vé gốc của khách về 0.
                   </p>
                 </div>
 
@@ -347,45 +347,22 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
                   </p>
                 </div>
 
-                {type === 'REFUND_CASH' && (
-                  <div>
-                    <label className="mb-1.5 block text-[13px] font-medium text-foreground">Chi / Nhận từ quỹ</label>
-                    <select
-                      value={fundAccount}
-                      onChange={(e) => setFundAccount(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-[13px]"
-                    >
-                      <option value="CASH_OFFICE">Quỹ tiền mặt VP</option>
-                      <option value="BANK_HTX">TK BIDV HTX (3900543757)</option>
-                      <option value="BANK_PERSONAL">TK MB cá nhân (996106688)</option>
-                    </select>
-                  </div>
-                )}
-
                 <div className="mt-1 space-y-1 rounded-lg bg-muted/60 p-3 text-xs">
                   <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">NCC hoàn APG:</span>
+                    <span className="text-muted-foreground">Đảo AP vé gốc:</span>
                     <span className="font-tabular text-emerald-500">+{formatVND(airlineRefundAmount)}</span>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">APG hoàn KH:</span>
+                    <span className="text-muted-foreground">Đảo AR vé gốc:</span>
                     <span className="font-tabular text-red-500">-{formatVND(customerRefundAmount)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Phí hoàn hãng:</span>
+                    <span className="font-tabular text-red-500">-{formatVND(penaltyFeeAmount)}</span>
                   </div>
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">Phí APG thu khách:</span>
                     <span className="font-tabular text-emerald-500">+{formatVND(apgFeeAmount)}</span>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Chênh lệch quỹ hoàn:</span>
-                    <span
-                      className={cn(
-                        'font-tabular',
-                        apgCashDelta >= 0 ? 'text-emerald-500' : 'text-red-500',
-                      )}
-                    >
-                      {apgCashDelta >= 0 ? '+' : '-'}
-                      {formatVND(Math.abs(apgCashDelta))}
-                    </span>
                   </div>
                   <div className="mt-1 flex justify-between gap-3 border-t border-border pt-2">
                     <span className="font-medium text-foreground">Kết quả APG từ nghiệp vụ hoàn:</span>
