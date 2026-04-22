@@ -12,11 +12,15 @@ function buildRuntimeDatasourceUrl(rawUrl?: string) {
     // Supabase starter + Render rolling deploy is sensitive to Prisma's default pool size.
     // Keep the pool small to avoid boot failures during zero-downtime deploys.
     if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT ?? '3');
+      url.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT ?? '2');
     }
 
     if (!url.searchParams.has('pool_timeout')) {
       url.searchParams.set('pool_timeout', process.env.PRISMA_POOL_TIMEOUT ?? '30');
+    }
+
+    if (!url.searchParams.has('connect_timeout')) {
+      url.searchParams.set('connect_timeout', process.env.PRISMA_CONNECT_TIMEOUT ?? '15');
     }
 
     return url.toString();

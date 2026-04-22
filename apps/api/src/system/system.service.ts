@@ -9,7 +9,7 @@ export class SystemService {
   constructor(private prisma: PrismaService) {}
 
   async getHealth() {
-    await this.prisma.$queryRaw`SELECT 1`;
+    await this.ensureDatabaseIsReachable();
 
     return {
       status: 'ok',
@@ -120,5 +120,30 @@ export class SystemService {
       operatingExpenses: await this.prisma.operatingExpense.count(),
       dailyReconciliations: await this.prisma.dailyReconciliation.count(),
     };
+  }
+
+  private async ensureDatabaseIsReachable() {
+    const maxAttempts = 4;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.prisma.$queryRaw`SELECT 1`;
+        return;
+      } catch (error) {
+        if (!this.isRetryableDatabaseStartupError(error) || attempt === maxAttempts) {
+          throw error;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+      }
+    }
+  }
+
+  private isRetryableDatabaseStartupError(error: unknown) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : '';
+
+    return code === 'P2024' || code === 'P1001' || code === 'P1008';
   }
 }

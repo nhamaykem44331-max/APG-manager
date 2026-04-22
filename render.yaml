@@ -16,6 +16,12 @@ services:
         value: "10000"
       - key: FRONTEND_URL
         value: https://manager.tanphuapg.com
+      - key: PRISMA_CONNECTION_LIMIT
+        value: "2"
+      - key: PRISMA_POOL_TIMEOUT
+        value: "30"
+      - key: PRISMA_CONNECT_TIMEOUT
+        value: "15"
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
