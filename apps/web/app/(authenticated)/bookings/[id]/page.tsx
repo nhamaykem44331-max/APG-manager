@@ -995,7 +995,7 @@ export default function BookingDetailPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const { data: booking, isLoading } = useQuery({
+  const { data: booking, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['booking', id],
     queryFn: () => bookingsApi.get(id),
     select: (r) => r.data as Booking,
@@ -1286,7 +1286,64 @@ export default function BookingDetailPage() {
     );
   }
 
-  const bk: Booking = booking ?? SAMPLE_BOOKING;
+  if (isError || !booking) {
+    const errorMessage = (() => {
+      const responseMessage = (error as {
+        response?: { data?: { message?: string | string[] } };
+        message?: string;
+      })?.response?.data?.message;
+
+      if (Array.isArray(responseMessage)) {
+        return responseMessage[0];
+      }
+
+      if (typeof responseMessage === 'string' && responseMessage.trim()) {
+        return responseMessage;
+      }
+
+      if (typeof (error as { message?: string })?.message === 'string' && (error as { message?: string }).message?.trim()) {
+        return (error as { message?: string }).message!;
+      }
+
+      return 'Không tải được booking. Vui lòng thử lại.';
+    })();
+
+    return (
+      <div className="mx-auto max-w-[1320px] py-6">
+        <div className="card p-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-lg border border-red-500/20 bg-red-500/10 p-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold text-foreground">Không thể mở booking này</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Trang chi tiết đã dừng ở trạng thái lỗi để tránh hiển thị dữ liệu mẫu sai nghiệp vụ.
+              </p>
+              <p className="mt-2 text-sm text-red-500">{errorMessage}</p>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+                >
+                  Tải lại
+                </button>
+                <Link
+                  href="/bookings"
+                  className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                >
+                  Quay lại danh sách
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const bk: Booking = booking;
   const passengerCount = bk.tickets?.length ?? 0;
   const totalSellPrice = passengerCount > 0
     ? (bk.tickets ?? []).reduce((sum, ticket) => sum + Number(ticket.sellPrice || 0), 0)

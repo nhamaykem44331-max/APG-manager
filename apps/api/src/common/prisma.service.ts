@@ -1,12 +1,47 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
+
+function buildRuntimeDatasourceUrl(rawUrl?: string) {
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+
+    // Supabase starter + Render rolling deploy is sensitive to Prisma's default pool size.
+    // Keep the pool small to avoid boot failures during zero-downtime deploys.
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT ?? '3');
+    }
+
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', process.env.PRISMA_POOL_TIMEOUT ?? '30');
+    }
+
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
 
 @Injectable()
 export class PrismaService extends PrismaClient
   implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
-    super();
+    const runtimeUrl = buildRuntimeDatasourceUrl(process.env.DATABASE_URL);
+
+    super(runtimeUrl
+      ? {
+          datasources: {
+            db: {
+              url: runtimeUrl,
+            },
+          },
+        }
+      : undefined);
 
     this.$use(async (params: Prisma.MiddlewareParams, next) => {
       if (
@@ -27,11 +62,39 @@ export class PrismaService extends PrismaClient
     });
   }
 
-  async onModuleInit() {
-    await this.$connect();
+  onModuleInit() {
+    void this.warmUpConnection();
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
+  }
+
+  private async warmUpConnection() {
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.$connect();
+        if (attempt > 1) {
+          this.logger.log(`Prisma connected after retry ${attempt}/${maxAttempts}.`);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Prisma startup connect attempt ${attempt}/${maxAttempts} failed: ${message}`);
+
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1_500));
+        }
+      }
+    }
+
+    this.logger.error(
+      'Prisma warm-up failed during startup. API will stay up and retry lazily on the first database request.',
+      lastError instanceof Error ? lastError.stack : undefined,
+    );
   }
 }
