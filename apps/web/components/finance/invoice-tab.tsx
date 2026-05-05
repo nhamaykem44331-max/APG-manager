@@ -850,17 +850,26 @@ export function InvoiceTab() {
     },
   });
 
+  const downloadExportBatchFile = async (batch: InvoiceExportBatch) => {
+    const response = await invoiceApi.downloadExportBatch(batch.id);
+    downloadBlobFile(response.data as Blob, batch.fileName);
+  };
+
   const exportDebtStatementMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!statementFilters.customerId) {
         throw new Error('Vui lòng chọn khách hàng để xuất quyết toán công nợ.');
       }
 
-      return invoiceApi.createDebtStatementExport({
+      const response = await invoiceApi.createDebtStatementExport({
         customerId: statementFilters.customerId,
         dateFrom: statementFilters.dateFrom,
         dateTo: statementFilters.dateTo,
       });
+
+      const batch = response.data as InvoiceExportBatch;
+      await downloadExportBatchFile(batch);
+      return batch;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-export-batches'] });
@@ -868,14 +877,18 @@ export function InvoiceTab() {
   });
 
   const exportOutgoingRequestMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!selectedInvoice || selectedInvoice.direction !== 'OUTGOING') {
         throw new Error('Vui lòng chọn hóa đơn đầu ra để xuất đề nghị.');
       }
 
-      return invoiceApi.createOutgoingRequestExport({
+      const response = await invoiceApi.createOutgoingRequestExport({
         invoiceId: selectedInvoice.id,
       });
+
+      const batch = response.data as InvoiceExportBatch;
+      await downloadExportBatchFile(batch);
+      return batch;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-export-batches'] });
@@ -884,8 +897,7 @@ export function InvoiceTab() {
 
   const downloadExportMutation = useMutation({
     mutationFn: async (batch: InvoiceExportBatch) => {
-      const response = await invoiceApi.downloadExportBatch(batch.id);
-      downloadBlobFile(response.data as Blob, batch.fileName);
+      await downloadExportBatchFile(batch);
       return batch.id;
     },
   });
