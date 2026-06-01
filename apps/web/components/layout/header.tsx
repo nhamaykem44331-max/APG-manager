@@ -45,11 +45,11 @@ export function Header() {
   }));
 
   if (!mounted) {
-    return <header className="h-[52px] border-b border-border bg-background flex-shrink-0" />;
+    return <header className="hidden h-[52px] flex-shrink-0 border-b border-border bg-background lg:block" />;
   }
 
   return (
-    <header className="h-[52px] border-b border-border bg-background flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
+    <header className="hidden h-[52px] flex-shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:flex">
       
       {/* Left / Mobile menu */}
       <div className="flex items-center gap-3">

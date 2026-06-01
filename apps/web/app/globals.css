@@ -4,35 +4,42 @@
 
 @layer base {
   :root {
-    /* Vercel-inspired Light Mode */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    /* Surfaces — nền xám mát + card trắng để tạo phân tầng */
+    --background: 220 23% 97%;
+    --foreground: 222 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 222 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
+    --popover-foreground: 222 30% 12%;
+    /* Brand */
     --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84% 60%;
+    /* Neutrals (slate mát, thống nhất) */
+    --secondary: 220 16% 95%;
+    --secondary-foreground: 222 30% 12%;
+    --muted: 220 18% 95.5%;
+    --muted-foreground: 220 11% 42%;
+    --accent: 220 18% 94%;
+    --accent-foreground: 222 30% 12%;
+    /* Semantic */
+    --destructive: 0 74% 52%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
+    --border: 220 16% 89%;
+    --input: 220 16% 89%;
     --ring: 221 83% 53%;
-    --radius: 0.5rem;
-    --success: 160 84% 39%;
-    --warning: 38 92% 50%;
-    /* Chart semantic colors */
-    --chart-revenue: 217 91% 60%;
-    --chart-profit: 160 84% 39%;
+    --radius: 0.625rem;
+    --success: 160 84% 36%;
+    --warning: 35 92% 46%;
+    /* Chart semantic colors (tinh chỉnh cho nền sáng) */
+    --chart-revenue: 217 91% 53%;
+    --chart-profit: 160 84% 36%;
     --chart-cost: 220 9% 46%;
-    --chart-debt: 38 92% 50%;
-    --chart-overdue: 0 84% 60%;
+    --chart-debt: 35 92% 46%;
+    --chart-overdue: 0 74% 52%;
+    /* MỚI — elevation cho card */
+    --shadow-card: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px -1px rgba(16,24,40,.05);
+    --shadow-card-hover: 0 6px 20px -8px rgba(16,24,40,.16);
+    --shadow-pop: 0 10px 30px -8px rgba(16,24,40,.18);
   }
 
   .dark {
@@ -64,6 +71,9 @@
     --chart-cost: 220 9% 56%;
     --chart-debt: 38 92% 56%;
     --chart-overdue: 0 84% 65%;
+    --shadow-card: none;
+    --shadow-card-hover: none;
+    --shadow-pop: 0 10px 30px -8px rgba(0,0,0,.55);
   }
 }
 
@@ -84,12 +94,18 @@
 }
 
 @layer utilities {
-  /* Card component — border-only, no shadow */
+  /* Card component — elevation qua --shadow-card (light nổi nhờ bóng, dark giữ phẳng) */
   .card {
     background-color: hsl(var(--card));
     color: hsl(var(--card-foreground));
     border-radius: var(--radius);
     border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-card);
+    transition: box-shadow .18s ease, border-color .18s ease;
+  }
+  /* Nhấc nhẹ card khi hover (chỉ light mode có bóng; dark giữ phẳng vì --shadow-card-hover: none) */
+  .card-lift:hover {
+    box-shadow: var(--shadow-card-hover);
   }
 
   /* Vercel-style subtle dotted grid background */
@@ -124,6 +140,19 @@
   .status-completed  { @apply badge badge-success; }
   .status-refunded   { @apply badge; background: hsl(200 60% 50% / 0.1); color: hsl(200 60% 50%); }
   .status-cancelled  { @apply badge badge-danger; }
+
+  /* Alert / notice boxes — semantic colors legible in BOTH light & dark.
+     These set color/background/border-color only; the element keeps its own
+     border-width + radius + padding. Retrofit by REMOVING inline
+     border-X/bg-X/text-X color utilities and adding one .alert-* class. */
+  .alert-warning { border-color: hsl(38 92% 50% / .30); background-color: hsl(38 92% 50% / .10); color: hsl(26 90% 37%); }
+  .alert-error   { border-color: hsl(0 84% 60% / .30);  background-color: hsl(0 84% 60% / .10);  color: hsl(0 74% 42%); }
+  .alert-info    { border-color: hsl(217 91% 60% / .30); background-color: hsl(217 91% 60% / .10); color: hsl(224 76% 42%); }
+  .alert-success { border-color: hsl(160 84% 39% / .30); background-color: hsl(160 84% 39% / .10); color: hsl(158 75% 27%); }
+  .dark .alert-warning { color: hsl(46 97% 65%); }
+  .dark .alert-error   { color: hsl(0 91% 71%); }
+  .dark .alert-info    { color: hsl(211 97% 78%); }
+  .dark .alert-success { color: hsl(156 72% 67%); }
 
   /* Tabular numbers for financial data */
   .font-tabular { font-variant-numeric: tabular-nums; }

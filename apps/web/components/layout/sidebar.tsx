@@ -116,14 +116,14 @@ export function Sidebar() {
 
   if (!mounted) {
     return (
-      <aside className="relative flex h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out w-[240px]" />
+      <aside className="relative hidden h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out w-[240px] lg:flex" />
     );
   }
 
   return (
     <aside
       className={cn(
-        'relative flex h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out',
+        'relative hidden h-screen flex-shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 ease-out lg:flex',
         sidebarCollapsed ? 'w-[84px]' : 'w-[240px]',
       )}
     >

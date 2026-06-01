@@ -92,10 +92,10 @@ function getApiErrorMessage(error: unknown) {
 
 function RoleBadge({ role }: { role: UserRole }) {
   const styles: Record<UserRole, string> = {
-    ADMIN: 'border-amber-500/20 bg-amber-500/10 text-amber-300',
-    MANAGER: 'border-violet-500/20 bg-violet-500/10 text-violet-300',
-    SALES: 'border-blue-500/20 bg-blue-500/10 text-blue-300',
-    ACCOUNTANT: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+    ADMIN: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    MANAGER: 'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+    SALES: 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+    ACCOUNTANT: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
   };
 
   return (
@@ -536,7 +536,7 @@ export default function SettingsPage() {
                   <p className="text-[13px] text-muted-foreground">
                     Thông tin này hiển thị trên booking, báo cáo và lịch sử thao tác.
                   </p>
-                  {generalNotice ? <span className="text-[12px] text-emerald-400">{generalNotice}</span> : null}
+                  {generalNotice ? <span className="text-[12px] text-emerald-600 dark:text-emerald-400">{generalNotice}</span> : null}
                 </div>
               </div>
 
@@ -587,7 +587,7 @@ export default function SettingsPage() {
                         />
                       </div>
                     </div>
-                    {passwordNotice ? <p className="mt-4 text-[12px] text-emerald-400">{passwordNotice}</p> : null}
+                    {passwordNotice ? <p className="mt-4 text-[12px] text-emerald-600 dark:text-emerald-400">{passwordNotice}</p> : null}
                   </div>
                   <div className="flex items-center justify-between border-t border-border bg-accent/40 px-6 py-3">
                     <p className="text-[13px] text-muted-foreground">Đổi mật khẩu không làm mất phiên đăng nhập hiện tại.</p>
@@ -646,7 +646,7 @@ export default function SettingsPage() {
               </div>
 
               {formError ? (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-400">
+                <div className="rounded-lg border px-4 py-3 text-[13px] alert-error">
                   {formError}
                 </div>
               ) : null}
@@ -720,20 +720,20 @@ export default function SettingsPage() {
                       </div>
                       <div className="rounded-xl border border-border bg-accent/20 p-4">
                         <p className="text-[12px] uppercase tracking-[0.14em] text-muted-foreground">Đang hoạt động</p>
-                        <p className="mt-2 text-2xl font-semibold text-emerald-400">
+                        <p className="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
                           {users.filter((user) => user.isActive).length}
                         </p>
                       </div>
                       <div className="rounded-xl border border-border bg-accent/20 p-4">
                         <p className="text-[12px] uppercase tracking-[0.14em] text-muted-foreground">Admin</p>
-                        <p className="mt-2 text-2xl font-semibold text-amber-400">
+                        <p className="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">
                           {users.filter((user) => user.role === 'ADMIN').length}
                         </p>
                       </div>
                     </div>
 
                     {permissionNotice ? (
-                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-400">
+                      <div className="rounded-lg border px-4 py-3 text-[13px] alert-success">
                         {permissionNotice}
                       </div>
                     ) : null}
@@ -782,8 +782,8 @@ export default function SettingsPage() {
                                         className={cn(
                                           'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
                                           user.isActive
-                                            ? 'bg-emerald-500/10 text-emerald-300'
-                                            : 'bg-red-500/10 text-red-300',
+                                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-red-500/10 text-red-700 dark:text-red-300',
                                         )}
                                       >
                                         {user.isActive ? 'Đang hoạt động' : 'Đã khóa'}
@@ -820,7 +820,7 @@ export default function SettingsPage() {
               </div>
 
               {formError && activeTab === 'permissions' ? (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-400">
+                <div className="rounded-lg border px-4 py-3 text-[13px] alert-error">
                   {formError}
                 </div>
               ) : null}
@@ -953,7 +953,7 @@ export default function SettingsPage() {
                 </div>
 
                 {formError ? (
-                  <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-400">
+                  <div className="rounded-md border px-3 py-2 text-[12px] alert-error">
                     {formError}
                   </div>
                 ) : null}
@@ -1079,8 +1079,8 @@ export default function SettingsPage() {
                       className={cn(
                         'inline-flex h-8 items-center rounded-full px-3 text-[12px] font-medium transition-colors',
                         userForm.isActive
-                          ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'bg-red-500/15 text-red-300 hover:bg-red-500/20',
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
+                          : 'bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-500/20',
                       )}
                       onClick={() => setUserForm((current) => ({ ...current, isActive: !current.isActive }))}
                       type="button"
@@ -1113,7 +1113,7 @@ export default function SettingsPage() {
                 <PermissionMatrix permissions={userForm.permissions} onToggle={togglePermission} />
 
                 {formError ? (
-                  <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-400">
+                  <div className="rounded-md border px-3 py-2 text-[12px] alert-error">
                     {formError}
                   </div>
                 ) : null}
@@ -1201,7 +1201,7 @@ export default function SettingsPage() {
                 </div>
 
                 {resetError ? (
-                  <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-400">
+                  <div className="rounded-md border px-3 py-2 text-[12px] alert-error">
                     {resetError}
                   </div>
                 ) : null}

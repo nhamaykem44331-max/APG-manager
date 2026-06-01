@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Plus, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Banknote, ChevronRight, Clock, Plus, RefreshCw, Search, Ticket } from 'lucide-react';
 import Link from 'next/link';
 import { AirlineChart } from '@/components/charts/airline-chart';
 import { RevenueChart } from '@/components/charts/revenue-chart';
@@ -9,47 +9,48 @@ import { DataTable, ColumnDef } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
 import { dashboardApi } from '@/lib/api';
 import { BOOKING_STATUS_CLASSES, BOOKING_STATUS_LABELS, cn, formatDateTime, formatVND } from '@/lib/utils';
+import { useMobileViewport } from '@/hooks/use-mobile-viewport';
 import type { DashboardOverview, DashboardOverviewAlert, DashboardOverviewBooking } from '@/types';
 
 const METRIC_CARD_STYLES = {
   amber: {
     line: 'bg-amber-400',
-    value: 'text-amber-400',
+    value: 'text-amber-600 dark:text-amber-400',
     glow: 'bg-amber-500/5',
   },
   lime: {
     line: 'bg-lime-400',
-    value: 'text-lime-400',
+    value: 'text-lime-600 dark:text-lime-400',
     glow: 'bg-lime-500/5',
   },
   violet: {
     line: 'bg-violet-400',
-    value: 'text-violet-400',
+    value: 'text-violet-600 dark:text-violet-400',
     glow: 'bg-violet-500/5',
   },
   rose: {
     line: 'bg-rose-400',
-    value: 'text-rose-400',
+    value: 'text-rose-600 dark:text-rose-400',
     glow: 'bg-rose-500/5',
   },
   red: {
     line: 'bg-red-500',
-    value: 'text-red-500',
+    value: 'text-red-600 dark:text-red-500',
     glow: 'bg-red-500/5',
   },
   slate: {
     line: 'bg-slate-400',
-    value: 'text-slate-200',
+    value: 'text-slate-700 dark:text-slate-200',
     glow: 'bg-slate-500/5',
   },
   emerald: {
     line: 'bg-emerald-400',
-    value: 'text-emerald-400',
+    value: 'text-emerald-600 dark:text-emerald-400',
     glow: 'bg-emerald-500/5',
   },
   cyan: {
     line: 'bg-cyan-400',
-    value: 'text-cyan-400',
+    value: 'text-cyan-700 dark:text-cyan-400',
     glow: 'bg-cyan-500/5',
   },
 } as const;
@@ -98,10 +99,10 @@ function MetricCard({
 
 function AlertItem({ alert }: { alert: DashboardOverviewAlert }) {
   const styles = {
-    warning: 'border-amber-500/20 bg-amber-500/10 text-amber-300',
-    error: 'border-red-500/20 bg-red-500/10 text-red-300',
-    info: 'border-blue-500/20 bg-blue-500/10 text-blue-300',
-    success: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+    warning: 'alert-warning',
+    error: 'alert-error',
+    info: 'alert-info',
+    success: 'alert-success',
   } as const;
 
   return (
@@ -112,7 +113,197 @@ function AlertItem({ alert }: { alert: DashboardOverviewAlert }) {
   );
 }
 
+function MobileDashboard({
+  overview,
+  isLoading,
+}: {
+  overview?: DashboardOverview;
+  isLoading: boolean;
+}) {
+  const summary = overview?.summary;
+  const recentBookings = overview?.recentBookings ?? [];
+  const alerts = overview?.alerts ?? [];
+  const pendingBookings = recentBookings.filter((booking) => (
+    booking.status === 'PENDING_PAYMENT'
+    || booking.status === 'PROCESSING'
+    || booking.status === 'NEW'
+  ));
+  const urgentBookings = pendingBookings.length > 0 ? pendingBookings.slice(0, 4) : recentBookings.slice(0, 4);
+  const todayLabel = new Date().toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  return (
+    <div className="mx-auto max-w-md space-y-4 pb-2">
+      <header className="flex items-start justify-between gap-3 pt-1">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Khong gian lam viec
+          </p>
+          <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-foreground">
+            Dashboard tong quan
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">{todayLabel}</p>
+        </div>
+        <Link
+          href="/bookings"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground active:bg-accent"
+          aria-label="Mo bookings"
+        >
+          <Ticket className="h-4 w-4" />
+        </Link>
+      </header>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Hom nay</p>
+            <h2 className="mt-1 text-xl font-semibold leading-tight text-foreground">Viec can xu ly truoc</h2>
+          </div>
+          <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            {pendingBookings.length} cho xu ly
+          </span>
+        </div>
+        <Link
+          href="/bookings?create=1"
+          className="mt-4 flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground active:scale-[0.99]"
+        >
+          <Plus className="h-4 w-4" />
+          Create Booking
+        </Link>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-[110px] animate-pulse rounded-xl border border-border bg-card" />
+          ))
+        ) : (
+          <>
+            <div className="rounded-xl border border-border bg-card p-3.5">
+              <p className="text-xs text-muted-foreground">Ve thang nay</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{summary?.ticketsSold ?? 0}</p>
+              <span className="mt-3 inline-flex rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                Da ban
+              </span>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3.5">
+              <p className="text-xs text-muted-foreground">Cho thanh toan</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{pendingBookings.length}</p>
+              <span className="mt-3 inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                Cho TT
+              </span>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3.5">
+              <p className="text-xs text-muted-foreground">Cong no phai thu</p>
+              <p className="mt-2 truncate text-2xl font-semibold text-foreground">{formatVND(summary?.receivable ?? 0)}</p>
+              <span className="mt-3 inline-flex rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+                Con no
+              </span>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3.5">
+              <p className="text-xs text-muted-foreground">Lai/lo thang</p>
+              <p className="mt-2 truncate text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                {formatVND(summary?.monthProfit ?? 0)}
+              </p>
+              <span className="mt-3 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                Loi nhuan
+              </span>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-foreground">Can thao tac nhanh</h2>
+          <Link href="/bookings" className="text-xs font-medium text-primary">Mo /bookings</Link>
+        </div>
+        <div className="space-y-2.5">
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-[96px] animate-pulse rounded-xl border border-border bg-card" />
+            ))
+          ) : urgentBookings.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
+              Chua co booking can xu ly trong danh sach gan day.
+            </div>
+          ) : (
+            urgentBookings.map((booking) => (
+              <Link
+                key={booking.id}
+                href={`/bookings/${booking.id}`}
+                className="block rounded-xl border border-border bg-card p-3.5 active:bg-accent"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm font-semibold tracking-[0.16em] text-foreground">
+                      {booking.pnr || booking.bookingCode}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium text-foreground">{booking.contactName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{booking.route || 'Chua co hanh trinh'}</p>
+                  </div>
+                  <span className={cn('shrink-0', BOOKING_STATUS_CLASSES[booking.status] ?? 'badge-default')}>
+                    {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Banknote className="h-3.5 w-3.5" />
+                    {formatVND(booking.totalSellPrice)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatDateTime(booking.createdAt)}
+                  </span>
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-2">
+        <Link href="/bookings" className="flex min-h-[48px] items-center justify-between rounded-xl border border-border bg-card px-3 text-sm font-medium text-foreground active:bg-accent">
+          Booking
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+        <Link href="/bookings?queue=ticket" className="flex min-h-[48px] items-center justify-between rounded-xl border border-border bg-card px-3 text-sm font-medium text-foreground active:bg-accent">
+          Ticket
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+        <Link href="/bookings?filter=date" className="flex min-h-[48px] items-center justify-between rounded-xl border border-border bg-card px-3 text-sm font-medium text-foreground active:bg-accent">
+          Loc ngay booking
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+        <Link href="/bookings?tab=named-credits" className="flex min-h-[48px] items-center justify-between rounded-xl border border-border bg-card px-3 text-sm font-medium text-foreground active:bg-accent">
+          Dinh Danh
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+      </section>
+
+      {alerts.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold text-foreground">Can luu y</h2>
+          {alerts.slice(0, 3).map((alert) => (
+            <div key={`${alert.type}-${alert.text}`} className="flex items-start gap-2 rounded-xl border border-border bg-card p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="min-w-0">
+                <p className="line-clamp-2 font-medium text-foreground">{alert.text}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{alert.time}</p>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
+  const isMobile = useMobileViewport();
   const { data: overview, isLoading } = useQuery({
     queryKey: ['dashboard-overview'],
     queryFn: () => dashboardApi.getOverview(),
@@ -160,6 +351,10 @@ export default function DashboardPage() {
   ];
 
   const generatedAt = overview?.generatedAt ? formatDateTime(overview.generatedAt) : '';
+
+  if (isMobile) {
+    return <MobileDashboard overview={overview} isLoading={isLoading} />;
+  }
 
   return (
     <div className="max-w-[1500px] space-y-6">

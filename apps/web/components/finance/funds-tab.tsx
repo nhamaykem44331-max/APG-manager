@@ -171,14 +171,14 @@ export function FundsTab() {
                         <span
                           className={cn(
                             'inline-flex rounded-full border px-2 py-1 text-[11px] font-medium',
-                            locked ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+                            locked ? 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
                           )}
                         >
                           {row.sourceLabel ?? row.sourceType ?? 'Legacy'}
                         </span>
                         {locked ? (
                           <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
+                            <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                             Sửa tại chứng từ nguồn
                           </p>
                         ) : null}
@@ -190,7 +190,7 @@ export function FundsTab() {
                           {row.reference ? ` - ${row.reference}` : ''}
                         </p>
                         {row.reason ? (
-                          <p className="mt-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
+                          <p className="mt-2 rounded-md border px-2 py-1 text-xs alert-warning">
                             Lý do: {row.reason}
                           </p>
                         ) : null}
@@ -222,7 +222,7 @@ export function FundsTab() {
                               </button>
                               <button
                                 onClick={() => window.confirm(`Bạn chắc chắn muốn xóa "${row.description}"?`) && remove.mutate(row.id)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10"
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 Xóa
@@ -244,8 +244,8 @@ export function FundsTab() {
         <Modal title={entry ? 'Chỉnh sửa giao dịch quỹ' : 'Phiếu thu/chi quỹ'} onClose={() => { setShowEntry(false); setEntry(null); }}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setEntryForm((s) => ({ ...s, direction: 'INFLOW' }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', entryForm.direction === 'INFLOW' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400' : 'border-border text-muted-foreground')}>Thu vào</button>
-              <button onClick={() => setEntryForm((s) => ({ ...s, direction: 'OUTFLOW' }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', entryForm.direction === 'OUTFLOW' ? 'border-red-500 bg-red-500/10 text-red-400' : 'border-border text-muted-foreground')}>Chi ra</button>
+              <button onClick={() => setEntryForm((s) => ({ ...s, direction: 'INFLOW' }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', entryForm.direction === 'INFLOW' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-border text-muted-foreground')}>Thu vào</button>
+              <button onClick={() => setEntryForm((s) => ({ ...s, direction: 'OUTFLOW' }))} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', entryForm.direction === 'OUTFLOW' ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-400' : 'border-border text-muted-foreground')}>Chi ra</button>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <select value={entryForm.category} onChange={(e) => setEntryForm((s) => ({ ...s, category: e.target.value }))} className={inputClass}>{Object.entries(CASHFLOW_CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -281,7 +281,7 @@ export function FundsTab() {
             <input value={adjustForm.description} onChange={(e) => setAdjustForm((s) => ({ ...s, description: e.target.value }))} placeholder="Mô tả chứng từ" className={inputClass} />
             <input value={adjustForm.reference} onChange={(e) => setAdjustForm((s) => ({ ...s, reference: e.target.value }))} placeholder="Số chứng từ" className={inputClass} />
             <textarea rows={3} value={adjustForm.notes} onChange={(e) => setAdjustForm((s) => ({ ...s, notes: e.target.value }))} placeholder="Ghi chú" className={cn(inputClass, 'resize-none')} />
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">Điều chỉnh số dư bắt buộc phải có lý do để đối chiếu về sau.</div>
+            <div className="rounded-lg border px-3 py-2 text-xs alert-warning">Điều chỉnh số dư bắt buộc phải có lý do để đối chiếu về sau.</div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setShowAdjust(false)} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent">Hủy</button>
               <button onClick={() => adjust.mutate()} disabled={adjust.isPending || !adjustForm.targetBalance || !adjustForm.reason || !adjustForm.pic} className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50">Xác nhận</button>
@@ -306,7 +306,7 @@ export function FundsTab() {
             <input value={transferForm.description} onChange={(e) => setTransferForm((s) => ({ ...s, description: e.target.value }))} placeholder="Diễn giải" className={inputClass} />
             <input value={transferForm.reference} onChange={(e) => setTransferForm((s) => ({ ...s, reference: e.target.value }))} placeholder="Số chứng từ" className={inputClass} />
             <textarea rows={3} value={transferForm.notes} onChange={(e) => setTransferForm((s) => ({ ...s, notes: e.target.value }))} placeholder="Ghi chú" className={cn(inputClass, 'resize-none')} />
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-300">Mỗi lần chuyển quỹ tạo đồng thời 1 bút toán chi ở quỹ nguồn và 1 bút toán thu ở quỹ đích.</div>
+            <div className="rounded-lg border px-3 py-2 text-xs alert-info">Mỗi lần chuyển quỹ tạo đồng thời 1 bút toán chi ở quỹ nguồn và 1 bút toán thu ở quỹ đích.</div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => { setShowTransfer(false); setEntry(null); }} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent">Hủy</button>
               <button onClick={() => transfer.mutate()} disabled={transfer.isPending || !transferForm.amount || !transferForm.reason || !transferForm.pic || transferForm.fromFundAccount === transferForm.toFundAccount} className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{entry?.transferGroupId ? 'Cập nhật' : 'Xác nhận'}</button>

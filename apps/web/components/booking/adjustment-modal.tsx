@@ -6,17 +6,18 @@ import { RefreshCw, X } from 'lucide-react';
 import { MoneyInput } from '@/components/ui/money-input';
 import { bookingsApi } from '@/lib/api';
 import { cn, formatVND } from '@/lib/utils';
-import type { AdjustmentType } from '@/types';
+import type { AdjustmentType, Ticket } from '@/types';
 
 interface AdjustmentModalProps {
   bookingId: string;
+  tickets?: Ticket[];
   isOpen: boolean;
   defaultType?: AdjustmentType;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuccess }: AdjustmentModalProps) {
+export function AdjustmentModal({ bookingId, tickets = [], isOpen, defaultType, onClose, onSuccess }: AdjustmentModalProps) {
   const [type, setType] = useState<AdjustmentType>('CHANGE');
   const [chargeToCustomer, setChargeToCustomer] = useState('');
   const [changeFee, setChangeFee] = useState('');
@@ -29,6 +30,23 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
   const [expiryDate, setExpiryDate] = useState('');
   const [serviceCode, setServiceCode] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+
+  const activeTickets = tickets.filter((t) => t.status === 'ACTIVE');
+
+  const toggleTicket = (ticketId: string) => {
+    setSelectedTicketIds((prev) => {
+      const next = prev.includes(ticketId)
+        ? prev.filter((id) => id !== ticketId)
+        : [...prev, ticketId];
+      const selected = activeTickets.filter((t) => next.includes(t.id));
+      const netSum = selected.reduce((sum, t) => sum + Number(t.netPrice || 0), 0);
+      const sellSum = selected.reduce((sum, t) => sum + Number(t.sellPrice || 0), 0);
+      setAirlineRefund(netSum ? String(netSum) : '');
+      setRefundAmount(sellSum ? String(sellSum) : '');
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isOpen && defaultType) {
@@ -49,6 +67,7 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
     setExpiryDate('');
     setServiceCode('');
     setNotes('');
+    setSelectedTicketIds([]);
   };
 
   const handleClose = () => {
@@ -71,6 +90,7 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
       expiryDate: expiryDate || undefined,
       serviceCode: serviceCode || undefined,
       notes,
+      ticketIds: selectedTicketIds.length > 0 ? selectedTicketIds : undefined,
     }),
     onSuccess: () => {
       resetForm();
@@ -298,6 +318,47 @@ export function AdjustmentModal({ bookingId, isOpen, defaultType, onClose, onSuc
                     Khi chọn hoàn vé
                   </p>
                 </div>
+
+                {activeTickets.length > 1 && (
+                  <div className="rounded-lg border border-border bg-background p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-[13px] font-medium text-foreground">Chọn hành khách hoàn vé</label>
+                      <span className="text-xs text-muted-foreground">
+                        Đã chọn {selectedTicketIds.length}/{activeTickets.length}
+                      </span>
+                    </div>
+                    <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                      {activeTickets.map((t) => {
+                        const checked = selectedTicketIds.includes(t.id);
+                        return (
+                          <label
+                            key={t.id}
+                            className={cn(
+                              'flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[13px] transition-colors',
+                              checked ? 'border-blue-500 bg-blue-500/5' : 'border-border hover:bg-muted',
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleTicket(t.id)}
+                                className="h-3.5 w-3.5"
+                              />
+                              <span className="font-medium uppercase">{t.passenger?.fullName || 'CHƯA CÓ TÊN'}</span>
+                            </span>
+                            <span className="font-tabular text-xs text-muted-foreground">
+                              net {formatVND(Number(t.netPrice || 0))} · bán {formatVND(Number(t.sellPrice || 0))}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Chọn 1+ khách để hoàn riêng từng người; ô net/giá bán bên dưới tự cộng theo khách đã chọn. Không chọn ai = hoàn cả PNR.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <MoneyInput

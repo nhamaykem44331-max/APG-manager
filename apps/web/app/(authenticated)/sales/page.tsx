@@ -18,7 +18,7 @@ const COLUMNS: { status: LeadStatus; label: string; color: string; bg: string }[
   { status: 'NEGOTIATING', label: '🤝 Đàm phán',   color: 'text-amber-500',   bg: 'bg-amber-500' },
   { status: 'WON',         label: '🏆 Đã chốt',    color: 'text-emerald-500', bg: 'bg-emerald-500' },
   { status: 'ACTIVE',      label: '✅ Đang Active', color: 'text-green-500',   bg: 'bg-green-500' },
-  { status: 'ON_HOLD',     label: '⏸️ Tạm dừng',   color: 'text-gray-400',    bg: 'bg-gray-400' },
+  { status: 'ON_HOLD',     label: '⏸️ Tạm dừng',   color: 'text-slate-500',   bg: 'bg-slate-400' },
   { status: 'LOST',        label: '❌ Mất',         color: 'text-red-500',     bg: 'bg-red-500' },
 ];
 

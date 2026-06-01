@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export enum AdjustmentTypeDto {
   CHANGE = 'CHANGE',
@@ -51,6 +51,13 @@ export class AddAdjustmentDto {
   @IsNumber()
   @Min(0)
   apgServiceFee?: number;
+
+  // Hoan tung hanh khach: ID cac ve duoc hoan. Bo trong = hoan toan bo PNR.
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ticketIds?: string[];
 
   // === QUY ===
   @IsOptional()

@@ -18,6 +18,8 @@ import { DataTable, ColumnDef } from '@/components/ui/data-table';
 import { useRouter } from 'next/navigation';
 import { SheetSyncPanel } from '@/components/booking/sheet-sync-panel';
 import { PnrCopyChip } from '@/components/ui/pnr-copy-chip';
+import { MobileBookingsView } from '@/components/booking/mobile-bookings';
+import { useMobileViewport } from '@/hooks/use-mobile-viewport';
 
 // Tabs trạng thái
 const STATUS_TABS = [
@@ -41,7 +43,7 @@ const PAYMENT_STATUS_CLASSES: Record<Booking['paymentStatus'], string> = {
   PAID: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   PARTIAL: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   UNPAID: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  REFUNDED: 'bg-slate-500/10 text-slate-400 dark:text-slate-300',
+  REFUNDED: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
 };
 
 const BOOKING_STATUS_META: Record<Booking['status'], {
@@ -145,9 +147,11 @@ function buildCreatedDateRange(type: BookingPeriodFilter, value: string) {
 
 export default function BookingsPage() {
   const router = useRouter();
+  const isMobile = useMobileViewport();
   const [activeTab, setActiveTab] = useState<'bookings' | 'named-credits'>('bookings');
   const [activeStatus, setActiveStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [sortBy, setSortBy] = useState<BookingSortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<BookingSortOrder>('desc');
   const [periodFilterType, setPeriodFilterType] = useState<BookingPeriodFilter>('all');
@@ -160,6 +164,14 @@ export default function BookingsPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('tab') === 'named-credits') {
       setActiveTab('named-credits');
+    }
+    const status = params.get('status');
+    if (status) {
+      setActiveStatus(status);
+    }
+    const source = params.get('source');
+    if (source) {
+      setSourceFilter(source);
     }
   }, []);
 
@@ -196,11 +208,12 @@ export default function BookingsPage() {
 
   // Fetch danh sách booking
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['bookings', activeStatus, searchTerm, sortBy, sortOrder, dateFrom, dateTo, page],
+    queryKey: ['bookings', activeStatus, searchTerm, sourceFilter, sortBy, sortOrder, dateFrom, dateTo, page],
     enabled: activeTab === 'bookings',
     queryFn: () => bookingsApi.list({
       status: activeStatus || undefined,
       search: searchTerm || undefined,
+      source: sourceFilter || undefined,
       sortBy,
       order: sortOrder,
       dateFrom,
@@ -268,6 +281,31 @@ export default function BookingsPage() {
       </button>
     );
   };
+
+  if (isMobile && activeTab === 'bookings') {
+    return (
+      <MobileBookingsView
+        activeStatus={activeStatus}
+        setActiveStatus={setActiveStatus}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        sourceFilter={sourceFilter}
+        setSourceFilter={setSourceFilter}
+        periodFilterType={periodFilterType}
+        setPeriodFilterType={setPeriodFilterType}
+        periodFilterValue={periodFilterValue}
+        setPeriodFilterValue={setPeriodFilterValue}
+        page={page}
+        setPage={setPage}
+        bookings={bookings}
+        total={total}
+        totalPages={totalPages}
+        isLoading={isLoading}
+        isError={isError}
+        refetch={() => void refetch()}
+      />
+    );
+  }
 
   if (activeTab === 'bookings' && isError) {
     return (
@@ -422,7 +460,7 @@ export default function BookingsPage() {
       },
     },
     {
-      header: renderSortHeader('Ngày tạo', 'createdAt'),
+      header: renderSortHeader('Ngày booking', 'createdAt'),
       className: 'w-[108px]',
       cell: (b) => (
         <div className="flex flex-col gap-0.5 whitespace-nowrap">
@@ -531,7 +569,7 @@ export default function BookingsPage() {
                 'flex h-[32px] items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[12px] font-medium text-muted-foreground',
               )}>
                 <Filter className="h-3.5 w-3.5" />
-                <span>Lọc ngày tạo</span>
+                <span>Lọc ngày booking</span>
               </div>
 
               <select

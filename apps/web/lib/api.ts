@@ -207,6 +207,7 @@ export const bookingsApi = {
     expiryDate?: string;
     serviceCode?: string;
     notes?: string;
+    ticketIds?: string[];
   }) =>
     apiClient.post(`/bookings/${id}/adjustments`, data),
   hardDelete: (id: string) =>

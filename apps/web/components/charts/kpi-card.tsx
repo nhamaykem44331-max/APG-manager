@@ -10,11 +10,11 @@ interface KpiCardProps {
 }
 
 const ACCENT_CLASSES = {
-  blue:    { value: 'text-blue-500',    dot: 'bg-blue-500' },
-  emerald: { value: 'text-emerald-500', dot: 'bg-emerald-500' },
-  amber:   { value: 'text-amber-500',   dot: 'bg-amber-500' },
-  red:     { value: 'text-red-500',     dot: 'bg-red-500' },
-  purple:  { value: 'text-purple-500',  dot: 'bg-purple-500' },
+  blue:    { value: 'text-blue-600 dark:text-blue-500',    dot: 'bg-blue-500' },
+  emerald: { value: 'text-emerald-600 dark:text-emerald-500', dot: 'bg-emerald-500' },
+  amber:   { value: 'text-amber-600 dark:text-amber-500',   dot: 'bg-amber-500' },
+  red:     { value: 'text-red-600 dark:text-red-500',     dot: 'bg-red-500' },
+  purple:  { value: 'text-purple-600 dark:text-purple-500',  dot: 'bg-purple-500' },
   default: { value: 'text-foreground',  dot: 'bg-foreground' },
 };
 
@@ -40,7 +40,7 @@ export function KpiCard({
   const accent = ACCENT_CLASSES[accentColor ?? 'default'];
 
   return (
-    <div className="card p-4">
+    <div className="card card-lift p-4">
       <div className="flex flex-col gap-1">
         {/* Label với color dot */}
         <div className="flex items-center gap-2">

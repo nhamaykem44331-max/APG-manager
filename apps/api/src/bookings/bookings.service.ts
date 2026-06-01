@@ -1917,6 +1917,8 @@ export class BookingsService {
   async addAdjustment(bookingId: string, dto: AddAdjustmentDto, userId: string) {
     const booking = await this.findOne(bookingId);
 
+    let partialRefundApplied = false;
+
     const adjustment = await this.prisma.$transaction(async (tx) => {
       const fundAccount = dto.fundAccount ? (dto.fundAccount as any) : null;
 
@@ -2105,31 +2107,56 @@ export class BookingsService {
         const penaltyFee = Number(dto.penaltyFee ?? 0);
         const apgFee = Number(dto.apgServiceFee ?? 0);
 
-        const [refundedReceivables, refundedPayables] = await Promise.all([
-          this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'RECEIVABLE'),
-          this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'PAYABLE'),
-        ]);
+        const activeTickets = (booking.tickets ?? []).filter((t) => t.status === 'ACTIVE');
+        const requestedTicketIds = Array.from(new Set(dto.ticketIds ?? []));
+        const selectedTickets = activeTickets.filter((t) => requestedTicketIds.includes(t.id));
 
-        if (refundedReceivables === 0) {
-          await this.createRefundHistoryLedger(tx, {
-            booking,
-            userId,
-            direction: 'RECEIVABLE',
-            amount: refundToCustomer,
-          });
+        if (requestedTicketIds.length > 0 && selectedTickets.length !== requestedTicketIds.length) {
+          throw new BadRequestException(
+            'Một số vé được chọn không thuộc booking hoặc đã được hoàn trước đó.',
+          );
         }
 
-        if (refundedPayables === 0) {
-          await this.createRefundHistoryLedger(tx, {
-            booking,
-            userId,
-            direction: 'PAYABLE',
-            amount: airlineRefund,
-          });
-        }
+        // Hoàn 1 phần: chỉ chọn một số vé trong PNR còn nhiều vé đang hoạt động.
+        const isPartialRefund =
+          selectedTickets.length > 0 && selectedTickets.length < activeTickets.length;
 
-        console.log(`[REFUND-AR] Marked ${refundedReceivables} ticket receivable ledger(s) as refunded for booking ${booking.bookingCode}`);
-        console.log(`[REFUND-AP] Marked ${refundedPayables} ticket payable ledger(s) as refunded for booking ${booking.bookingCode}`);
+        if (isPartialRefund) {
+          // Đánh dấu các vé được chọn = REFUNDED rồi tính lại tổng booking từ các vé còn ACTIVE.
+          // syncReceivable/Payable (chạy sau transaction) sẽ hạ AR/AP về đúng phần các khách còn lại.
+          await tx.ticket.updateMany({
+            where: { id: { in: selectedTickets.map((t) => t.id) } },
+            data: { status: 'REFUNDED' },
+          });
+          await this.recalculateBookingTotalsWithClient(tx, booking.id);
+          console.log(`[REFUND-PARTIAL] Refunded ${selectedTickets.length}/${activeTickets.length} ticket(s) for booking ${booking.bookingCode}`);
+        } else {
+          const [refundedReceivables, refundedPayables] = await Promise.all([
+            this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'RECEIVABLE'),
+            this.markPrimaryTicketLedgersRefunded(tx, booking.id, 'PAYABLE'),
+          ]);
+
+          if (refundedReceivables === 0) {
+            await this.createRefundHistoryLedger(tx, {
+              booking,
+              userId,
+              direction: 'RECEIVABLE',
+              amount: refundToCustomer,
+            });
+          }
+
+          if (refundedPayables === 0) {
+            await this.createRefundHistoryLedger(tx, {
+              booking,
+              userId,
+              direction: 'PAYABLE',
+              amount: airlineRefund,
+            });
+          }
+
+          console.log(`[REFUND-AR] Marked ${refundedReceivables} ticket receivable ledger(s) as refunded for booking ${booking.bookingCode}`);
+          console.log(`[REFUND-AP] Marked ${refundedPayables} ticket payable ledger(s) as refunded for booking ${booking.bookingCode}`);
+        }
 
         if (apgFee > 0 && booking.customer) {
           const issueDate = new Date();
@@ -2178,26 +2205,52 @@ export class BookingsService {
           console.log(`[REFUND-FEE-AP] +${penaltyFee} AP phi hoan hang`);
         }
 
-        await tx.booking.update({
-          where: { id: booking.id },
-          data: { status: 'REFUNDED' },
-        });
-        await this.updatePaymentStatusWithClient(tx, booking.id);
-        await tx.bookingStatusLog.create({
-          data: {
-            bookingId: booking.id,
-            fromStatus: booking.status,
-            toStatus: 'REFUNDED',
-            changedBy: userId,
-            reason: `Hoàn vé (${dto.type}): Đảo AR vé gốc ${refundToCustomer}, Đảo AP vé gốc ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
-          },
-        });
+        if (isPartialRefund) {
+          // Còn vé hoạt động trong PNR -> KHÔNG đưa cả booking về REFUNDED.
+          const refundedNames = selectedTickets
+            .map((t) => t.passenger?.fullName)
+            .filter(Boolean)
+            .join(', ');
+          await tx.bookingStatusLog.create({
+            data: {
+              bookingId: booking.id,
+              fromStatus: booking.status,
+              toStatus: booking.status,
+              changedBy: userId,
+              reason: `Hoàn ${selectedTickets.length} khách trong PNR${refundedNames ? ` (${refundedNames})` : ''}: Đảo AR vé gốc ${refundToCustomer}, Đảo AP vé gốc ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
+            },
+          });
+          partialRefundApplied = true;
+        } else {
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: { status: 'REFUNDED' },
+          });
+          await this.updatePaymentStatusWithClient(tx, booking.id);
+          await tx.bookingStatusLog.create({
+            data: {
+              bookingId: booking.id,
+              fromStatus: booking.status,
+              toStatus: 'REFUNDED',
+              changedBy: userId,
+              reason: `Hoàn vé (${dto.type}): Đảo AR vé gốc ${refundToCustomer}, Đảo AP vé gốc ${airlineRefund}, Phí hoàn hãng ${penaltyFee}, Phí APG thu khách ${apgFee}`,
+            },
+          });
+        }
       } else {
         throw new BadRequestException(`Loáº¡i Ä‘iá»u chá»‰nh khÃ´ng Ä‘Æ°á»£c há»— trá»£: ${dto.type}`);
       }
 
       return adjustment;
     });
+
+    // Hoan tung khach: tong booking da duoc tinh lai trong transaction -> dong bo lai
+    // ledger AR/AP ve phan cac ve con hoat dong (cac khach chua hoan).
+    if (partialRefundApplied) {
+      await this.syncReceivableLedgerForBooking(booking.id, userId, { createIfMissing: true });
+      await this.syncPayableLedgerForBooking(booking.id, userId);
+      await this.updatePaymentStatusWithClient(this.prisma, booking.id);
+    }
 
     await this.refreshAffectedCustomers(booking.customerId);
 
