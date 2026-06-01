@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, X } from 'lucide-react';
 import { MoneyInput } from '@/components/ui/money-input';
 import { bookingsApi } from '@/lib/api';
@@ -31,6 +31,7 @@ export function AdjustmentModal({ bookingId, tickets = [], isOpen, defaultType, 
   const [serviceCode, setServiceCode] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+  const queryClient = useQueryClient();
 
   const activeTickets = tickets.filter((t) => t.status === 'ACTIVE');
 
@@ -99,6 +100,17 @@ export function AdjustmentModal({ bookingId, tickets = [], isOpen, defaultType, 
     },
     onError: (error) => {
       console.error('Lỗi khi ghi nhận hoàn/đổi:', error);
+
+      // Vé có thể vừa được hoàn ở request khác (double-submit / trang cũ) -> làm mới booking
+      // để danh sách chọn vé phản ánh đúng các vé còn ACTIVE.
+      const hadTicketSelection = selectedTicketIds.length > 0;
+      void queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
+      if (hadTicketSelection) {
+        setSelectedTicketIds([]);
+        setAirlineRefund('');
+        setRefundAmount('');
+      }
+
       const message = (() => {
         const responseMessage = (error as {
           response?: { data?: { message?: string | string[] } };
@@ -115,7 +127,11 @@ export function AdjustmentModal({ bookingId, tickets = [], isOpen, defaultType, 
         return 'Có lỗi xảy ra, vui lòng thử lại.';
       })();
 
-      window.alert(message);
+      window.alert(
+        hadTicketSelection
+          ? `${message}\n\nDanh sách vé đã được làm mới, vui lòng kiểm tra lại.`
+          : message,
+      );
     },
   });
 
@@ -129,6 +145,7 @@ export function AdjustmentModal({ bookingId, tickets = [], isOpen, defaultType, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitMutation.isPending) return;
     submitMutation.mutate();
   };
 
