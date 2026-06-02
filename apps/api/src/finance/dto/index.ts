@@ -26,3 +26,4 @@ export { ReviewInvoiceImportDto } from './review-invoice-import.dto';
 export { CreateDebtStatementExportDto } from './create-debt-statement-export.dto';
 export { CreateOutgoingRequestExportDto } from './create-outgoing-request-export.dto';
 export { UpdateInvoiceDto } from './update-invoice.dto';
+export { PreviewReconciliationDto, CreateReconciliationDto } from './create-reconciliation.dto';

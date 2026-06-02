@@ -13,6 +13,7 @@ import { ExpenseService } from './expense.service';
 import { InvoiceService } from './invoice.service';
 import { InvoiceImportService } from './invoice-import.service';
 import { InvoiceExportService } from './invoice-export.service';
+import { ReconciliationService } from './reconciliation.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -35,6 +36,8 @@ import {
   ListInvoicesDto,
   ReviewInvoiceImportDto,
   UpdateInvoiceDto,
+  PreviewReconciliationDto,
+  CreateReconciliationDto,
 } from './dto';
 
 @Controller('finance')
@@ -49,6 +52,7 @@ export class FinanceController {
     private invoice: InvoiceService,
     private invoiceImport: InvoiceImportService,
     private invoiceExport: InvoiceExportService,
+    private reconciliation: ReconciliationService,
   ) {}
 
   // ─── Finance cũ (giữ nguyên) ───────────────────────────────────────
@@ -255,6 +259,40 @@ export class FinanceController {
   runReconciliation(@Body() body: { date?: string }) {
     const date = body.date ? new Date(body.date) : new Date();
     return this.service.runReconciliation(date);
+  }
+
+  // ─── Đối soát BSP theo kỳ (GĐ3b) ───────────────────────────────────
+  @Get('reconciliation/batches')
+  listReconciliations(@Query('supplierId') supplierId?: string) {
+    return this.reconciliation.list(supplierId);
+  }
+
+  @Get('reconciliation/preview')
+  previewReconciliation(@Query() query: PreviewReconciliationDto) {
+    return this.reconciliation.preview(query.supplierId, new Date(query.periodFrom), new Date(query.periodTo));
+  }
+
+  @Post('reconciliation/batches')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  createReconciliation(
+    @Body() dto: CreateReconciliationDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.reconciliation.create({ ...dto, userId: req.user.id });
+  }
+
+  @Get('reconciliation/batches/:id')
+  getReconciliation(@Param('id') id: string) {
+    return this.reconciliation.findOne(id);
+  }
+
+  @Post('reconciliation/batches/:id/confirm')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  confirmReconciliation(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.reconciliation.confirm(id, req.user.id);
   }
 
   // ─── Ledger (Công nợ 2 chiều AR/AP) ───────────────────────────────
