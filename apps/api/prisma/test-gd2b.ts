@@ -9,6 +9,8 @@ import { LedgerService } from '../src/finance/ledger.service';
 import { BookingsService } from '../src/bookings/bookings.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { NamedCreditService } from '../src/bookings/named-credit.service';
+import { FinanceService } from '../src/finance/finance.service';
+import { ExpenseService } from '../src/finance/expense.service';
 
 const prisma = new PrismaService();
 const n8n: any = {
@@ -22,6 +24,8 @@ const ledger = new LedgerService(prisma, n8n, cashflow, financialLedger);
 const customers = new CustomersService(prisma);
 const namedCredit = new NamedCreditService(prisma);
 const bookings = new BookingsService(prisma, n8n, customers, namedCredit, financialLedger);
+const finance = new FinanceService(prisma, n8n, cashflow, financialLedger);
+const expense = new ExpenseService(prisma, cashflow, financialLedger);
 
 const USER = 'TEST-USER';
 let passN = 0;
@@ -198,6 +202,52 @@ async function testBookingCash() {
   check('Booking: CFE sourceType=BOOKING_PAYMENT + sourceId=paymentId', !!cfe, `cfe=${!!cfe}`);
 }
 
+// ─── M4: deposit top-up + expense (create/update/remove) ──────────────────
+async function testDeposit() {
+  console.log('\n[M4] finance.updateDeposit — nạp deposit hãng (DEPOSIT_TOPUP)');
+  const dep = await prisma.airlineDeposit.create({ data: { airline: 'VJ' as any, balance: 0, lastTopUp: 0, alertThreshold: 1_000_000 } });
+  const before = await counts();
+  await finance.updateDeposit(dep.id, { amount: 3_000_000, fundAccount: 'BANK_HTX', userId: USER });
+  const after = await counts();
+  check('Deposit: +1 CFE', after.cfe - before.cfe === 1, `Δcfe=${after.cfe - before.cfe}`);
+  check('Deposit: +1 FT', after.ft - before.ft === 1, `Δft=${after.ft - before.ft}`);
+  const ft = await prisma.financialTransaction.findFirst({ where: { type: 'DEPOSIT_TOPUP' }, orderBy: { createdAt: 'desc' } });
+  check('Deposit: FT type=DEPOSIT_TOPUP', ft?.type === 'DEPOSIT_TOPUP', String(ft?.type));
+  check('Deposit: FT direction=OUTFLOW', ft?.direction === 'OUTFLOW', String(ft?.direction));
+  check('Deposit: FT amount=3,000,000', Number(ft?.amount) === 3_000_000, String(ft?.amount));
+  check('Deposit: dedupeKey deposit-topup:*', !!ft?.dedupeKey.startsWith('deposit-topup:'), String(ft?.dedupeKey));
+}
+
+async function testExpenseLifecycle() {
+  console.log('\n[M4] expense.create/update/remove — đồng bộ vòng đời');
+  // create
+  const c0 = await counts();
+  const exp = await expense.create({ category: 'OFFICE_RENT', description: 'Thuê VP T6', amount: 5_000_000, date: new Date().toISOString(), fundAccount: 'CASH_OFFICE' } as any, USER);
+  const c1 = await counts();
+  check('Expense create: +1 CFE', c1.cfe - c0.cfe === 1, `Δcfe=${c1.cfe - c0.cfe}`);
+  check('Expense create: +1 FT', c1.ft - c0.ft === 1, `Δft=${c1.ft - c0.ft}`);
+  let ft = await prisma.financialTransaction.findFirst({ where: { expenseId: exp.id } });
+  check('Expense create: FT type=OPERATING_EXPENSE', ft?.type === 'OPERATING_EXPENSE', String(ft?.type));
+  check('Expense create: FT amount=5,000,000', Number(ft?.amount) === 5_000_000, String(ft?.amount));
+  check('Expense create: dedupeKey expense:*', ft?.dedupeKey === `expense:${exp.id}`, String(ft?.dedupeKey));
+
+  // update amount -> FT cập nhật theo (không nhân đôi)
+  await expense.update(exp.id, { amount: 6_500_000 } as any, USER);
+  const c2 = await counts();
+  check('Expense update: CFE không đổi số lượng', c2.cfe === c1.cfe, `cfe=${c2.cfe}`);
+  check('Expense update: FT không đổi số lượng', c2.ft === c1.ft, `ft=${c2.ft}`);
+  ft = await prisma.financialTransaction.findFirst({ where: { expenseId: exp.id } });
+  check('Expense update: FT amount lan sang 6,500,000', Number(ft?.amount) === 6_500_000, String(ft?.amount));
+
+  // remove -> FT bị xóa
+  await expense.remove(exp.id);
+  const c3 = await counts();
+  check('Expense remove: CFE giảm 1', c1.cfe - c3.cfe === 1, `Δcfe=${c1.cfe - c3.cfe}`);
+  check('Expense remove: FT giảm 1', c1.ft - c3.ft === 1, `Δft=${c1.ft - c3.ft}`);
+  const gone = await prisma.financialTransaction.findFirst({ where: { expenseId: exp.id } });
+  check('Expense remove: FT đã biến mất', !gone, `gone=${!gone}`);
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -221,6 +271,8 @@ async function main() {
   await testLedgerPayAP();
   await testPayBatch();
   await testBookingCash();
+  await testDeposit();
+  await testExpenseLifecycle();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);

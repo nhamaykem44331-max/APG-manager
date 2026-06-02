@@ -14,6 +14,8 @@ import {
   getStartOfReportMonth,
 } from '../common/reporting-date.util';
 import { CashFlowService } from './cashflow.service';
+import { FinancialLedgerService } from './financial-ledger.service';
+import { TxnDedupe } from './txn-type.util';
 
 const DASHBOARD_BOOKING_STATUSES = ['ISSUED', 'COMPLETED'] as const;
 const ACTIVE_LEDGER_STATUSES = ['ACTIVE', 'PARTIAL_PAID', 'OVERDUE'] as const;
@@ -24,6 +26,7 @@ export class FinanceService {
     private prisma: PrismaService,
     private n8n: N8nService,
     private cashflow: CashFlowService,
+    private financialLedger: FinancialLedgerService,
   ) {}
 
   // Tổng quan tài chính realtime
@@ -226,6 +229,19 @@ export class FinanceService {
         sourceId,
         isLocked: true,
       }, tx, input.userId);
+
+      await this.financialLedger.post({
+        type: 'DEPOSIT_TOPUP',
+        direction: 'OUTFLOW',
+        amount: input.amount,
+        occurredAt: topUpAt,
+        dedupeKey: TxnDedupe.depositTopUp(sourceId),
+        fundAccount,
+        pic: input.pic ?? 'Finance',
+        description: `Nạp deposit ${deposit.airline}`,
+        reference: input.reference ?? `DEPOSIT-${deposit.airline}`,
+        createdBy: input.userId,
+      }, tx);
 
       return updatedDeposit;
     });

@@ -3,12 +3,15 @@ import { CashFlowSourceType, FundAccount } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { CreateExpenseDto, ListExpenseDto } from './dto';
 import { CashFlowService } from './cashflow.service';
+import { FinancialLedgerService } from './financial-ledger.service';
+import { TxnDedupe } from './txn-type.util';
 
 @Injectable()
 export class ExpenseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cashflow: CashFlowService,
+    private readonly financialLedger: FinancialLedgerService,
   ) {}
 
   async findAll(dto: ListExpenseDto) {
@@ -87,6 +90,19 @@ export class ExpenseService {
         userId,
       );
 
+      await this.financialLedger.post({
+        type: 'OPERATING_EXPENSE',
+        direction: 'OUTFLOW',
+        amount: dto.amount,
+        occurredAt: new Date(dto.date),
+        dedupeKey: TxnDedupe.expense(created.id),
+        fundAccount: dto.fundAccount as FundAccount,
+        expenseId: created.id,
+        pic: 'Finance',
+        description: `Chi phí: ${dto.description}`,
+        createdBy: userId,
+      }, tx);
+
       return created;
     });
 
@@ -144,6 +160,19 @@ export class ExpenseService {
         userId,
       );
 
+      await this.financialLedger.post({
+        type: 'OPERATING_EXPENSE',
+        direction: 'OUTFLOW',
+        amount: nextAmount,
+        occurredAt: nextDate,
+        dedupeKey: TxnDedupe.expense(updated.id),
+        fundAccount: nextFundAccount,
+        expenseId: updated.id,
+        pic: 'Finance',
+        description: `Chi phí: ${nextDescription}`,
+        createdBy: userId,
+      }, tx);
+
       return updated;
     });
   }
@@ -151,6 +180,7 @@ export class ExpenseService {
   async remove(id: string) {
     return this.prisma.$transaction(async (tx) => {
       await this.cashflow.deleteSystemEntriesBySource(CashFlowSourceType.OPERATING_EXPENSE, id, tx);
+      await this.financialLedger.removeByDedupeKeys([TxnDedupe.expense(id)], tx);
       return tx.operatingExpense.delete({ where: { id } });
     });
   }
