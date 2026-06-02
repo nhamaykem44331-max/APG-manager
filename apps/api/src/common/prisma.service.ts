@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 function buildRuntimeDatasourceUrl(rawUrl?: string) {
   if (!rawUrl) {
@@ -48,24 +48,7 @@ export class PrismaService extends PrismaClient
           },
         }
       : undefined);
-
-    this.$use(async (params: Prisma.MiddlewareParams, next) => {
-      if (
-        params.model !== 'Debt'
-        || (params.action !== 'create' && params.action !== 'update')
-      ) {
-        return next(params);
-      }
-
-      const data = params.args?.data;
-      if (data && (data.totalAmount !== undefined || data.paidAmount !== undefined)) {
-        const total = Number(data.totalAmount ?? 0);
-        const paid = Number(data.paidAmount ?? 0);
-        data.remaining = total - paid;
-      }
-
-      return next(params);
-    });
+    // accounts_ledger.remaining được ép ở tầng DB bằng trigger (xem prisma/sql/accounts_ledger_remaining_trigger.sql).
   }
 
   onModuleInit() {
