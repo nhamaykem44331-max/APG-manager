@@ -237,13 +237,14 @@ export class CashFlowService {
   }
 
   private async getFundCurrentBalance(fundAccount: FundAccount) {
+    // Nguồn chân lý số dư quỹ: financial_transactions (gồm cả chuyển quỹ + điều chỉnh).
     const [inflow, outflow] = await Promise.all([
-      this.prisma.cashFlowEntry.aggregate({
-        where: { fundAccount, direction: 'INFLOW', status: 'DONE' },
+      this.prisma.financialTransaction.aggregate({
+        where: { fundAccount, direction: 'INFLOW' },
         _sum: { amount: true },
       }),
-      this.prisma.cashFlowEntry.aggregate({
-        where: { fundAccount, direction: 'OUTFLOW', status: 'DONE' },
+      this.prisma.financialTransaction.aggregate({
+        where: { fundAccount, direction: 'OUTFLOW' },
         _sum: { amount: true },
       }),
     ]);
@@ -427,19 +428,18 @@ export class CashFlowService {
   }
 
   async getFundBalances() {
-    const entries = await this.prisma.cashFlowEntry.findMany({
+    // Số dư quỹ đọc từ sổ trung tâm financial_transactions (gồm cả chuyển quỹ + điều chỉnh).
+    const entries = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'DONE',
         fundAccount: { not: null },
       },
       select: {
         fundAccount: true,
         direction: true,
         amount: true,
-        date: true,
-        sourceType: true,
+        occurredAt: true,
       },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
     });
 
     const summaries = new Map<FundAccount, {
@@ -478,8 +478,8 @@ export class CashFlowService {
         bucket.balance -= amount;
       }
       bucket.movementCount += 1;
-      if (!bucket.lastTransactionAt || entry.date > bucket.lastTransactionAt) {
-        bucket.lastTransactionAt = entry.date;
+      if (!bucket.lastTransactionAt || entry.occurredAt > bucket.lastTransactionAt) {
+        bucket.lastTransactionAt = entry.occurredAt;
       }
     }
 
@@ -756,21 +756,21 @@ export class CashFlowService {
     const dateFilter: Record<string, Date> = {};
     if (dateFrom) dateFilter.gte = new Date(dateFrom);
     if (dateTo) dateFilter.lte = new Date(dateTo);
-    const where = Object.keys(dateFilter).length ? { date: dateFilter } : {};
+    const where: Prisma.FinancialTransactionWhereInput = Object.keys(dateFilter).length ? { occurredAt: dateFilter } : {};
 
-    // Loại chuyển quỹ nội bộ khỏi tổng thu/chi; giữ bút toán sourceType=null (vd thu vé trực tiếp)
-    const excludeTransfer: Prisma.CashFlowEntryWhereInput = {
-      OR: [{ sourceType: null }, { sourceType: { not: CashFlowSourceType.FUND_TRANSFER } }],
+    // Gross thu/chi từ sổ trung tâm; loại chuyển quỹ nội bộ và điều chỉnh số dư (không phải thu/chi thực).
+    const excludeNonPnl: Prisma.FinancialTransactionWhereInput = {
+      type: { notIn: ['FUND_TRANSFER', 'ADJUSTMENT'] },
     };
 
     const [inflow, outflow] = await Promise.all([
-      this.prisma.cashFlowEntry.aggregate({
-        where: { ...where, ...excludeTransfer, direction: 'INFLOW', status: 'DONE' },
+      this.prisma.financialTransaction.aggregate({
+        where: { ...where, ...excludeNonPnl, direction: 'INFLOW' },
         _sum: { amount: true },
         _count: true,
       }),
-      this.prisma.cashFlowEntry.aggregate({
-        where: { ...where, ...excludeTransfer, direction: 'OUTFLOW', status: 'DONE' },
+      this.prisma.financialTransaction.aggregate({
+        where: { ...where, ...excludeNonPnl, direction: 'OUTFLOW' },
         _sum: { amount: true },
         _count: true,
       }),
@@ -790,14 +790,13 @@ export class CashFlowService {
 
   // ─── Báo cáo hàng tháng theo category ──────────────────────────────────
   async getMonthlyReport(year: number) {
-    const entries = await this.prisma.cashFlowEntry.findMany({
+    const entries = await this.prisma.financialTransaction.findMany({
       where: {
-        date: { gte: new Date(`${year}-01-01`), lt: new Date(`${year + 1}-01-01`) },
-        status: 'DONE',
-        // Loại chuyển quỹ nội bộ; giữ bút toán sourceType=null
-        OR: [{ sourceType: null }, { sourceType: { not: CashFlowSourceType.FUND_TRANSFER } }],
+        occurredAt: { gte: new Date(`${year}-01-01`), lt: new Date(`${year + 1}-01-01`) },
+        // Loại chuyển quỹ nội bộ + điều chỉnh số dư khỏi gross thu/chi.
+        type: { notIn: ['FUND_TRANSFER', 'ADJUSTMENT'] },
       },
-      select: { direction: true, category: true, amount: true, date: true, pic: true },
+      select: { direction: true, amount: true, occurredAt: true },
     });
 
     const monthly: Record<string, { inflow: number; outflow: number }> = {};
@@ -806,7 +805,7 @@ export class CashFlowService {
     }
 
     for (const entry of entries) {
-      const month = `T${entry.date.getMonth() + 1}`;
+      const month = `T${entry.occurredAt.getMonth() + 1}`;
       if (entry.direction === 'INFLOW') monthly[month].inflow += Number(entry.amount);
       else monthly[month].outflow += Number(entry.amount);
     }

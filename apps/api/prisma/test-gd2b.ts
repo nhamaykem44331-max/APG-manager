@@ -335,6 +335,46 @@ async function testBackfillIdempotent() {
   check('Backfill: FT count == CFE(DONE) count', n3.ft === n3.cfe, `ft=${n3.ft} cfe=${n3.cfe}`);
 }
 
+// ─── M7: reads tổng hợp đọc từ FT, khớp số tính độc lập từ CFE ─────────────
+async function testReadsMatch() {
+  console.log('\n[M7] reads tổng hợp (FT) khớp số liệu tính từ CFE');
+
+  // 1) getFundBalances
+  const fb = await cashflow.getFundBalances();
+  const cfeRows = await prisma.cashFlowEntry.findMany({ where: { status: 'DONE', fundAccount: { not: null } }, select: { fundAccount: true, direction: true, amount: true } });
+  const expBal: Record<string, number> = {};
+  for (const r of cfeRows) expBal[r.fundAccount!] = (expBal[r.fundAccount!] ?? 0) + (r.direction === 'INFLOW' ? 1 : -1) * Number(r.amount);
+  let balOk = true;
+  for (const f of fb) if (Math.round(f.balance) !== Math.round(expBal[f.fund] ?? 0)) balOk = false;
+  check('getFundBalances (FT) == số dư tính từ CFE', balOk, JSON.stringify(fb.map((f) => [f.fund, f.balance])));
+
+  // 2) getSummary — loại FUND_TRANSFER + ADJUSTMENT (giữ bút toán sourceType=null)
+  const sum = await cashflow.getSummary();
+  const pnlRows = await prisma.cashFlowEntry.findMany({
+    where: { status: 'DONE', OR: [{ sourceType: null }, { sourceType: { notIn: ['FUND_TRANSFER', 'FUND_ADJUSTMENT'] } }] },
+    select: { direction: true, amount: true },
+  });
+  let ein = 0; let eout = 0;
+  for (const r of pnlRows) { if (r.direction === 'INFLOW') ein += Number(r.amount); else eout += Number(r.amount); }
+  check('getSummary.totalInflow khớp', Math.round(sum.totalInflow) === Math.round(ein), `FT=${sum.totalInflow} CFE=${ein}`);
+  check('getSummary.totalOutflow khớp', Math.round(sum.totalOutflow) === Math.round(eout), `FT=${sum.totalOutflow} CFE=${eout}`);
+
+  // 3) getMonthlyReport năm hiện tại — tổng cả năm khớp gross
+  const year = new Date().getFullYear();
+  const monthly = await cashflow.getMonthlyReport(year);
+  const sumIn = monthly.reduce((s: number, m: any) => s + m.inflow, 0);
+  const sumOut = monthly.reduce((s: number, m: any) => s + m.outflow, 0);
+  check('getMonthlyReport Σ inflow == getSummary inflow', Math.round(sumIn) === Math.round(sum.totalInflow), `${sumIn} vs ${sum.totalInflow}`);
+  check('getMonthlyReport Σ outflow == getSummary outflow', Math.round(sumOut) === Math.round(sum.totalOutflow), `${sumOut} vs ${sum.totalOutflow}`);
+
+  // 4) ADJUSTMENT bị loại khỏi gross nhưng vẫn vào số dư quỹ
+  const adj = await prisma.financialTransaction.aggregate({ where: { type: 'ADJUSTMENT' }, _sum: { amount: true } });
+  const adjAmt = Number(adj._sum.amount ?? 0);
+  check('ADJUSTMENT tồn tại để kiểm (test có điều chỉnh)', adjAmt > 0, `adj=${adjAmt}`);
+  const personal = fb.find((f) => f.fund === 'BANK_PERSONAL');
+  check('Số dư BANK_PERSONAL gồm cả ADJUSTMENT', Math.round(personal?.balance ?? 0) === Math.round(expBal['BANK_PERSONAL'] ?? 0), String(personal?.balance));
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -364,6 +404,7 @@ async function main() {
   await testAdjust();
   await testTransferLifecycle();
   await testBackfillIdempotent();
+  await testReadsMatch();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);
