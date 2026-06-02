@@ -12,6 +12,7 @@ import { NamedCreditService } from '../src/bookings/named-credit.service';
 import { FinanceService } from '../src/finance/finance.service';
 import { ExpenseService } from '../src/finance/expense.service';
 import { CommissionService } from '../src/finance/commission.service';
+import { ReconciliationService } from '../src/finance/reconciliation.service';
 import { runBackfill } from './backfill-financial-transactions';
 
 const prisma = new PrismaService();
@@ -23,6 +24,7 @@ const n8n: any = {
 const financialLedger = new FinancialLedgerService(prisma);
 const cashflow = new CashFlowService(prisma, financialLedger);
 const commission = new CommissionService(prisma, cashflow, financialLedger);
+const recon = new ReconciliationService(prisma, financialLedger);
 const ledger = new LedgerService(prisma, n8n, cashflow, financialLedger);
 const customers = new CustomersService(prisma);
 const namedCredit = new NamedCreditService(prisma);
@@ -64,6 +66,7 @@ async function sumByFund(table: 'cfe' | 'ft') {
 }
 
 async function resetMoneyTables() {
+  await prisma.reconciliationBatch.deleteMany({});
   await prisma.commissionRecord.deleteMany({});
   await prisma.financialTransaction.deleteMany({});
   await prisma.ledgerPayment.deleteMany({});
@@ -417,6 +420,67 @@ async function testPayPartner() {
   check('PayPartner: getSummary.outflow +1,000,000', Math.round(sumAfter.totalOutflow - sumBefore.totalOutflow) === 1_000_000, `Δout=${sumAfter.totalOutflow - sumBefore.totalOutflow}`);
 }
 
+// ─── GĐ3b: đối soát BSP (preview/create/confirm) ──────────────────────────
+async function testReconciliation() {
+  console.log('\n[GĐ3b] ReconciliationService — preview/create/confirm');
+  await prisma.supplierProfile.upsert({
+    where: { id: 'TEST-SUP-RECON' },
+    update: {},
+    create: { id: 'TEST-SUP-RECON', code: 'QH', name: 'Bamboo (recon test)', type: 'AIRLINE', isActive: true },
+  });
+  // Dọn booking TEST-SUP-RECON của lần chạy trước để internalNet tất định
+  const oldRecon = await prisma.booking.findMany({ where: { supplierId: 'TEST-SUP-RECON' }, select: { id: true } });
+  const oldIds = oldRecon.map((b) => b.id);
+  if (oldIds.length) {
+    await prisma.ticket.deleteMany({ where: { bookingId: { in: oldIds } } });
+    await prisma.booking.deleteMany({ where: { id: { in: oldIds } } });
+  }
+  const bkId = `TEST-RECON-BK-${Math.random().toString(36).slice(2, 7)}`;
+  const pax = await prisma.passenger.create({ data: { fullName: 'PAX Recon', type: 'ADT' as any, customerId: 'TEST-CUST-1' } });
+  await prisma.booking.create({
+    data: {
+      id: bkId, bookingCode: bkId, staffId: USER, customerId: 'TEST-CUST-1', supplierId: 'TEST-SUP-RECON',
+      contactName: 'KH Test', contactPhone: '0900000003', status: 'ISSUED' as any, issuedAt: new Date(),
+      totalSellPrice: 1_300_000, totalNetPrice: 1_000_000,
+    } as any,
+  });
+  await prisma.ticket.create({
+    data: {
+      bookingId: bkId, passengerId: pax.id, airline: 'QH', flightNumber: 'QH1', departureCode: 'SGN', arrivalCode: 'HAN',
+      departureTime: new Date(), arrivalTime: new Date(Date.now() + 7_200_000), seatClass: 'Economy',
+      sellPrice: 1_300_000, netPrice: 1_000_000, commission: 100_000, status: 'ACTIVE',
+    },
+  });
+  await commission.accrueAirlineIncomeForBooking(bkId, USER);
+
+  const from = new Date(Date.now() - 2 * 86_400_000).toISOString();
+  const to = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const pv = await recon.preview('TEST-SUP-RECON', new Date(from), new Date(to));
+  check('Recon preview: internalNet=1,000,000', pv.internalNet === 1_000_000, String(pv.internalNet));
+  check('Recon preview: internalCommission=100,000', pv.internalCommission === 100_000, String(pv.internalCommission));
+
+  const batch = await recon.create({ supplierId: 'TEST-SUP-RECON', periodFrom: from, periodTo: to, bspNet: 1_050_000, bspCommission: 95_000, userId: USER });
+  check('Recon create: DRAFT', batch.status === 'DRAFT', String(batch.status));
+  check('Recon create: netDiscrepancy=50,000', Number(batch.netDiscrepancy) === 50_000, String(batch.netDiscrepancy));
+  check('Recon create: commissionDiscrepancy=-5,000', Number(batch.commissionDiscrepancy) === -5_000, String(batch.commissionDiscrepancy));
+
+  const before = await counts();
+  const confirmed = await recon.confirm(batch.id, USER);
+  const after = await counts();
+  check('Recon confirm: CONFIRMED', confirmed.status === 'CONFIRMED', String(confirmed.status));
+  check('Recon confirm: +1 FT (commission), KHÔNG +CFE', after.ft - before.ft === 1 && after.cfe === before.cfe, `Δft=${after.ft - before.ft} Δcfe=${after.cfe - before.cfe}`);
+  const ft = await prisma.financialTransaction.findUnique({ where: { dedupeKey: `commSettle:${batch.id}` } });
+  check('Recon confirm: FT COMMISSION_INCOME/INFLOW 95,000', ft?.type === 'COMMISSION_INCOME' && ft?.direction === 'INFLOW' && Number(ft?.amount) === 95_000, `${ft?.type}/${ft?.direction}/${ft?.amount}`);
+  check('Recon confirm: FT fundAccount=null (bù trừ, không thổi quỹ)', ft?.fundAccount === null, String(ft?.fundAccount));
+  check('Recon confirm: batch link FT', confirmed.financialTransactionId === ft?.id, String(confirmed.financialTransactionId));
+  const settled = await prisma.commissionRecord.findUnique({ where: { dedupeKey: `commAccrual:${bkId}` } });
+  check('Recon confirm: AIRLINE_INCOME ACCRUED→SETTLED', settled?.status === 'SETTLED', String(settled?.status));
+
+  let blocked = false;
+  try { await recon.confirm(batch.id, USER); } catch { blocked = true; }
+  check('Recon confirm: chặn chốt lại', blocked, `blocked=${blocked}`);
+}
+
 // ─── M6: backfill source-keyed — chống đếm trùng + idempotent ─────────────
 async function testBackfillIdempotent() {
   console.log('\n[M6] backfill source-keyed — chống đếm trùng + idempotent');
@@ -438,7 +502,9 @@ async function testBackfillIdempotent() {
   await runBackfill(prisma, { commit: true });
   const n3 = await counts();
   check('Backfill lần 2: idempotent, FT không đổi', n3.ft === n2.ft, `ft=${n3.ft}`);
-  check('Backfill: FT count == CFE(DONE) count', n3.ft === n3.cfe, `ft=${n3.ft} cfe=${n3.cfe}`);
+  // FT ⊋ CFE từ GĐ3b (FT có thêm COMMISSION_INCOME từ đối soát, không có CFE) -> chỉ so phần FT suy từ CFE
+  const cfeDerivedFt = await prisma.financialTransaction.count({ where: { dedupeKey: { not: { startsWith: 'commSettle:' } } } });
+  check('Backfill: FT (suy từ CFE) == CFE(DONE) count', cfeDerivedFt === n3.cfe, `cfeFt=${cfeDerivedFt} cfe=${n3.cfe}`);
 }
 
 // ─── M7: reads tổng hợp đọc từ FT, khớp số tính độc lập từ CFE ─────────────
@@ -462,7 +528,10 @@ async function testReadsMatch() {
   });
   let ein = 0; let eout = 0;
   for (const r of pnlRows) { if (r.direction === 'INFLOW') ein += Number(r.amount); else eout += Number(r.amount); }
-  check('getSummary.totalInflow khớp', Math.round(sum.totalInflow) === Math.round(ein), `FT=${sum.totalInflow} CFE=${ein}`);
+  // COMMISSION_INCOME chỉ có ở FT (đối soát), không có CFE -> cộng vào kỳ vọng inflow
+  const commFt = await prisma.financialTransaction.aggregate({ where: { type: 'COMMISSION_INCOME' }, _sum: { amount: true } });
+  ein += Number(commFt._sum.amount ?? 0);
+  check('getSummary.totalInflow khớp (gồm COMMISSION_INCOME FT)', Math.round(sum.totalInflow) === Math.round(ein), `FT=${sum.totalInflow} CFE+comm=${ein}`);
   check('getSummary.totalOutflow khớp', Math.round(sum.totalOutflow) === Math.round(eout), `FT=${sum.totalOutflow} CFE=${eout}`);
 
   // 3) getMonthlyReport năm hiện tại — tổng cả năm khớp gross
@@ -488,7 +557,9 @@ async function testNetProfit() {
   const b = dash.month.breakdown;
   check('NetProfit: có breakdown + netProfit', !!b && typeof dash.month.netProfit === 'number', JSON.stringify(dash.month));
   check('NetProfit: formula khớp', dash.month.netProfit === b.grossMargin + b.commissionIncome - b.partnerPayout - b.opex, JSON.stringify(b));
-  check('NetProfit: commissionIncome = accrual hook (60,000)', b.commissionIncome === 60_000, String(b.commissionIncome));
+  // commissionIncome = Σ AIRLINE_INCOME (chưa hủy) — tất cả accrual trong test đều thuộc tháng hiện tại
+  const allComm = await prisma.commissionRecord.aggregate({ where: { kind: 'AIRLINE_INCOME', status: { not: 'CANCELLED' } }, _sum: { amount: true } });
+  check('NetProfit: commissionIncome khớp Σ AIRLINE_INCOME', b.commissionIncome === Number(allComm._sum.amount ?? 0), `dash=${b.commissionIncome} db=${Number(allComm._sum.amount ?? 0)}`);
   check('NetProfit: partnerPayout = payout (1,000,000)', b.partnerPayout === 1_000_000, String(b.partnerPayout));
 }
 
@@ -523,6 +594,7 @@ async function main() {
   await testCommissionAccrual();
   await testCommissionAccrualHook();
   await testPayPartner();
+  await testReconciliation();
   await testBackfillIdempotent();
   await testReadsMatch();
   await testNetProfit();

@@ -65,8 +65,9 @@ async function main() {
   console.log('Phan bo TxnType:', JSON.stringify(typeCount));
 
   // —— Validation ——
-  const ftCount = await prisma.financialTransaction.count();
-  console.log(`[CHECK#1 count] FT=${ftCount} CFE(DONE)=${entries} -> ${ftCount === entries ? 'PASS' : 'FAIL'}`);
+  // FT ⊋ CFE từ GĐ3b: FT có thêm COMMISSION_INCOME (đối soát, key commSettle:*) không có CFE đối ứng.
+  const ftCount = await prisma.financialTransaction.count({ where: { dedupeKey: { not: { startsWith: 'commSettle:' } } } });
+  console.log(`[CHECK#1 count] FT(suy từ CFE)=${ftCount} CFE(DONE)=${entries} -> ${ftCount === entries ? 'PASS' : 'FAIL'}`);
 
   const doneEntries = await prisma.cashFlowEntry.findMany({ where: { status: 'DONE' }, select: { fundAccount: true, direction: true, amount: true } });
   const cfeFund = sumByFund(doneEntries);

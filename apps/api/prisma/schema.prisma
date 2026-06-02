@@ -1105,3 +1105,35 @@ model CommissionRecord {
   @@index([supplierId])
   @@map("commission_records")
 }
+
+enum ReconciliationStatus {
+  DRAFT // Đã lập, chờ chốt
+  CONFIRMED // Đã chốt (settled hoa hồng + post FT)
+}
+
+// Đối soát BSP/hãng theo kỳ: so Σ nội bộ với số sao kê BSP (nhập tay), chốt hoa hồng dồn tích.
+model ReconciliationBatch {
+  id                    String               @id @default(uuid())
+  supplierId            String               @map("supplier_id") // hãng đối soát
+  periodFrom            DateTime             @map("period_from")
+  periodTo              DateTime             @map("period_to")
+  status                ReconciliationStatus @default(DRAFT)
+  internalNet           Decimal              @map("internal_net") // Σ booking.totalNetPrice (hệ)
+  internalCommission    Decimal              @map("internal_commission") // Σ AIRLINE_INCOME dồn tích (hệ)
+  bspNet                Decimal              @map("bsp_net") // số sao kê BSP nhập tay
+  bspCommission         Decimal              @map("bsp_commission")
+  netDiscrepancy        Decimal              @map("net_discrepancy") // bsp - nội bộ
+  commissionDiscrepancy Decimal              @map("commission_discrepancy")
+  fundAccount           FundAccount?         @map("fund_account") // quỹ thực thu hoa hồng (null = bù trừ)
+  financialTransactionId String?             @map("financial_transaction_id") // FT COMMISSION_INCOME khi chốt
+  notes                 String?
+  confirmedBy           String?              @map("confirmed_by")
+  confirmedAt           DateTime?            @map("confirmed_at")
+  createdBy             String?              @map("created_by")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  @@index([supplierId, periodFrom])
+  @@index([status])
+  @@map("reconciliation_batches")
+}
