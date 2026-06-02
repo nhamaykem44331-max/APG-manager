@@ -44,32 +44,45 @@ export class FinancialLedgerService {
       throw new BadRequestException('Điều chỉnh số dư bắt buộc có lý do.');
     }
 
+    // Field có thể đổi khi sửa chứng từ nguồn (gọi lại post với cùng dedupeKey) -> lan sang FT.
+    const mutable = {
+      direction: input.direction,
+      type: input.type,
+      amount: new Prisma.Decimal(input.amount),
+      occurredAt: input.occurredAt,
+      fundAccount: input.fundAccount ?? null,
+      counterpartyFundAccount: input.counterpartyFundAccount ?? null,
+      transferGroupId: input.transferGroupId ?? null,
+      bookingId: input.bookingId ?? null,
+      ledgerId: input.ledgerId ?? null,
+      invoiceId: input.invoiceId ?? null,
+      customerId: input.customerId ?? null,
+      supplierId: input.supplierId ?? null,
+      expenseId: input.expenseId ?? null,
+      paymentId: input.paymentId ?? null,
+      pic: input.pic ?? null,
+      description: input.description,
+      reference: input.reference ?? null,
+      reason: input.reason ?? null,
+    };
+
     return tx.financialTransaction.upsert({
       where: { dedupeKey: input.dedupeKey },
-      update: {}, // đã tồn tại -> no-op
+      update: mutable, // giữ createdBy gốc, cập nhật phần còn lại
       create: {
         dedupeKey: input.dedupeKey,
-        direction: input.direction,
-        type: input.type,
-        amount: new Prisma.Decimal(input.amount),
-        occurredAt: input.occurredAt,
         currency: 'VND',
-        fundAccount: input.fundAccount ?? null,
-        counterpartyFundAccount: input.counterpartyFundAccount ?? null,
-        transferGroupId: input.transferGroupId ?? null,
-        bookingId: input.bookingId ?? null,
-        ledgerId: input.ledgerId ?? null,
-        invoiceId: input.invoiceId ?? null,
-        customerId: input.customerId ?? null,
-        supplierId: input.supplierId ?? null,
-        expenseId: input.expenseId ?? null,
-        paymentId: input.paymentId ?? null,
-        pic: input.pic ?? null,
-        description: input.description,
-        reference: input.reference ?? null,
-        reason: input.reason ?? null,
         createdBy: input.createdBy ?? null,
+        ...mutable,
       },
     });
+  }
+
+  /** Xóa FT theo dedupeKey (đồng bộ khi chứng từ nguồn bị xóa). Gọi trong cùng tx với xóa CFE. */
+  async removeByDedupeKeys(dedupeKeys: string[], tx: DbClient = this.prisma) {
+    if (dedupeKeys.length === 0) {
+      return { count: 0 };
+    }
+    return tx.financialTransaction.deleteMany({ where: { dedupeKey: { in: dedupeKeys } } });
   }
 }

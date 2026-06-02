@@ -3,6 +3,8 @@ import { CashFlowSourceType, FundAccount, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
 import { CashFlowService } from './cashflow.service';
+import { FinancialLedgerService } from './financial-ledger.service';
+import { TxnDedupe } from './txn-type.util';
 import { CreateLedgerDto, ListLedgerDto, PayLedgerBatchDto, PayLedgerDto } from './dto';
 
 type LedgerPaymentTarget = Prisma.AccountsLedgerGetPayload<{
@@ -19,6 +21,7 @@ export class LedgerService {
     private readonly prisma: PrismaService,
     private readonly n8n: N8nService,
     private readonly cashflow: CashFlowService,
+    private readonly financialLedger: FinancialLedgerService,
   ) {}
 
   private async generateCode(direction: string): Promise<string> {
@@ -324,27 +327,51 @@ export class LedgerService {
         await this.syncBookingPaymentStatus(tx, ledger.bookingId);
       }
 
+      const isPayable = ledger.direction === 'PAYABLE';
+      const cashDirection: 'INFLOW' | 'OUTFLOW' = isPayable ? 'OUTFLOW' : 'INFLOW';
+      const cashDescription = isPayable
+        ? `Tra NCC ${ledger.supplier?.name ?? ledger.customerCode ?? 'NCC'} - ${ledger.booking?.bookingCode ?? ledger.code}`
+        : `Thu cong no KH ${ledger.customer?.fullName ?? ledger.customerCode ?? 'KH'} - ${ledger.code}`;
+      const cashReference = dto.reference || ledger.booking?.pnr || ledger.booking?.bookingCode || ledger.code;
+      const ledgerPaymentId = allocationResult.allocations[0]?.ledgerPaymentId ?? null;
       const cashFlowNotes = dto.notes
         ? `${dto.notes} | Ledger: ${ledger.code}`
         : `Ledger: ${ledger.code}`;
 
       await this.cashflow.recordSystemEntry({
-        direction: ledger.direction === 'PAYABLE' ? 'OUTFLOW' : 'INFLOW',
-        category: ledger.direction === 'PAYABLE' ? 'AIRLINE_PAYMENT' : 'TICKET_PAYMENT',
+        direction: cashDirection,
+        category: isPayable ? 'AIRLINE_PAYMENT' : 'TICKET_PAYMENT',
         amount: dto.amount,
         pic: 'System',
-        description: ledger.direction === 'PAYABLE'
-          ? `Tra NCC ${ledger.supplier?.name ?? ledger.customerCode ?? 'NCC'} - ${ledger.booking?.bookingCode ?? ledger.code}`
-          : `Thu cong no KH ${ledger.customer?.fullName ?? ledger.customerCode ?? 'KH'} - ${ledger.code}`,
-        reference: dto.reference || ledger.booking?.pnr || ledger.booking?.bookingCode || ledger.code,
+        description: cashDescription,
+        reference: cashReference,
         date: paidAt,
         status: 'DONE',
         fundAccount,
         notes: cashFlowNotes,
         sourceType: CashFlowSourceType.LEDGER_PAYMENT,
-        sourceId: allocationResult.allocations[0]?.ledgerPaymentId ?? null,
+        sourceId: ledgerPaymentId,
         isLocked: true,
       }, tx, userId);
+
+      if (ledgerPaymentId) {
+        await this.financialLedger.post({
+          type: isPayable ? 'AP_PAYMENT' : 'AR_COLLECTION',
+          direction: cashDirection,
+          amount: dto.amount,
+          occurredAt: paidAt,
+          dedupeKey: TxnDedupe.ledgerPayment(ledgerPaymentId),
+          fundAccount,
+          ledgerId: ledger.id,
+          bookingId: ledger.bookingId,
+          customerId: isPayable ? null : ledger.customerId,
+          supplierId: isPayable ? ledger.supplierId : null,
+          pic: 'System',
+          description: cashDescription,
+          reference: cashReference,
+          createdBy: userId,
+        }, tx);
+      }
 
       if (ledger.direction === 'PAYABLE' && ledger.supplier?.type === 'AIRLINE') {
         const deposit = await tx.airlineDeposit.findFirst({
@@ -465,27 +492,51 @@ export class LedgerService {
       }
 
       const joinedLedgerCodes = allocationResult.allocations.map((item) => item.ledgerCode).join(', ');
+      const isPayable = primaryLedger.direction === 'PAYABLE';
+      const cashDirection: 'INFLOW' | 'OUTFLOW' = isPayable ? 'OUTFLOW' : 'INFLOW';
+      const cashDescription = isPayable
+        ? `Tra NCC ${primaryLedger.supplier?.name ?? primaryLedger.customerCode ?? 'NCC'} - ${bookingRef}`
+        : `Thu cong no KH ${primaryLedger.customer?.fullName ?? primaryLedger.customerCode ?? 'KH'} - ${bookingRef}`;
+      const cashReference = dto.reference || bookingRef;
+      const ledgerPaymentId = allocationResult.allocations[0]?.ledgerPaymentId ?? null;
       const cashFlowNotes = dto.notes
         ? `${dto.notes} | Ledgers: ${joinedLedgerCodes}`
         : `Ledgers: ${joinedLedgerCodes}`;
 
       await this.cashflow.recordSystemEntry({
-        direction: primaryLedger.direction === 'PAYABLE' ? 'OUTFLOW' : 'INFLOW',
-        category: primaryLedger.direction === 'PAYABLE' ? 'AIRLINE_PAYMENT' : 'TICKET_PAYMENT',
+        direction: cashDirection,
+        category: isPayable ? 'AIRLINE_PAYMENT' : 'TICKET_PAYMENT',
         amount: dto.amount,
         pic: 'System',
-        description: primaryLedger.direction === 'PAYABLE'
-          ? `Tra NCC ${primaryLedger.supplier?.name ?? primaryLedger.customerCode ?? 'NCC'} - ${bookingRef}`
-          : `Thu cong no KH ${primaryLedger.customer?.fullName ?? primaryLedger.customerCode ?? 'KH'} - ${bookingRef}`,
-        reference: dto.reference || bookingRef,
+        description: cashDescription,
+        reference: cashReference,
         date: paidAt,
         status: 'DONE',
         fundAccount,
         notes: cashFlowNotes,
         sourceType: CashFlowSourceType.LEDGER_PAYMENT,
-        sourceId: allocationResult.allocations[0]?.ledgerPaymentId ?? null,
+        sourceId: ledgerPaymentId,
         isLocked: true,
       }, tx, userId);
+
+      if (ledgerPaymentId) {
+        await this.financialLedger.post({
+          type: isPayable ? 'AP_PAYMENT' : 'AR_COLLECTION',
+          direction: cashDirection,
+          amount: dto.amount,
+          occurredAt: paidAt,
+          dedupeKey: TxnDedupe.ledgerPayment(ledgerPaymentId),
+          fundAccount,
+          ledgerId: primaryLedger.id,
+          bookingId: primaryLedger.bookingId,
+          customerId: isPayable ? null : primaryLedger.customerId,
+          supplierId: isPayable ? primaryLedger.supplierId : null,
+          pic: 'System',
+          description: cashDescription,
+          reference: cashReference,
+          createdBy: userId,
+        }, tx);
+      }
 
       if (primaryLedger.direction === 'PAYABLE' && primaryLedger.supplier?.type === 'AIRLINE') {
         const deposit = await tx.airlineDeposit.findFirst({
