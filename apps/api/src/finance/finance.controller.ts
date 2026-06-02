@@ -14,6 +14,7 @@ import { InvoiceService } from './invoice.service';
 import { InvoiceImportService } from './invoice-import.service';
 import { InvoiceExportService } from './invoice-export.service';
 import { ReconciliationService } from './reconciliation.service';
+import { CommissionService } from './commission.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -38,6 +39,7 @@ import {
   UpdateInvoiceDto,
   PreviewReconciliationDto,
   CreateReconciliationDto,
+  PayPartnerDto,
 } from './dto';
 
 @Controller('finance')
@@ -53,6 +55,7 @@ export class FinanceController {
     private invoiceImport: InvoiceImportService,
     private invoiceExport: InvoiceExportService,
     private reconciliation: ReconciliationService,
+    private commission: CommissionService,
   ) {}
 
   // ─── Finance cũ (giữ nguyên) ───────────────────────────────────────
@@ -293,6 +296,25 @@ export class FinanceController {
     @Request() req: { user: { id: string } },
   ) {
     return this.reconciliation.confirm(id, req.user.id);
+  }
+
+  // ─── Hoa hồng 2 chiều (GĐ3a) ───────────────────────────────────────
+  @Get('commission/records')
+  listCommissions(
+    @Query('kind') kind?: 'AIRLINE_INCOME' | 'PARTNER_PAYOUT',
+    @Query('status') status?: 'ACCRUED' | 'SETTLED' | 'CANCELLED',
+    @Query('supplierId') supplierId?: string,
+  ) {
+    return this.commission.list({ kind, status, supplierId });
+  }
+
+  @Post('commission/partner-payout')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  payPartner(
+    @Body() dto: PayPartnerDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.commission.payPartner({ ...dto, userId: req.user.id });
   }
 
   // ─── Ledger (Công nợ 2 chiều AR/AP) ───────────────────────────────

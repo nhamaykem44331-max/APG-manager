@@ -97,7 +97,7 @@ function OverviewTab() {
   });
 
   const stats = data ?? {
-    month: { revenue: 0, profit: 0, bookings: 0 },
+    month: { revenue: 0, profit: 0, netProfit: 0, breakdown: { grossMargin: 0, commissionIncome: 0, partnerPayout: 0, opex: 0 }, bookings: 0 },
     today: { revenue: 0, profit: 0, bookings: 0 },
     deposits: [],
     debt: { total: 0, count: 0 },
@@ -105,6 +105,9 @@ function OverviewTab() {
     airlines: [],
   };
   const airlineRows = stats.airlines as Array<{ airline: string; revenue: number; pct: number }>;
+  const netProfit = (stats.month as { netProfit?: number }).netProfit ?? 0;
+  const breakdown = (stats.month as { breakdown?: { grossMargin: number; commissionIncome: number; partnerPayout: number; opex: number } }).breakdown
+    ?? { grossMargin: 0, commissionIncome: 0, partnerPayout: 0, opex: 0 };
 
   return (
     <div className="space-y-4">
@@ -177,6 +180,29 @@ function OverviewTab() {
           </div>
         </div>
       )}
+
+      {/* Lãi ròng tháng (gồm hoa hồng 2 chiều) */}
+      <div className="card p-4">
+        <div className="mb-2 flex items-center justify-between border-b border-border pb-2.5">
+          <h3 className="text-[13px] font-medium text-foreground">Lãi ròng tháng (gồm hoa hồng)</h3>
+          <span className={cn('font-tabular text-[15px] font-bold', netProfit >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+            {netProfit >= 0 ? '+' : ''}{formatVND(netProfit)}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px] sm:grid-cols-4">
+          {[
+            { label: 'Lãi gộp vé', value: breakdown.grossMargin, sign: '+', color: 'text-foreground' },
+            { label: '+ HH nhận từ hãng', value: breakdown.commissionIncome, sign: '+', color: 'text-emerald-500' },
+            { label: '− HH trả đối tác', value: breakdown.partnerPayout, sign: '−', color: 'text-orange-500' },
+            { label: '− Chi phí VP', value: breakdown.opex, sign: '−', color: 'text-red-500' },
+          ].map((row) => (
+            <div key={row.label} className="flex flex-col">
+              <span className="text-[11px] text-muted-foreground">{row.label}</span>
+              <span className={cn('font-tabular font-semibold', row.color)}>{row.sign}{formatVND(row.value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Chart */}
       <RevenueChart

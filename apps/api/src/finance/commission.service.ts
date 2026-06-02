@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { FundAccount, LedgerPartyType, Prisma, PrismaClient } from '@prisma/client';
+import { CommissionKind, CommissionStatus, FundAccount, LedgerPartyType, Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { CashFlowService } from './cashflow.service';
 import { FinancialLedgerService } from './financial-ledger.service';
@@ -142,6 +142,19 @@ export class CommissionService {
       });
 
       return { commission: record, cashFlowEntry: cfe, financialTransaction: ft };
+    });
+  }
+
+  /** Danh sách hoa hồng 2 chiều (lọc theo kind/status/hãng). */
+  async list(filters: { kind?: CommissionKind; status?: CommissionStatus; supplierId?: string } = {}) {
+    return this.prisma.commissionRecord.findMany({
+      where: {
+        ...(filters.kind && { kind: filters.kind }),
+        ...(filters.status && { status: filters.status }),
+        ...(filters.supplierId && { supplierId: filters.supplierId }),
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 200,
     });
   }
 }

@@ -250,6 +250,30 @@ export const financeApi = {
   getFundBalances: () => apiClient.get('/finance/cashflow/fund-balances'),
 };
 
+// Đối soát BSP theo kỳ (GĐ3b)
+export const reconciliationApi = {
+  preview: (params: { supplierId: string; periodFrom: string; periodTo: string }) =>
+    apiClient.get('/finance/reconciliation/preview', { params }),
+  list: (supplierId?: string) =>
+    apiClient.get('/finance/reconciliation/batches', { params: supplierId ? { supplierId } : {} }),
+  get: (id: string) => apiClient.get(`/finance/reconciliation/batches/${id}`),
+  create: (data: {
+    supplierId: string; periodFrom: string; periodTo: string;
+    bspNet: number; bspCommission: number; fundAccount?: string; notes?: string;
+  }) => apiClient.post('/finance/reconciliation/batches', data),
+  confirm: (id: string) => apiClient.post(`/finance/reconciliation/batches/${id}/confirm`, {}),
+};
+
+// Hoa hồng 2 chiều (GĐ3a)
+export const commissionApi = {
+  list: (params?: { kind?: string; status?: string; supplierId?: string }) =>
+    apiClient.get('/finance/commission/records', { params }),
+  payPartner: (data: {
+    partnerId: string; amount: number; fundAccount: string;
+    date?: string; reference?: string; notes?: string; reason?: string;
+  }) => apiClient.post('/finance/commission/partner-payout', data),
+};
+
 export const invoiceApi = {
   getSummary: () => apiClient.get('/finance/invoices/summary'),
   getCoverage: (params?: Record<string, string | number>) =>
