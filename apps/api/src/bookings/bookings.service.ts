@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
-import { BookingStatus, Prisma, User, UserRole } from '@prisma/client';
+import { BookingStatus, LedgerCategory, PaymentMethod, Prisma, User, UserRole } from '@prisma/client';
 import { CustomersService } from '../customers/customers.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
@@ -44,7 +44,7 @@ function resolveBusinessDate(value?: string | Date | null) {
 type DebtLinkedLedgerPayment = {
   id: string;
   amount: Prisma.Decimal;
-  method: Prisma.$Enums.PaymentMethod;
+  method: PaymentMethod;
   paidAt: Date;
   notes: string | null;
 };
@@ -57,7 +57,7 @@ type DebtTrackableReceivableLedger = {
   dueDate: Date;
   createdAt: Date;
   issueDate: Date;
-  category: Prisma.$Enums.LedgerCategory;
+  category: LedgerCategory;
   payments: DebtLinkedLedgerPayment[];
 };
 
@@ -355,8 +355,8 @@ export class BookingsService {
       throw new NotFoundException(`KhÃ´ng tÃ¬m tháº¥y booking ID: ${id}`);
     }
 
-    if (booking.customer && !booking.customer.customerCode) {
-      booking.customer.customerCode = await this.customers.ensureCustomerCode(booking.customer.id);
+    if (booking.customer && !booking.customer!.customerCode) {
+      booking.customer!.customerCode = await this.customers.ensureCustomerCode(booking.customer!.id);
     }
 
     const debtRecordableAmount = await this.calculateDebtRecordableAmount(this.prisma, booking.id);
@@ -598,14 +598,15 @@ export class BookingsService {
     return 'ACTIVE';
   }
 
-  private getPrimaryTicketLedgerWhere(direction: 'RECEIVABLE' | 'PAYABLE') {
+  private getPrimaryTicketLedgerWhere(direction: 'RECEIVABLE' | 'PAYABLE'): Prisma.AccountsLedgerWhereInput {
+    // Ledger cũ có thể có category = null nên match cả TICKET lẫn null (Prisma type không biểu diễn được null trên cột non-null)
     return {
       direction,
       OR: [
-        { category: 'TICKET' as const },
+        { category: 'TICKET' },
         { category: null },
       ],
-    };
+    } as Prisma.AccountsLedgerWhereInput;
   }
 
   private async markPrimaryTicketLedgersRefunded(
@@ -622,9 +623,10 @@ export class BookingsService {
     });
 
     for (const ledger of ledgers) {
-      const nextDescription = ledger.description.includes('[HOÀN VÉ - ĐÃ HOÀN]')
-        ? ledger.description
-        : `${ledger.description} [HOÀN VÉ - ĐÃ HOÀN]`;
+      const currentDescription = ledger.description ?? '';
+      const nextDescription = currentDescription.includes('[HOÀN VÉ - ĐÃ HOÀN]')
+        ? currentDescription
+        : `${currentDescription} [HOÀN VÉ - ĐÃ HOÀN]`;
 
       await client.accountsLedger.update({
         where: { id: ledger.id },
@@ -995,15 +997,15 @@ export class BookingsService {
       return;
     }
 
-    const customerCode = booking.customer.customerCode
-      ?? await this.customers.ensureCustomerCode(booking.customer.id);
+    const customerCode = booking.customer!.customerCode
+      ?? await this.customers.ensureCustomerCode(booking.customer!.id);
     const issueDate = existingAR?.issueDate ?? booking.issuedAt ?? new Date();
-    const dueDate = this.buildReceivableDueDate(issueDate, booking.customer.type);
+    const dueDate = this.buildReceivableDueDate(issueDate, booking.customer!.type);
     const status = this.getLedgerStatus(totalAmount, paidAmount, dueDate);
     const ledgerData = {
-      customerId: booking.customer.id,
+      customerId: booking.customer!.id,
       customerCode,
-      partyType: this.getReceivablePartyType(booking.customer.type) as never,
+      partyType: this.getReceivablePartyType(booking.customer!.type) as never,
       bookingId: booking.id,
       bookingCode: booking.bookingCode,
       totalAmount,
@@ -1597,7 +1599,7 @@ export class BookingsService {
           });
 
           const issueDate = booking.issuedAt ?? new Date();
-          const dueDate = this.buildReceivableDueDate(issueDate, customer?.type ?? booking.customer.type);
+          const dueDate = this.buildReceivableDueDate(issueDate, customer?.type ?? booking.customer!.type);
           const status = this.getLedgerStatus(
             fallbackSnapshot.debtRecordableAmount,
             0,
@@ -1759,9 +1761,6 @@ export class BookingsService {
     return payment;
   }
 
-  private async updatePaymentStatus(bookingId: string) {
-    await this.updatePaymentStatusWithClient(this.prisma, bookingId);
-  }
   // Sinh mÃƒÂ£ booking APG-YYMMDD-XXX
   private async generateBookingCode(): Promise<string> {
     const now = new Date();
@@ -1949,16 +1948,16 @@ export class BookingsService {
           await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
             code,
             direction: 'RECEIVABLE',
-            partyType: this.getReceivablePartyType(booking.customer.type) as any,
-            customerId: booking.customer.id,
-            customerCode: booking.customer.customerCode,
+            partyType: this.getReceivablePartyType(booking.customer!.type) as any,
+            customerId: booking.customer!.id,
+            customerCode: booking.customer!.customerCode,
             bookingId: booking.id,
             bookingCode: booking.bookingCode,
             totalAmount: charge,
             paidAmount: 0,
             remaining: charge,
             issueDate,
-            dueDate: this.buildReceivableDueDate(issueDate, booking.customer.type),
+            dueDate: this.buildReceivableDueDate(issueDate, booking.customer!.type),
             status: 'ACTIVE',
             category: 'TICKET_CHANGE' as any,
             description: `Phá»¥ thu Ä‘á»•i vÃ© â€” Booking ${booking.bookingCode}`,
@@ -2057,16 +2056,16 @@ export class BookingsService {
           await this.createLedgerWithGeneratedCode(tx, 'RECEIVABLE', (code) => ({
             code,
             direction: 'RECEIVABLE',
-            partyType: this.getReceivablePartyType(booking.customer.type) as any,
-            customerId: booking.customer.id,
-            customerCode: booking.customer.customerCode,
+            partyType: this.getReceivablePartyType(booking.customer!.type) as any,
+            customerId: booking.customer!.id,
+            customerCode: booking.customer!.customerCode,
             bookingId: booking.id,
             bookingCode: booking.bookingCode,
             totalAmount: charge,
             paidAmount: 0,
             remaining: charge,
             issueDate,
-            dueDate: this.buildReceivableDueDate(issueDate, booking.customer.type),
+            dueDate: this.buildReceivableDueDate(issueDate, booking.customer!.type),
             status: 'ACTIVE',
             category: category as any,
             serviceCode: dto.serviceCode ?? null,

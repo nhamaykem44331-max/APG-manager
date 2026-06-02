@@ -1516,6 +1516,9 @@ export class InvoiceService {
     });
 
     const customer = bookings[0].customer;
+    if (!customer) {
+      throw new BadRequestException('Booking không có khách hàng để lập hóa đơn đầu ra.');
+    }
     const buyerFullName = this.getCoverageBuyerName(bookings[0]);
     const buyerLegalName = customer.type === 'CORPORATE'
       ? (customer.companyName || customer.fullName || buyerFullName)

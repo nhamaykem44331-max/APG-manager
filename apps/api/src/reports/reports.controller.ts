@@ -868,7 +868,7 @@ export class ReportsController {
       take: parseInt(limit, 10) || 20
     });
 
-    const customerIds = rank.map(r => r.customerId);
+    const customerIds = rank.map(r => r.customerId).filter((id): id is string => id !== null);
     const customers = await this.prisma.customer.findMany({
       where: { id: { in: customerIds } },
       select: { id: true, fullName: true, companyName: true, type: true, vipTier: true },
@@ -881,21 +881,21 @@ export class ReportsController {
       select: { id: true, booking: { select: { customerId: true } } }
     });
     const ticketCountMap = custTicketCounts.reduce((acc, t) => {
-      acc[t.booking.customerId] = (acc[t.booking.customerId] || 0) + 1;
+      acc[t.booking.customerId ?? ''] = (acc[t.booking.customerId ?? ''] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     const cmap = Object.fromEntries(customers.map(c => [c.id, c]));
 
     return rank.map(r => {
-      const c = cmap[r.customerId];
+      const c = cmap[r.customerId ?? ''];
       return {
         customerId: r.customerId,
         customerName: c?.type === 'CORPORATE' ? c.companyName || c.fullName : c?.fullName || 'Unknown',
         customerType: c?.type || 'INDIVIDUAL',
         vipTier: c?.vipTier || 'NORMAL',
         bookingCount: r._count.id,
-        ticketCount: ticketCountMap[r.customerId] || 0,
+        ticketCount: ticketCountMap[r.customerId ?? ''] || 0,
         totalSpent: Number(r._sum.totalSellPrice || 0),
         profit: Number(r._sum.profit || 0),
         lastBookingDate: r._max.createdAt
