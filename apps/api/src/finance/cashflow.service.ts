@@ -522,6 +522,10 @@ export class CashFlowService {
   }
 
   async adjustFundBalance(dto: AdjustFundBalanceDto, userId: string) {
+    if (!dto.reason?.trim()) {
+      throw new BadRequestException('Điều chỉnh số dư bắt buộc có lý do.');
+    }
+
     const currentBalance = await this.getFundCurrentBalance(dto.fundAccount);
     const delta = dto.targetBalance - currentBalance;
 
@@ -545,7 +549,7 @@ export class CashFlowService {
       fundAccount: dto.fundAccount,
       reason: dto.reason,
       sourceType: CashFlowSourceType.FUND_ADJUSTMENT,
-      isLocked: false,
+      isLocked: true,
     }, userId);
   }
 
