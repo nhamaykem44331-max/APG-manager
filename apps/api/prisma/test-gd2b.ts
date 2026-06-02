@@ -11,6 +11,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { NamedCreditService } from '../src/bookings/named-credit.service';
 import { FinanceService } from '../src/finance/finance.service';
 import { ExpenseService } from '../src/finance/expense.service';
+import { runBackfill } from './backfill-financial-transactions';
 
 const prisma = new PrismaService();
 const n8n: any = {
@@ -310,6 +311,30 @@ async function testTransferLifecycle() {
   check('Transfer remove: FT -2', c2.ft - c3.ft === 2, `Δft=${c2.ft - c3.ft}`);
 }
 
+// ─── M6: backfill source-keyed — chống đếm trùng + idempotent ─────────────
+async function testBackfillIdempotent() {
+  console.log('\n[M6] backfill source-keyed — chống đếm trùng + idempotent');
+  const n0 = await counts();
+  // CFE "cũ" mô phỏng trước cutover: thu tiền mặt KHÔNG gắn nguồn, chưa có FT.
+  await prisma.cashFlowEntry.create({
+    data: {
+      direction: 'INFLOW', category: 'TICKET_PAYMENT', amount: 333_000, pic: 'Legacy',
+      description: 'Legacy cash receipt', date: new Date(), status: 'DONE', fundAccount: 'CASH_OFFICE',
+    },
+  });
+  const n1 = await counts();
+  check('Backfill: +1 CFE legacy (chưa có FT)', n1.cfe - n0.cfe === 1 && n1.ft === n0.ft, `cfe+${n1.cfe - n0.cfe} ft+${n1.ft - n0.ft}`);
+
+  const r1 = await runBackfill(prisma, { commit: true });
+  const n2 = await counts();
+  check('Backfill lần 1: chỉ +1 FT cho legacy (dual-write no-op)', n2.ft - n1.ft === 1, `Δft=${n2.ft - n1.ft} upserted=${r1.upserted}`);
+
+  await runBackfill(prisma, { commit: true });
+  const n3 = await counts();
+  check('Backfill lần 2: idempotent, FT không đổi', n3.ft === n2.ft, `ft=${n3.ft}`);
+  check('Backfill: FT count == CFE(DONE) count', n3.ft === n3.cfe, `ft=${n3.ft} cfe=${n3.cfe}`);
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -338,6 +363,7 @@ async function main() {
   await testCashflowManual();
   await testAdjust();
   await testTransferLifecycle();
+  await testBackfillIdempotent();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);
