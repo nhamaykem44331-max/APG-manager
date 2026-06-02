@@ -929,8 +929,8 @@ export class ReportsController {
     const totalPaid = Number(totalPaidSum._sum.totalSellPrice || 0);
     const totalUnpaid = totalAllSum - totalPaid;
 
-    const debts = await this.prisma.debt.aggregate({
-      where: { status: { not: 'PAID' } },
+    const debts = await this.prisma.accountsLedger.aggregate({
+      where: { direction: 'RECEIVABLE', status: { notIn: ['PAID', 'WRITTEN_OFF', 'REFUNDED'] } },
       _sum: { remaining: true }
     });
 

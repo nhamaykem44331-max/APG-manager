@@ -302,7 +302,6 @@ model Customer {
 
   bookings             Booking[]
   passengers           Passenger[]
-  debts                Debt[]
   ledgers              AccountsLedger[]      @relation("CustomerLedger")
   namedCredits         NamedCredit[]
   invoiceRecords       InvoiceRecord[]
@@ -508,26 +507,6 @@ model Payment {
   @@index([bookingId])
   @@index([paidAt])
   @@map("payments")
-}
-
-model Debt {
-  id          String     @id @default(uuid())
-  customerId  String     @map("customer_id")
-  totalAmount Decimal    @map("total_amount")
-  paidAmount  Decimal    @default(0) @map("paid_amount")
-  remaining   Decimal    @default(0) // AUTO: totalAmount - paidAmount — always set this in service layer
-  status      DebtStatus @default(ACTIVE)
-  dueDate     DateTime   @map("due_date")
-  description String?
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-
-  customer Customer @relation(fields: [customerId], references: [id])
-
-  @@index([customerId])
-  @@index([status])
-  @@index([dueDate])
-  @@map("debts")
 }
 
 model AirlineDeposit {

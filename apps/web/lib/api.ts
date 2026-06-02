@@ -229,9 +229,6 @@ export const customersApi = {
 
 export const financeApi = {
   getDashboard: () => apiClient.get('/finance/dashboard'),
-  getDebts: (params?: Record<string, string | number>) =>
-    apiClient.get('/finance/debts', { params }),
-  getDebtAging: () => apiClient.get('/finance/debts/aging'),
   getDeposits: () => apiClient.get('/finance/deposits'),
   updateDeposit: (
     id: string,

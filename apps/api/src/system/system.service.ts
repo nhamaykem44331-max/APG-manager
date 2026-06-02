@@ -63,7 +63,6 @@ export class SystemService {
       await tx.customerInteraction.deleteMany();
       await tx.customerNote.deleteMany();
       await tx.communicationLog.deleteMany();
-      await tx.debt.deleteMany();
       await tx.accountsLedger.deleteMany();
       await tx.cashFlowEntry.deleteMany();
       await tx.operatingExpense.deleteMany();
@@ -109,7 +108,7 @@ export class SystemService {
       tickets: await this.prisma.ticket.count(),
       passengers: await this.prisma.passenger.count(),
       payments: await this.prisma.payment.count(),
-      debts: await this.prisma.debt.count(),
+      debts: 0,
       bookingStatusLogs: await this.prisma.bookingStatusLog.count(),
       customerInteractions: await this.prisma.customerInteraction.count(),
       customerNotes: await this.prisma.customerNote.count(),

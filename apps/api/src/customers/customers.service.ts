@@ -482,9 +482,8 @@ export class CustomersService {
     }
 
     // Đếm dữ liệu liên kết (bookings chỉ đếm chưa soft-delete)
-    const [activeBookings, debts, ledgers, invoices, exportBatches] = await this.prisma.$transaction([
+    const [activeBookings, ledgers, invoices, exportBatches] = await this.prisma.$transaction([
       this.prisma.booking.count({ where: { customerId: id, deletedAt: null } }),
-      this.prisma.debt.count({ where: { customerId: id } }),
       this.prisma.accountsLedger.count({ where: { customerId: id } }),
       this.prisma.invoiceRecord.count({ where: { customerId: id } }),
       this.prisma.invoiceExportBatch.count({ where: { customerId: id } }),
@@ -492,7 +491,6 @@ export class CustomersService {
 
     const blockers = [
       activeBookings > 0 ? `${activeBookings} booking` : null,
-      debts > 0 ? `${debts} công nợ cũ` : null,
       ledgers > 0 ? `${ledgers} bút toán công nợ` : null,
       invoices > 0 ? `${invoices} hóa đơn` : null,
       exportBatches > 0 ? `${exportBatches} batch export invoice` : null,

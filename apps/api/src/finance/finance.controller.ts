@@ -212,16 +212,6 @@ export class FinanceController {
     return this.invoice.addAttachment(id, dto, req.user.id);
   }
 
-  @Get('debts')
-  getDebts(@Query() query: { page?: number; pageSize?: number; status?: string }) {
-    return this.service.getDebts(query);
-  }
-
-  @Get('debts/aging')
-  getDebtAging() {
-    return this.service.getDebtAging();
-  }
-
   @Get('deposits')
   getDeposits() {
     return this.service.getDeposits();

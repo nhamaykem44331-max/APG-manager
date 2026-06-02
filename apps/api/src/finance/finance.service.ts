@@ -1,6 +1,6 @@
 // APG Manager RMS - Finance Service (tài chính, đối soát, công nợ)
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { CashFlowSourceType, FundAccount, Prisma } from '@prisma/client';
+import { CashFlowSourceType, FundAccount } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { N8nService } from '../automation/n8n.service';
 import {
@@ -165,53 +165,6 @@ export class FinanceService {
       timeline: Array.from(timelineSeed.values()),
       airlines,
     };
-  }
-
-  // Danh sách công nợ
-  async getDebts(params: { page?: number; pageSize?: number; status?: string }) {
-    const { page = 1, pageSize = 20, status } = params;
-
-    const where = status ? { status: status as Prisma.EnumDebtStatusFilter } : {};
-
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.debt.findMany({
-        where,
-        include: {
-          customer: { select: { id: true, fullName: true, phone: true, type: true } },
-        },
-        orderBy: { dueDate: 'asc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      this.prisma.debt.count({ where }),
-    ]);
-
-    return { data, total, page, pageSize };
-  }
-
-  // Báo cáo aging công nợ (0-30, 30-60, 60-90, >90 ngày)
-  async getDebtAging() {
-    const now = new Date();
-    const debts = await this.prisma.debt.findMany({
-      where: { status: { in: ['ACTIVE', 'OVERDUE', 'PARTIAL_PAID'] } },
-    });
-
-    const buckets: Record<string, number> = { 'Chưa đến hạn': 0, '0-30': 0, '30-60': 0, '60-90': 0, '>90': 0 };
-
-    debts.forEach(debt => {
-      const days = Math.floor(
-        (now.getTime() - new Date(debt.dueDate).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      const remaining = Number(debt.remaining);
-
-      if (days <= 0) buckets['Chưa đến hạn'] += remaining;
-      else if (days <= 30) buckets['0-30'] += remaining;
-      else if (days <= 60) buckets['30-60'] += remaining;
-      else if (days <= 90) buckets['60-90'] += remaining;
-      else buckets['>90'] += remaining;
-    });
-
-    return buckets;
   }
 
   // Lấy số dư deposit các hãng
