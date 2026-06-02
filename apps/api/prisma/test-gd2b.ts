@@ -481,6 +481,17 @@ async function testReadsMatch() {
   check('Số dư BANK_PERSONAL gồm cả ADJUSTMENT', Math.round(personal?.balance ?? 0) === Math.round(expBal['BANK_PERSONAL'] ?? 0), String(personal?.balance));
 }
 
+// ─── GĐ3a M4: công thức net lãi ───────────────────────────────────────────
+async function testNetProfit() {
+  console.log('\n[GĐ3a-M4] net lãi = gross + HH nhận − HH trả − OPEX');
+  const dash: any = await finance.getDashboard();
+  const b = dash.month.breakdown;
+  check('NetProfit: có breakdown + netProfit', !!b && typeof dash.month.netProfit === 'number', JSON.stringify(dash.month));
+  check('NetProfit: formula khớp', dash.month.netProfit === b.grossMargin + b.commissionIncome - b.partnerPayout - b.opex, JSON.stringify(b));
+  check('NetProfit: commissionIncome = accrual hook (60,000)', b.commissionIncome === 60_000, String(b.commissionIncome));
+  check('NetProfit: partnerPayout = payout (1,000,000)', b.partnerPayout === 1_000_000, String(b.partnerPayout));
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -514,6 +525,7 @@ async function main() {
   await testPayPartner();
   await testBackfillIdempotent();
   await testReadsMatch();
+  await testNetProfit();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);

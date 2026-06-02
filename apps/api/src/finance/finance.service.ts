@@ -45,6 +45,9 @@ export class FinanceService {
       activeLedgerSummary,
       timelineBookings,
       monthTickets,
+      commissionIncomeMonth,
+      partnerPayoutMonth,
+      opexMonth,
     ] = await this.prisma.$transaction([
       // Thống kê tháng
       this.prisma.booking.aggregate({
@@ -103,6 +106,21 @@ export class FinanceService {
           sellPrice: true,
         },
       }),
+      // Hoa hồng NHẬN từ hãng (dồn tích) trong tháng — vào net lãi
+      this.prisma.commissionRecord.aggregate({
+        where: { kind: 'AIRLINE_INCOME', status: { not: 'CANCELLED' }, occurredAt: { gte: startOfMonth, lt: endOfDay } },
+        _sum: { amount: true },
+      }),
+      // Hoa hồng TRẢ đối tác trong tháng — trừ khỏi net lãi
+      this.prisma.commissionRecord.aggregate({
+        where: { kind: 'PARTNER_PAYOUT', status: { not: 'CANCELLED' }, occurredAt: { gte: startOfMonth, lt: endOfDay } },
+        _sum: { amount: true },
+      }),
+      // Chi phí vận hành trong tháng — trừ khỏi net lãi
+      this.prisma.operatingExpense.aggregate({
+        where: { status: 'DONE', date: { gte: startOfMonth, lt: endOfDay } },
+        _sum: { amount: true },
+      }),
     ]);
 
     const timelineSeed = new Map<string, { date: string; revenue: number; profit: number }>();
@@ -144,10 +162,19 @@ export class FinanceService {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
+    // Net lãi = lãi gộp vé (sell−net) + hoa hồng nhận từ hãng − hoa hồng trả đối tác − chi phí VP
+    const grossMargin = Number(monthStats._sum.profit ?? 0);
+    const commissionIncome = Number(commissionIncomeMonth._sum.amount ?? 0);
+    const partnerPayout = Number(partnerPayoutMonth._sum.amount ?? 0);
+    const opex = Number(opexMonth._sum.amount ?? 0);
+    const netProfit = grossMargin + commissionIncome - partnerPayout - opex;
+
     return {
       month: {
         revenue: Number(monthStats._sum.totalSellPrice ?? 0),
-        profit: Number(monthStats._sum.profit ?? 0),
+        profit: grossMargin, // lãi gộp vé (giữ nguyên nghĩa cũ)
+        netProfit,
+        breakdown: { grossMargin, commissionIncome, partnerPayout, opex },
         bookings: monthStats._count,
       },
       today: {
