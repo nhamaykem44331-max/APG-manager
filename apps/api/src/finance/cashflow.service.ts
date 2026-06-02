@@ -681,14 +681,19 @@ export class CashFlowService {
     if (dateTo) dateFilter.lte = new Date(dateTo);
     const where = Object.keys(dateFilter).length ? { date: dateFilter } : {};
 
+    // Loại chuyển quỹ nội bộ khỏi tổng thu/chi; giữ bút toán sourceType=null (vd thu vé trực tiếp)
+    const excludeTransfer: Prisma.CashFlowEntryWhereInput = {
+      OR: [{ sourceType: null }, { sourceType: { not: CashFlowSourceType.FUND_TRANSFER } }],
+    };
+
     const [inflow, outflow] = await Promise.all([
       this.prisma.cashFlowEntry.aggregate({
-        where: { ...where, direction: 'INFLOW', status: 'DONE' },
+        where: { ...where, ...excludeTransfer, direction: 'INFLOW', status: 'DONE' },
         _sum: { amount: true },
         _count: true,
       }),
       this.prisma.cashFlowEntry.aggregate({
-        where: { ...where, direction: 'OUTFLOW', status: 'DONE' },
+        where: { ...where, ...excludeTransfer, direction: 'OUTFLOW', status: 'DONE' },
         _sum: { amount: true },
         _count: true,
       }),
@@ -712,6 +717,8 @@ export class CashFlowService {
       where: {
         date: { gte: new Date(`${year}-01-01`), lt: new Date(`${year + 1}-01-01`) },
         status: 'DONE',
+        // Loại chuyển quỹ nội bộ; giữ bút toán sourceType=null
+        OR: [{ sourceType: null }, { sourceType: { not: CashFlowSourceType.FUND_TRANSFER } }],
       },
       select: { direction: true, category: true, amount: true, date: true, pic: true },
     });
