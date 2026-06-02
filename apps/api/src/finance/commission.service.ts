@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CommissionKind, CommissionStatus, FundAccount, LedgerPartyType, Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { CashFlowService } from './cashflow.service';
 import { FinancialLedgerService } from './financial-ledger.service';
 import { TxnDedupe } from './txn-type.util';
+import { CUSTOMER_REVENUE_STATUSES } from '../customers/customer-metrics.constants';
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
@@ -156,5 +157,78 @@ export class CommissionService {
       orderBy: { occurredAt: 'desc' },
       take: 200,
     });
+  }
+
+  /**
+   * Tổng hợp 1 đối tác giới thiệu: đầu mối đã đem về (doanh số + lãi từ booking của khách
+   * được gắn referredByPartnerId) so với hoa hồng feedback đã trả — cơ sở để thương lượng đợt tới.
+   * Hoa hồng đối tác là thỏa thuận từng đợt (không công thức), nên đây CHỈ là số liệu tham khảo.
+   */
+  async partnerSummary(partnerId: string) {
+    const partner = await this.prisma.supplierProfile.findUnique({
+      where: { id: partnerId },
+      select: { id: true, code: true, name: true, type: true, contactName: true },
+    });
+    if (!partner) {
+      throw new NotFoundException('Khong tim thay doi tac.');
+    }
+
+    // Khách do đối tác này giới thiệu
+    const customers = await this.prisma.customer.findMany({
+      where: { referredByPartnerId: partnerId },
+      select: { id: true, fullName: true, customerCode: true, phone: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const customerIds = customers.map((c) => c.id);
+
+    // Doanh số + lãi theo từng khách (chỉ booking tính doanh thu, cùng chuẩn với thống kê khách)
+    const byCustomer = customerIds.length
+      ? await this.prisma.booking.groupBy({
+          by: ['customerId'],
+          where: {
+            customerId: { in: customerIds },
+            deletedAt: null,
+            status: { in: CUSTOMER_REVENUE_STATUSES },
+          },
+          _sum: { totalSellPrice: true, profit: true },
+          _count: { id: true },
+        })
+      : [];
+    const aggMap = new Map(
+      byCustomer.map((b) => [
+        b.customerId ?? '',
+        { revenue: Number(b._sum.totalSellPrice ?? 0), profit: Number(b._sum.profit ?? 0), bookings: b._count.id },
+      ]),
+    );
+
+    const customerRows = customers.map((c) => {
+      const a = aggMap.get(c.id) ?? { revenue: 0, profit: 0, bookings: 0 };
+      return { ...c, bookings: a.bookings, revenue: a.revenue, profit: a.profit };
+    });
+
+    const totals = {
+      customerCount: customers.length,
+      bookingCount: customerRows.reduce((s, c) => s + c.bookings, 0),
+      revenue: customerRows.reduce((s, c) => s + c.revenue, 0),
+      profit: customerRows.reduce((s, c) => s + c.profit, 0),
+      paidFeedback: 0,
+    };
+
+    // Hoa hồng feedback đã trả cho đối tác này
+    const [paidAgg, payouts] = await Promise.all([
+      this.prisma.commissionRecord.aggregate({
+        where: { kind: 'PARTNER_PAYOUT', supplierId: partnerId, status: { not: 'CANCELLED' } },
+        _sum: { amount: true },
+      }),
+      this.prisma.commissionRecord.findMany({
+        where: { kind: 'PARTNER_PAYOUT', supplierId: partnerId },
+        orderBy: { occurredAt: 'desc' },
+        take: 100,
+        select: { id: true, amount: true, status: true, occurredAt: true, description: true, reference: true },
+      }),
+    ]);
+    totals.paidFeedback = Number(paidAgg._sum.amount ?? 0);
+
+    return { partner, totals, customers: customerRows, payouts };
   }
 }

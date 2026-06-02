@@ -300,6 +300,10 @@ model Customer {
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
 
+  // Đối tác giới thiệu (đầu mối khách hàng) — gắn 1 lần, mọi booking của khách quy về đối tác này
+  referredByPartnerId  String?               @map("referred_by_partner_id")
+  referredByPartner    SupplierProfile?      @relation("CustomerReferrer", fields: [referredByPartnerId], references: [id])
+
   bookings             Booking[]
   passengers           Passenger[]
   ledgers              AccountsLedger[]      @relation("CustomerLedger")
@@ -310,6 +314,7 @@ model Customer {
   customerNotes        CustomerNote[]
   communications       CommunicationLog[]
 
+  @@index([referredByPartnerId])
   @@map("customers")
 }
 
@@ -659,6 +664,7 @@ model SupplierProfile {
   bookings             Booking[]            @relation("BookingSupplier")
   invoiceRecords       InvoiceRecord[]
   invoiceImportBatches InvoiceImportBatch[]
+  referredCustomers    Customer[]           @relation("CustomerReferrer")
 
   @@map("supplier_profiles")
 }

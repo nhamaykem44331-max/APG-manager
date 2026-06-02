@@ -317,6 +317,11 @@ export class FinanceController {
     return this.commission.payPartner({ ...dto, userId: req.user.id });
   }
 
+  @Get('partners/:id/summary')
+  partnerSummary(@Param('id') id: string) {
+    return this.commission.partnerSummary(id);
+  }
+
   // ─── Ledger (Công nợ 2 chiều AR/AP) ───────────────────────────────
   @Get('ledger/summary')
   getLedgerSummary() {

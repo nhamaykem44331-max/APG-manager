@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, VipTier } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsArray, IsEnum, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
@@ -44,6 +44,9 @@ export class CreateCustomerDto {
 
   @IsOptional() @IsString()
   customerCode?: string;
+
+  @IsOptional() @IsString()
+  referredByPartnerId?: string; // đối tác giới thiệu (SupplierProfile type=PARTNER); rỗng = không có
 }
 
 export class ListCustomersDto {
@@ -83,6 +86,21 @@ export class CustomersService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
+  /** Đối tác giới thiệu (nếu có) phải là NCC tồn tại và thuộc loại PARTNER. */
+  private async validateReferralPartner(partnerId?: string | null) {
+    if (!partnerId) return;
+    const partner = await this.prisma.supplierProfile.findUnique({
+      where: { id: partnerId },
+      select: { type: true },
+    });
+    if (!partner) {
+      throw new NotFoundException(`Khong tim thay doi tac gioi thieu ID: ${partnerId}`);
+    }
+    if (partner.type !== 'PARTNER') {
+      throw new BadRequestException('Doi tac gioi thieu phai la NCC loai Doi tac (PARTNER).');
+    }
+  }
+
   private async generateCustomerCode() {
     const existingCodes = await this.prisma.customer.findMany({
       where: { customerCode: { startsWith: this.customerCodePrefix } },
@@ -115,6 +133,9 @@ export class CustomersService {
       notes: this.toOptionalString(dto.notes),
       tags: dto.tags ?? [],
       customerCode,
+      ...(dto.referredByPartnerId
+        ? { referredByPartner: { connect: { id: dto.referredByPartnerId } } }
+        : {}),
     };
   }
 
@@ -134,6 +155,11 @@ export class CustomersService {
       ...(data.tags !== undefined && { tags: data.tags }),
       ...(data.customerCode !== undefined && {
         customerCode: this.normalizeCustomerCode(data.customerCode) ?? null,
+      }),
+      ...(data.referredByPartnerId !== undefined && {
+        referredByPartner: data.referredByPartnerId
+          ? { connect: { id: data.referredByPartnerId } }
+          : { disconnect: true },
       }),
     };
   }
@@ -330,6 +356,7 @@ export class CustomersService {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
+        referredByPartner: { select: { id: true, code: true, name: true } },
         bookings: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
@@ -375,6 +402,8 @@ export class CustomersService {
   async create(input: CreateCustomerDto | { data: CreateCustomerDto; select?: { id: boolean } }) {
     const dto = 'data' in input ? input.data : input;
     const normalizedPhone = dto.phone.trim();
+
+    await this.validateReferralPartner(dto.referredByPartnerId);
 
     const existing = await this.prisma.customer.findUnique({
       where: { phone: normalizedPhone },
@@ -425,6 +454,7 @@ export class CustomersService {
 
   async update(id: string, data: Partial<CreateCustomerDto> & { vipTier?: string }) {
     await this.findOne(id);
+    await this.validateReferralPartner(data.referredByPartnerId);
 
     const normalizedCustomerCode = data.customerCode !== undefined
       ? this.normalizeCustomerCode(data.customerCode)
