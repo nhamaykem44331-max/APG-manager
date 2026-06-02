@@ -543,20 +543,24 @@ function ReconcileTab() {
     new Date().toISOString().slice(0, 10)
   );
   const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<null | {
     totalTickets: number; totalRevenue: number; totalProfit: number;
   }>(null);
 
   const handleRun = async () => {
     setIsRunning(true);
+    setError(null);
     try {
-      const res = await financeApi.getDashboard();
-      // Giả lập kết quả đối soát
+      const res = await financeApi.runReconciliation(selectedDate);
+      const r = res.data as { totalTickets: number; totalRevenue: number; totalProfit: number };
       setResult({
-        totalTickets: 23,
-        totalRevenue: 45_200_000,
-        totalProfit: 4_800_000,
+        totalTickets: Number(r.totalTickets ?? 0),
+        totalRevenue: Number(r.totalRevenue ?? 0),
+        totalProfit: Number(r.totalProfit ?? 0),
       });
+    } catch {
+      setError('Chạy đối soát thất bại. Vui lòng thử lại.');
     } finally {
       setIsRunning(false);
     }
@@ -565,9 +569,10 @@ function ReconcileTab() {
   return (
     <div className="space-y-6">
       <div className="card p-5">
-        <h3 className="text-[13px] font-semibold text-foreground mb-1">Chạy đối soát</h3>
+        <h3 className="text-[13px] font-semibold text-foreground mb-1">Chạy đối soát ngày</h3>
         <p className="text-[13px] text-muted-foreground mb-4">
-          So sánh giá net thực tế với bảng giá hãng bay. Tự động chạy lúc 06:00 hàng ngày qua n8n.
+          Tổng hợp vé đã xuất, doanh thu và lợi nhuận trong ngày, gửi báo cáo qua n8n/Telegram.
+          Đối soát giá net với hãng/BSP sẽ bổ sung ở giai đoạn sau.
         </p>
 
         <div className="flex items-center gap-3">
@@ -597,6 +602,10 @@ function ReconcileTab() {
           </button>
         </div>
 
+        {error && (
+          <p className="mt-3 text-[13px] text-red-500">{error}</p>
+        )}
+
         {/* Kết quả đối soát */}
         {result && (
           <div className="mt-5 p-5 rounded-md bg-accent/40 border border-border/50">
@@ -619,9 +628,9 @@ function ReconcileTab() {
               ))}
             </div>
             <div className="mt-4 pt-4 border-t border-border/50">
-              <p className="text-[13px] text-emerald-600 dark:text-emerald-500 font-medium flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Không phát hiện chênh lệch. Báo cáo đã gửi vào nhóm Telegram kế toán.
+              <p className="text-[13px] text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Đã tổng hợp & gửi báo cáo ngày qua Telegram. Đối soát chênh lệch giá net với hãng/BSP sẽ bổ sung ở giai đoạn sau.
               </p>
             </div>
           </div>
@@ -633,56 +642,9 @@ function ReconcileTab() {
         <div className="px-5 py-4 border-b border-border">
           <h3 className="text-[13px] font-semibold text-foreground">Lịch sử đối soát gần đây</h3>
         </div>
-        <DataTable
-          data={[
-            { date: '20/03/2026', tickets: 21, revenue: 41_500_000, profit: 4_100_000, diff: 0, ok: true },
-            { date: '19/03/2026', tickets: 18, revenue: 35_200_000, profit: 3_500_000, diff: -150_000, ok: false },
-            { date: '18/03/2026', tickets: 25, revenue: 52_300_000, profit: 5_200_000, diff: 0, ok: true },
-          ]}
-          columns={[
-            {
-              header: 'Ngày',
-              accessorKey: 'date',
-              className: 'text-foreground font-medium text-[13px]',
-            },
-            {
-              header: 'Vé',
-              accessorKey: 'tickets',
-              className: 'text-[13px] font-tabular text-muted-foreground',
-            },
-            {
-              header: 'Doanh thu',
-              cell: (r) => <span className="font-tabular inline-block">{formatVND(r.revenue)}</span>,
-              className: 'text-right text-[13px]',
-            },
-            {
-              header: 'Lợi nhuận',
-              cell: (r) => <span className="text-emerald-500 font-medium font-tabular inline-block">{formatVND(r.profit)}</span>,
-              className: 'text-right text-[13px]',
-            },
-            {
-              header: 'Chênh lệch',
-              cell: (r) => (
-                <span className={cn('font-tabular inline-block', r.diff < 0 ? 'text-red-500 font-medium' : 'text-muted-foreground')}>
-                  {r.diff < 0 ? formatVND(r.diff) : '—'}
-                </span>
-              ),
-              className: 'text-right text-[13px]',
-            },
-            {
-              header: 'Trạng thái',
-              cell: (r) => (
-                <span className={cn(
-                  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium',
-                  r.ok ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                       : 'bg-red-500/10 text-red-600 dark:text-red-400',
-                )}>
-                  {r.ok ? 'Khớp' : 'Chênh lệch'}
-                </span>
-              ),
-            },
-          ]}
-        />
+        <div className="px-5 py-8 text-center text-[13px] text-muted-foreground">
+          Lịch sử đối soát (và đối soát giá net với hãng/BSP) sẽ có ở giai đoạn sau.
+        </div>
       </div>
     </div>
   );

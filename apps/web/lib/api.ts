@@ -247,6 +247,8 @@ export const financeApi = {
     apiClient.patch(`/finance/deposits/${id}`, data),
   createDeposit: (data: { airline: string; alertThreshold?: number }) =>
     apiClient.post('/finance/deposits', data),
+  runReconciliation: (date?: string) =>
+    apiClient.post('/finance/reconciliation/run', { date }),
   getLedgerSummary: () => apiClient.get('/finance/ledger/summary'),
   getFundBalances: () => apiClient.get('/finance/cashflow/fund-balances'),
 };
