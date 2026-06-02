@@ -84,6 +84,7 @@ export class ExpenseService {
           isLocked: true,
         },
         tx,
+        userId,
       );
 
       return created;
@@ -92,7 +93,7 @@ export class ExpenseService {
     return expense;
   }
 
-  async update(id: string, data: Partial<CreateExpenseDto>) {
+  async update(id: string, data: Partial<CreateExpenseDto>, userId?: string) {
     const existing = await this.prisma.operatingExpense.findUniqueOrThrow({
       where: { id },
     });
@@ -140,6 +141,7 @@ export class ExpenseService {
           isLocked: true,
         },
         tx,
+        userId,
       );
 
       return updated;

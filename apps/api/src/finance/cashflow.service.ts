@@ -199,8 +199,8 @@ export class CashFlowService {
     return Number(inflow._sum.amount ?? 0) - Number(outflow._sum.amount ?? 0);
   }
 
-  async recordSystemEntry(payload: SystemCashFlowPayload, tx: DbClient = this.prisma) {
-    return this.createEntry(tx, { ...payload, isLocked: payload.isLocked ?? true });
+  async recordSystemEntry(payload: SystemCashFlowPayload, tx: DbClient = this.prisma, userId?: string) {
+    return this.createEntry(tx, { ...payload, isLocked: payload.isLocked ?? true }, userId);
   }
 
   async syncSystemEntryBySource(
@@ -209,13 +209,14 @@ export class CashFlowService {
     direction: CashFlowDirection,
     payload: Omit<SystemCashFlowPayload, 'sourceType' | 'sourceId' | 'direction'>,
     tx: DbClient = this.prisma,
+    userId?: string,
   ) {
     const existing = await tx.cashFlowEntry.findFirst({
       where: { sourceType, sourceId, direction },
     });
 
     if (existing) {
-      return tx.cashFlowEntry.update({
+      const updated = await tx.cashFlowEntry.update({
         where: { id: existing.id },
         data: {
           category: payload.category,
@@ -232,6 +233,9 @@ export class CashFlowService {
           isLocked: payload.isLocked ?? true,
         },
       });
+
+      await this.writeAuditLog(tx, userId, 'UPDATE', updated.id, existing, updated);
+      return updated;
     }
 
     return this.recordSystemEntry({
@@ -240,7 +244,7 @@ export class CashFlowService {
       sourceId,
       ...payload,
       isLocked: payload.isLocked ?? true,
-    }, tx);
+    }, tx, userId);
   }
 
   async deleteSystemEntriesBySource(

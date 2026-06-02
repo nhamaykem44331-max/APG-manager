@@ -344,7 +344,7 @@ export class LedgerService {
         sourceType: CashFlowSourceType.LEDGER_PAYMENT,
         sourceId: allocationResult.allocations[0]?.ledgerPaymentId ?? null,
         isLocked: true,
-      }, tx);
+      }, tx, userId);
 
       if (ledger.direction === 'PAYABLE' && ledger.supplier?.type === 'AIRLINE') {
         const deposit = await tx.airlineDeposit.findFirst({
@@ -485,7 +485,7 @@ export class LedgerService {
         sourceType: CashFlowSourceType.LEDGER_PAYMENT,
         sourceId: allocationResult.allocations[0]?.ledgerPaymentId ?? null,
         isLocked: true,
-      }, tx);
+      }, tx, userId);
 
       if (primaryLedger.direction === 'PAYABLE' && primaryLedger.supplier?.type === 'AIRLINE') {
         const deposit = await tx.airlineDeposit.findFirst({

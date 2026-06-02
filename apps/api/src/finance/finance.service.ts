@@ -272,7 +272,7 @@ export class FinanceService {
         sourceType: CashFlowSourceType.DEPOSIT_TOPUP,
         sourceId,
         isLocked: true,
-      }, tx);
+      }, tx, input.userId);
 
       return updatedDeposit;
     });

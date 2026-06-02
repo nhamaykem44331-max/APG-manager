@@ -496,8 +496,12 @@ export class FinanceController {
 
   @Patch('expenses/:id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
-  updateExpense(@Param('id') id: string, @Body() dto: Partial<CreateExpenseDto>) {
-    return this.expense.update(id, dto);
+  updateExpense(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateExpenseDto>,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.expense.update(id, dto, req.user.id);
   }
 
   @Delete('expenses/:id')
