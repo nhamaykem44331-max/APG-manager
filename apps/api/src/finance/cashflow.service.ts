@@ -8,6 +8,8 @@ import {
   PrismaClient,
 } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
+import { FinancialLedgerService } from './financial-ledger.service';
+import { dedupeKeyFromCashFlow, mapTxnType } from './txn-type.util';
 import {
   AdjustFundBalanceDto,
   CreateCashFlowDto,
@@ -59,7 +61,57 @@ type SystemCashFlowPayload = {
 
 @Injectable()
 export class CashFlowService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly financialLedger: FinancialLedgerService,
+  ) {}
+
+  // Mirror một CashFlowEntry thủ công sang FinancialTransaction (cùng tx).
+  // Chỉ dùng cho các method THỦ CÔNG (create/update/adjust/transfer) — KHÔNG dùng cho
+  // recordSystemEntry/syncSystemEntryBySource vì các caller đó đã tự dual-write.
+  private async mirrorManualEntry(
+    tx: DbClient,
+    entry: {
+      id: string;
+      direction: CashFlowDirection;
+      category: CashFlowCategory;
+      sourceType: CashFlowSourceType | null;
+      sourceId: string | null;
+      transferGroupId: string | null;
+      amount: Prisma.Decimal | number;
+      date: Date;
+      status: string;
+      fundAccount: FundAccount | null;
+      counterpartyFundAccount: FundAccount | null;
+      pic: string;
+      description: string;
+      reference: string | null;
+      reason: string | null;
+      createdBy: string | null;
+    },
+  ) {
+    const dedupeKey = dedupeKeyFromCashFlow(entry);
+    if (entry.status !== 'DONE') {
+      // Bút toán chưa thực -> không vào sổ FT (gỡ nếu trước đó từng ghi).
+      await this.financialLedger.removeByDedupeKeys([dedupeKey], tx);
+      return;
+    }
+    await this.financialLedger.post({
+      type: mapTxnType(entry.sourceType, entry.category, entry.direction),
+      direction: entry.direction,
+      amount: Number(entry.amount),
+      occurredAt: entry.date,
+      dedupeKey,
+      fundAccount: entry.fundAccount,
+      counterpartyFundAccount: entry.counterpartyFundAccount,
+      transferGroupId: entry.transferGroupId,
+      pic: entry.pic,
+      description: entry.description,
+      reference: entry.reference,
+      reason: entry.reason,
+      createdBy: entry.createdBy,
+    }, tx);
+  }
 
   private getFundLabel(fund?: FundAccount | null) {
     return fund ? FUND_LABELS[fund] : 'Chưa gán quỹ';
@@ -279,24 +331,28 @@ export class CashFlowService {
 
   // ─── Tạo giao dịch thủ công ────────────────────────────────────────────
   async create(dto: CreateCashFlowDto, userId: string) {
-    return this.createEntry(this.prisma, {
-      direction: dto.direction,
-      category: dto.category,
-      amount: dto.amount,
-      pic: dto.pic,
-      description: dto.description,
-      reference: dto.reference,
-      date: new Date(dto.date),
-      status: dto.status ?? 'DONE',
-      notes: dto.notes,
-      fundAccount: dto.fundAccount,
-      counterpartyFundAccount: dto.counterpartyFundAccount,
-      reason: dto.reason,
-      sourceType: CashFlowSourceType.MANUAL,
-      sourceId: null,
-      transferGroupId: dto.transferGroupId,
-      isLocked: false,
-    }, userId);
+    return this.prisma.$transaction(async (tx) => {
+      const created = await this.createEntry(tx, {
+        direction: dto.direction,
+        category: dto.category,
+        amount: dto.amount,
+        pic: dto.pic,
+        description: dto.description,
+        reference: dto.reference,
+        date: new Date(dto.date),
+        status: dto.status ?? 'DONE',
+        notes: dto.notes,
+        fundAccount: dto.fundAccount,
+        counterpartyFundAccount: dto.counterpartyFundAccount,
+        reason: dto.reason,
+        sourceType: CashFlowSourceType.MANUAL,
+        sourceId: null,
+        transferGroupId: dto.transferGroupId,
+        isLocked: false,
+      }, userId);
+      await this.mirrorManualEntry(tx, created);
+      return created;
+    });
   }
 
   // ─── Cập nhật giao dịch thủ công ───────────────────────────────────────
@@ -312,26 +368,29 @@ export class CashFlowService {
 
     this.ensureEditable(existing);
 
-    const updated = await this.prisma.cashFlowEntry.update({
-      where: { id },
-      data: {
-        ...(data.direction && { direction: data.direction }),
-        ...(data.category && { category: data.category }),
-        ...(data.amount !== undefined && { amount: data.amount }),
-        ...(data.pic !== undefined && { pic: data.pic }),
-        ...(data.description !== undefined && { description: data.description }),
-        ...(data.reference !== undefined && { reference: data.reference }),
-        ...(data.date && { date: new Date(data.date) }),
-        ...(data.status !== undefined && { status: data.status }),
-        ...(data.notes !== undefined && { notes: data.notes }),
-        ...(data.fundAccount !== undefined && { fundAccount: data.fundAccount }),
-        ...(data.counterpartyFundAccount !== undefined && { counterpartyFundAccount: data.counterpartyFundAccount }),
-        ...(data.reason !== undefined && { reason: data.reason }),
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.cashFlowEntry.update({
+        where: { id },
+        data: {
+          ...(data.direction && { direction: data.direction }),
+          ...(data.category && { category: data.category }),
+          ...(data.amount !== undefined && { amount: data.amount }),
+          ...(data.pic !== undefined && { pic: data.pic }),
+          ...(data.description !== undefined && { description: data.description }),
+          ...(data.reference !== undefined && { reference: data.reference }),
+          ...(data.date && { date: new Date(data.date) }),
+          ...(data.status !== undefined && { status: data.status }),
+          ...(data.notes !== undefined && { notes: data.notes }),
+          ...(data.fundAccount !== undefined && { fundAccount: data.fundAccount }),
+          ...(data.counterpartyFundAccount !== undefined && { counterpartyFundAccount: data.counterpartyFundAccount }),
+          ...(data.reason !== undefined && { reason: data.reason }),
+        },
+      });
 
-    await this.writeAuditLog(this.prisma, userId, 'UPDATE', updated.id, existing, updated);
-    return updated;
+      await this.mirrorManualEntry(tx, updated);
+      await this.writeAuditLog(tx, userId, 'UPDATE', updated.id, existing, updated);
+      return updated;
+    });
   }
 
   // ─── Xóa giao dịch ─────────────────────────────────────────────────────
@@ -350,6 +409,7 @@ export class CashFlowService {
 
       await this.prisma.$transaction(async (tx) => {
         await tx.cashFlowEntry.deleteMany({ where: { transferGroupId: existing.transferGroupId } });
+        await this.financialLedger.removeByDedupeKeys(groupEntries.map(dedupeKeyFromCashFlow), tx);
         for (const entry of groupEntries) {
           await this.writeAuditLog(tx, userId, 'DELETE', entry.id, entry, undefined);
         }
@@ -358,9 +418,12 @@ export class CashFlowService {
       return { deletedCount: groupEntries.length };
     }
 
-    const deleted = await this.prisma.cashFlowEntry.delete({ where: { id } });
-    await this.writeAuditLog(this.prisma, userId, 'DELETE', deleted.id, existing, undefined);
-    return deleted;
+    return this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.cashFlowEntry.delete({ where: { id } });
+      await this.financialLedger.removeByDedupeKeys([dedupeKeyFromCashFlow(existing)], tx);
+      await this.writeAuditLog(tx, userId, 'DELETE', deleted.id, existing, undefined);
+      return deleted;
+    });
   }
 
   async getFundBalances() {
@@ -501,20 +564,24 @@ export class CashFlowService {
   }
 
   async createFundEntry(dto: CreateFundEntryDto, userId: string) {
-    return this.createEntry(this.prisma, {
-      direction: dto.direction,
-      category: dto.category,
-      amount: dto.amount,
-      pic: dto.pic,
-      description: dto.description,
-      reference: dto.reference,
-      date: new Date(dto.date),
-      status: 'DONE',
-      notes: dto.notes,
-      fundAccount: dto.fundAccount,
-      sourceType: CashFlowSourceType.MANUAL,
-      isLocked: false,
-    }, userId);
+    return this.prisma.$transaction(async (tx) => {
+      const created = await this.createEntry(tx, {
+        direction: dto.direction,
+        category: dto.category,
+        amount: dto.amount,
+        pic: dto.pic,
+        description: dto.description,
+        reference: dto.reference,
+        date: new Date(dto.date),
+        status: 'DONE',
+        notes: dto.notes,
+        fundAccount: dto.fundAccount,
+        sourceType: CashFlowSourceType.MANUAL,
+        isLocked: false,
+      }, userId);
+      await this.mirrorManualEntry(tx, created);
+      return created;
+    });
   }
 
   async updateFundEntry(id: string, dto: UpdateFundEntryDto, userId: string) {
@@ -536,21 +603,25 @@ export class CashFlowService {
     const direction: CashFlowDirection = delta > 0 ? 'INFLOW' : 'OUTFLOW';
     const amount = Math.abs(delta);
 
-    return this.createEntry(this.prisma, {
-      direction,
-      category: 'OTHER',
-      amount,
-      pic: dto.pic,
-      description: dto.description?.trim() || `Điều chỉnh số dư ${this.getFundLabel(dto.fundAccount)}`,
-      reference: dto.reference,
-      date: new Date(dto.date),
-      status: 'DONE',
-      notes: dto.notes,
-      fundAccount: dto.fundAccount,
-      reason: dto.reason,
-      sourceType: CashFlowSourceType.FUND_ADJUSTMENT,
-      isLocked: true,
-    }, userId);
+    return this.prisma.$transaction(async (tx) => {
+      const created = await this.createEntry(tx, {
+        direction,
+        category: 'OTHER',
+        amount,
+        pic: dto.pic,
+        description: dto.description?.trim() || `Điều chỉnh số dư ${this.getFundLabel(dto.fundAccount)}`,
+        reference: dto.reference,
+        date: new Date(dto.date),
+        status: 'DONE',
+        notes: dto.notes,
+        fundAccount: dto.fundAccount,
+        reason: dto.reason,
+        sourceType: CashFlowSourceType.FUND_ADJUSTMENT,
+        isLocked: true,
+      }, userId);
+      await this.mirrorManualEntry(tx, created);
+      return created;
+    });
   }
 
   async transferBetweenFunds(dto: TransferFundDto, userId: string) {
@@ -599,6 +670,9 @@ export class CashFlowService {
         reason: dto.reason,
         isLocked: false,
       }, userId);
+
+      await this.mirrorManualEntry(tx, outflow);
+      await this.mirrorManualEntry(tx, inflow);
 
       return { transferGroupId, outflow, inflow };
     });
@@ -665,6 +739,9 @@ export class CashFlowService {
 
       await this.writeAuditLog(tx, userId, 'UPDATE', updatedOutflow.id, outflow, updatedOutflow);
       await this.writeAuditLog(tx, userId, 'UPDATE', updatedInflow.id, inflow, updatedInflow);
+
+      await this.mirrorManualEntry(tx, updatedOutflow);
+      await this.mirrorManualEntry(tx, updatedInflow);
 
       return {
         transferGroupId: anchor.transferGroupId,

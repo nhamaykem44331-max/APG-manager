@@ -18,8 +18,8 @@ const n8n: any = {
   sendDailyReport: async () => undefined,
   triggerWebhook: async () => undefined,
 };
-const cashflow = new CashFlowService(prisma);
 const financialLedger = new FinancialLedgerService(prisma);
+const cashflow = new CashFlowService(prisma, financialLedger);
 const ledger = new LedgerService(prisma, n8n, cashflow, financialLedger);
 const customers = new CustomersService(prisma);
 const namedCredit = new NamedCreditService(prisma);
@@ -248,6 +248,68 @@ async function testExpenseLifecycle() {
   check('Expense remove: FT đã biến mất', !gone, `gone=${!gone}`);
 }
 
+// ─── M5: cashflow thủ công + adjust + transfer ────────────────────────────
+async function testCashflowManual() {
+  console.log('\n[M5] cashflow.create/update/remove — thu thủ công (MANUAL)');
+  const c0 = await counts();
+  const e = await cashflow.create({ direction: 'INFLOW', category: 'OTHER', amount: 1_200_000, pic: 'NV1', description: 'Thu khác', date: new Date().toISOString(), fundAccount: 'CASH_OFFICE' } as any, USER);
+  const c1 = await counts();
+  check('Manual create: +1 CFE', c1.cfe - c0.cfe === 1, `Δcfe=${c1.cfe - c0.cfe}`);
+  check('Manual create: +1 FT', c1.ft - c0.ft === 1, `Δft=${c1.ft - c0.ft}`);
+  let ft = await prisma.financialTransaction.findFirst({ where: { dedupeKey: `cashflow:${e.id}` } });
+  check('Manual create: FT key cashflow:<id>', !!ft, `ft=${!!ft}`);
+  check('Manual create: FT type=OTHER_INCOME', ft?.type === 'OTHER_INCOME', String(ft?.type));
+  check('Manual create: FT amount=1,200,000', Number(ft?.amount) === 1_200_000, String(ft?.amount));
+
+  await cashflow.update(e.id, { amount: 1_500_000 } as any, USER);
+  const c2 = await counts();
+  check('Manual update: FT số lượng không đổi', c2.ft === c1.ft, `ft=${c2.ft}`);
+  ft = await prisma.financialTransaction.findFirst({ where: { dedupeKey: `cashflow:${e.id}` } });
+  check('Manual update: FT amount lan 1,500,000', Number(ft?.amount) === 1_500_000, String(ft?.amount));
+
+  await cashflow.remove(e.id, USER);
+  const c3 = await counts();
+  check('Manual remove: CFE -1', c2.cfe - c3.cfe === 1, `Δcfe=${c2.cfe - c3.cfe}`);
+  check('Manual remove: FT -1', c2.ft - c3.ft === 1, `Δft=${c2.ft - c3.ft}`);
+}
+
+async function testAdjust() {
+  console.log('\n[M5] cashflow.adjustFundBalance — điều chỉnh số dư (ADJUSTMENT)');
+  const before = await counts();
+  await cashflow.adjustFundBalance({ fundAccount: 'BANK_PERSONAL', targetBalance: 2_000_000, reason: 'Khớp sao kê', pic: 'KT', date: new Date().toISOString() } as any, USER);
+  const after = await counts();
+  check('Adjust: +1 CFE', after.cfe - before.cfe === 1, `Δcfe=${after.cfe - before.cfe}`);
+  check('Adjust: +1 FT', after.ft - before.ft === 1, `Δft=${after.ft - before.ft}`);
+  const ft = await prisma.financialTransaction.findFirst({ where: { type: 'ADJUSTMENT' }, orderBy: { createdAt: 'desc' } });
+  check('Adjust: FT type=ADJUSTMENT', ft?.type === 'ADJUSTMENT', String(ft?.type));
+  check('Adjust: FT reason set', !!ft?.reason, String(ft?.reason));
+  check('Adjust: dedupeKey adjust:*', !!ft?.dedupeKey.startsWith('adjust:'), String(ft?.dedupeKey));
+}
+
+async function testTransferLifecycle() {
+  console.log('\n[M5] cashflow.transferBetweenFunds/update/remove — chuyển quỹ (2 chân)');
+  const c0 = await counts();
+  const trf = await cashflow.transferBetweenFunds({ fromFundAccount: 'CASH_OFFICE', toFundAccount: 'BANK_PERSONAL', amount: 500_000, pic: 'KT', date: new Date().toISOString() } as any, USER);
+  const c1 = await counts();
+  check('Transfer: +2 CFE', c1.cfe - c0.cfe === 2, `Δcfe=${c1.cfe - c0.cfe}`);
+  check('Transfer: +2 FT', c1.ft - c0.ft === 2, `Δft=${c1.ft - c0.ft}`);
+  const out = await prisma.financialTransaction.findFirst({ where: { dedupeKey: `transferLeg:${trf.transferGroupId}:OUT` } });
+  const inn = await prisma.financialTransaction.findFirst({ where: { dedupeKey: `transferLeg:${trf.transferGroupId}:IN` } });
+  check('Transfer: OUT leg type=FUND_TRANSFER/OUTFLOW', out?.type === 'FUND_TRANSFER' && out?.direction === 'OUTFLOW', `${out?.type}/${out?.direction}`);
+  check('Transfer: IN leg INFLOW + counterparty', inn?.direction === 'INFLOW' && inn?.counterpartyFundAccount === 'CASH_OFFICE', `${inn?.direction}/${inn?.counterpartyFundAccount}`);
+
+  await cashflow.updateFundTransfer(trf.outflow.id, { fromFundAccount: 'CASH_OFFICE', toFundAccount: 'BANK_PERSONAL', amount: 700_000, pic: 'KT', date: new Date().toISOString() } as any, USER);
+  const c2 = await counts();
+  check('Transfer update: FT số lượng không đổi (2)', c2.ft === c1.ft, `ft=${c2.ft}`);
+  const out2 = await prisma.financialTransaction.findFirst({ where: { dedupeKey: `transferLeg:${trf.transferGroupId}:OUT` } });
+  check('Transfer update: OUT amount lan 700,000', Number(out2?.amount) === 700_000, String(out2?.amount));
+
+  await cashflow.remove(trf.outflow.id, USER);
+  const c3 = await counts();
+  check('Transfer remove: CFE -2', c2.cfe - c3.cfe === 2, `Δcfe=${c2.cfe - c3.cfe}`);
+  check('Transfer remove: FT -2', c2.ft - c3.ft === 2, `Δft=${c2.ft - c3.ft}`);
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -273,6 +335,9 @@ async function main() {
   await testBookingCash();
   await testDeposit();
   await testExpenseLifecycle();
+  await testCashflowManual();
+  await testAdjust();
+  await testTransferLifecycle();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);
