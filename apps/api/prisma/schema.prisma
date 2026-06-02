@@ -1065,3 +1065,43 @@ model FinancialTransaction {
   @@index([ledgerId])
   @@map("financial_transactions")
 }
+
+enum CommissionKind {
+  AIRLINE_INCOME // Hoa hồng APG NHẬN từ hãng/BSP (dồn tích khi xuất vé, chốt khi đối soát)
+  PARTNER_PAYOUT // Hoa hồng APG TRẢ đối tác giới thiệu (Mr Sơn VTC, Mr Lưu SCCM)
+}
+
+enum CommissionStatus {
+  ACCRUED // Đã dồn tích, chưa thực thu/chi
+  SETTLED // Đã chốt (thực thu qua đối soát BSP, hoặc đã chi trả đối tác)
+  CANCELLED // Hủy (vé hoàn, điều chỉnh)
+}
+
+// Sổ hoa hồng 2 chiều. Loose-coupling như FinancialTransaction (chỉ lưu *Id, KHÔNG FK).
+model CommissionRecord {
+  id         String           @id @default(uuid())
+  kind       CommissionKind
+  status     CommissionStatus @default(ACCRUED)
+  amount     Decimal // luôn > 0
+  currency   String           @default("VND")
+  occurredAt DateTime         @map("occurred_at") // ngày phát sinh (xuất vé / kỳ trả)
+
+  // Liên kết chứng từ nguồn (loose)
+  bookingId              String? @map("booking_id")
+  supplierId             String? @map("supplier_id") // hãng (AIRLINE_INCOME) hoặc đối tác (PARTNER_PAYOUT)
+  ledgerId               String? @map("ledger_id")
+  financialTransactionId String? @map("financial_transaction_id") // FT cash khi đã chốt/chi
+
+  dedupeKey   String?  @unique @map("dedupe_key") // idempotent: "commAccrual:<bookingId>", "partnerPayout:<cfeId>"
+  description String
+  reference   String?
+  reason      String?
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([kind, status])
+  @@index([bookingId])
+  @@index([supplierId])
+  @@map("commission_records")
+}

@@ -15,6 +15,7 @@ import { AddPaymentDto } from './dto/add-payment.dto';
 import { AddAdjustmentDto } from './dto/add-adjustment.dto';
 import { NamedCreditService } from './named-credit.service';
 import { FinancialLedgerService } from '../finance/financial-ledger.service';
+import { CommissionService } from '../finance/commission.service';
 import { TxnDedupe } from '../finance/txn-type.util';
 
 /** ChuyÃ¡Â»Æ’n chuÃ¡Â»â€”i ISO thÃƒÂ nh Date; fallback vÃ¡Â»Â now nÃ¡ÂºÂ¿u invalid Ã„â€˜Ã¡Â»Æ’ trÃƒÂ¡nh lÃ¡Â»â€”i DB */
@@ -112,6 +113,7 @@ export class BookingsService {
     private customers: CustomersService,
     private namedCreditService: NamedCreditService,
     private financialLedger: FinancialLedgerService,
+    private commission: CommissionService,
   ) {}
 
   private async refreshAffectedCustomers(...customerIds: Array<string | null | undefined>) {
@@ -1325,6 +1327,15 @@ export class BookingsService {
         }
       } catch (err) {
         console.error(`[AP-AUTO] Lá»—i táº¡o AP cho booking ${booking.bookingCode}:`, err);
+      }
+    }
+
+    // —— Dồn tích hoa hồng nhận từ hãng khi xuất vé (Σ ticket.commission) ——
+    if (targetStatus === 'ISSUED') {
+      try {
+        await this.commission.accrueAirlineIncomeForBooking(booking.id, changedBy);
+      } catch (err) {
+        console.error(`[COMM-ACCRUE] Lỗi dồn tích hoa hồng booking ${booking.bookingCode}:`, err);
       }
     }
 

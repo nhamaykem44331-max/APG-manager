@@ -11,6 +11,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { NamedCreditService } from '../src/bookings/named-credit.service';
 import { FinanceService } from '../src/finance/finance.service';
 import { ExpenseService } from '../src/finance/expense.service';
+import { CommissionService } from '../src/finance/commission.service';
 import { runBackfill } from './backfill-financial-transactions';
 
 const prisma = new PrismaService();
@@ -21,10 +22,11 @@ const n8n: any = {
 };
 const financialLedger = new FinancialLedgerService(prisma);
 const cashflow = new CashFlowService(prisma, financialLedger);
+const commission = new CommissionService(prisma, cashflow, financialLedger);
 const ledger = new LedgerService(prisma, n8n, cashflow, financialLedger);
 const customers = new CustomersService(prisma);
 const namedCredit = new NamedCreditService(prisma);
-const bookings = new BookingsService(prisma, n8n, customers, namedCredit, financialLedger);
+const bookings = new BookingsService(prisma, n8n, customers, namedCredit, financialLedger, commission);
 const finance = new FinanceService(prisma, n8n, cashflow, financialLedger);
 const expense = new ExpenseService(prisma, cashflow, financialLedger);
 
@@ -62,6 +64,7 @@ async function sumByFund(table: 'cfe' | 'ft') {
 }
 
 async function resetMoneyTables() {
+  await prisma.commissionRecord.deleteMany({});
   await prisma.financialTransaction.deleteMany({});
   await prisma.ledgerPayment.deleteMany({});
   await prisma.payment.deleteMany({});
@@ -86,6 +89,11 @@ async function seedRefs() {
     where: { id: 'TEST-SUP-VN' },
     update: {},
     create: { id: 'TEST-SUP-VN', code: 'VN', name: 'Vietnam Airlines (test)', type: 'AIRLINE', isActive: true },
+  });
+  await prisma.supplierProfile.upsert({
+    where: { id: 'TEST-PARTNER' },
+    update: {},
+    create: { id: 'TEST-PARTNER', code: 'SCCM', name: 'Mr Luu SCCM (test)', type: 'PARTNER', isActive: true, feedbackRate: 10 },
   });
   await prisma.booking.upsert({
     where: { id: 'TEST-BK-1' },
@@ -124,6 +132,49 @@ async function makeLedger(direction: 'RECEIVABLE' | 'PAYABLE', total: number, ex
       ...extra,
     } as any,
   });
+}
+
+let bkSeq = 0;
+async function makeBookingWithTickets(opts: { status: string; issued: boolean; commissions: number[] }) {
+  bkSeq += 1;
+  const id = `TEST-BKC-${bkSeq}-${Math.random().toString(36).slice(2, 7)}`;
+  const pax = await prisma.passenger.create({ data: { fullName: 'PAX Test', type: 'ADT' as any, customerId: 'TEST-CUST-1' } });
+  await prisma.booking.create({
+    data: {
+      id,
+      bookingCode: id,
+      staffId: USER,
+      customerId: 'TEST-CUST-1',
+      supplierId: 'TEST-SUP-VN',
+      contactName: 'KH Test',
+      contactPhone: '0900000002',
+      pnr: 'COMMPNR',
+      status: opts.status as any,
+      issuedAt: opts.issued ? new Date() : null,
+      totalSellPrice: 1_000_000 * Math.max(1, opts.commissions.length),
+      totalNetPrice: 800_000 * Math.max(1, opts.commissions.length),
+    } as any,
+  });
+  for (let i = 0; i < opts.commissions.length; i += 1) {
+    await prisma.ticket.create({
+      data: {
+        bookingId: id,
+        passengerId: pax.id,
+        airline: 'VN',
+        flightNumber: `VN${100 + i}`,
+        departureCode: 'SGN',
+        arrivalCode: 'HAN',
+        departureTime: new Date(),
+        arrivalTime: new Date(Date.now() + 7_200_000),
+        seatClass: 'Economy',
+        sellPrice: 1_000_000,
+        netPrice: 800_000,
+        commission: opts.commissions[i],
+        status: 'ACTIVE',
+      },
+    });
+  }
+  return id;
 }
 
 // ─── M2: ledger.pay / payBatch ────────────────────────────────────────────
@@ -311,6 +362,61 @@ async function testTransferLifecycle() {
   check('Transfer remove: FT -2', c2.ft - c3.ft === 2, `Δft=${c2.ft - c3.ft}`);
 }
 
+// ─── GĐ3a M2: dồn tích hoa hồng nhận từ hãng ──────────────────────────────
+async function testCommissionAccrual() {
+  console.log('\n[GĐ3a-M2] CommissionService.accrue — dồn tích hoa hồng hãng (trực tiếp)');
+  const bk = await makeBookingWithTickets({ status: 'ISSUED', issued: true, commissions: [50_000, 30_000] });
+  const before = await counts();
+  await commission.accrueAirlineIncomeForBooking(bk, USER);
+  const after = await counts();
+  const rec = await prisma.commissionRecord.findUnique({ where: { dedupeKey: `commAccrual:${bk}` } });
+  check('Accrual: tạo CommissionRecord', !!rec, `rec=${!!rec}`);
+  check('Accrual: kind=AIRLINE_INCOME', rec?.kind === 'AIRLINE_INCOME', String(rec?.kind));
+  check('Accrual: status=ACCRUED', rec?.status === 'ACCRUED', String(rec?.status));
+  check('Accrual: amount=Σcommission=80,000', Number(rec?.amount) === 80_000, String(rec?.amount));
+  check('Accrual: KHÔNG tạo FT (chưa phải cash)', after.ft === before.ft, `Δft=${after.ft - before.ft}`);
+  check('Accrual: KHÔNG tạo CFE', after.cfe === before.cfe, `Δcfe=${after.cfe - before.cfe}`);
+
+  // Idempotent: gọi lại không nhân đôi
+  await commission.accrueAirlineIncomeForBooking(bk, USER);
+  const recs = await prisma.commissionRecord.count({ where: { dedupeKey: `commAccrual:${bk}` } });
+  check('Accrual: idempotent (vẫn 1 record)', recs === 1, `count=${recs}`);
+
+  // Vé sửa commission về 0 -> gỡ bản dồn tích
+  await prisma.ticket.updateMany({ where: { bookingId: bk }, data: { commission: 0 } });
+  await commission.accrueAirlineIncomeForBooking(bk, USER);
+  const gone = await prisma.commissionRecord.findUnique({ where: { dedupeKey: `commAccrual:${bk}` } });
+  check('Accrual: commission=0 -> gỡ record', !gone, `gone=${!gone}`);
+}
+
+async function testCommissionAccrualHook() {
+  console.log('\n[GĐ3a-M2] hook updateStatus→ISSUED tự dồn tích hoa hồng');
+  const bk = await makeBookingWithTickets({ status: 'PENDING_PAYMENT', issued: false, commissions: [40_000, 20_000] });
+  await bookings.updateStatus(bk, { toStatus: 'ISSUED' } as any, USER);
+  const rec = await prisma.commissionRecord.findUnique({ where: { dedupeKey: `commAccrual:${bk}` } });
+  check('Hook: CommissionRecord tạo qua updateStatus', !!rec, `rec=${!!rec}`);
+  check('Hook: amount=60,000', Number(rec?.amount) === 60_000, String(rec?.amount));
+  check('Hook: kind=AIRLINE_INCOME/ACCRUED', rec?.kind === 'AIRLINE_INCOME' && rec?.status === 'ACCRUED', `${rec?.kind}/${rec?.status}`);
+}
+
+// ─── GĐ3a M3: trả hoa hồng đối tác (nhập tay, chạm tiền) ───────────────────
+async function testPayPartner() {
+  console.log('\n[GĐ3a-M3] CommissionService.payPartner — trả đối tác (PARTNER_FEEDBACK)');
+  const before = await counts();
+  const sumBefore = await cashflow.getSummary();
+  const res = await commission.payPartner({ partnerId: 'TEST-PARTNER', amount: 1_000_000, fundAccount: 'CASH_OFFICE', userId: USER });
+  const after = await counts();
+  check('PayPartner: +1 CFE', after.cfe - before.cfe === 1, `Δcfe=${after.cfe - before.cfe}`);
+  check('PayPartner: +1 FT', after.ft - before.ft === 1, `Δft=${after.ft - before.ft}`);
+  check('PayPartner: FT type=PARTNER_FEEDBACK/OUTFLOW', res.financialTransaction.type === 'PARTNER_FEEDBACK' && res.financialTransaction.direction === 'OUTFLOW', `${res.financialTransaction.type}/${res.financialTransaction.direction}`);
+  check('PayPartner: FT supplierId=đối tác', res.financialTransaction.supplierId === 'TEST-PARTNER', String(res.financialTransaction.supplierId));
+  check('PayPartner: CommissionRecord PARTNER_PAYOUT/SETTLED', res.commission.kind === 'PARTNER_PAYOUT' && res.commission.status === 'SETTLED', `${res.commission.kind}/${res.commission.status}`);
+  check('PayPartner: record link FT', res.commission.financialTransactionId === res.financialTransaction.id, String(res.commission.financialTransactionId));
+  // PARTNER_FEEDBACK là chi phí thực -> vào gross outflow
+  const sumAfter = await cashflow.getSummary();
+  check('PayPartner: getSummary.outflow +1,000,000', Math.round(sumAfter.totalOutflow - sumBefore.totalOutflow) === 1_000_000, `Δout=${sumAfter.totalOutflow - sumBefore.totalOutflow}`);
+}
+
 // ─── M6: backfill source-keyed — chống đếm trùng + idempotent ─────────────
 async function testBackfillIdempotent() {
   console.log('\n[M6] backfill source-keyed — chống đếm trùng + idempotent');
@@ -403,6 +509,9 @@ async function main() {
   await testCashflowManual();
   await testAdjust();
   await testTransferLifecycle();
+  await testCommissionAccrual();
+  await testCommissionAccrualHook();
+  await testPayPartner();
   await testBackfillIdempotent();
   await testReadsMatch();
   await assertInvariant();

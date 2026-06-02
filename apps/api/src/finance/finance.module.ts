@@ -10,6 +10,7 @@ import { InvoiceService } from './invoice.service';
 import { InvoiceImportService } from './invoice-import.service';
 import { InvoiceExportService } from './invoice-export.service';
 import { FinancialLedgerService } from './financial-ledger.service';
+import { CommissionService } from './commission.service';
 import { AutomationModule } from '../automation/automation.module';
 
 @Module({
@@ -25,6 +26,7 @@ import { AutomationModule } from '../automation/automation.module';
     InvoiceImportService,
     InvoiceExportService,
     FinancialLedgerService,
+    CommissionService,
   ],
   exports: [
     FinanceService,
@@ -36,6 +38,7 @@ import { AutomationModule } from '../automation/automation.module';
     InvoiceImportService,
     InvoiceExportService,
     FinancialLedgerService,
+    CommissionService,
   ],
 })
 export class FinanceModule {}
