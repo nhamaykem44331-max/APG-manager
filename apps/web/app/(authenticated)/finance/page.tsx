@@ -226,7 +226,7 @@ function DepositsTab() {
   const [topupAmount, setTopupAmount] = useState('');
   const [topupFundAccount, setTopupFundAccount] = useState('BANK_HTX');
 
-  const { data: deposits, isLoading } = useQuery({
+  const { data: deposits, isLoading, isError } = useQuery({
     queryKey: ['deposits'],
     queryFn: () => financeApi.getDeposits(),
     select: (r) => r.data,
@@ -244,15 +244,7 @@ function DepositsTab() {
     },
   });
 
-  const sampleDeposits = [
-    { id: 'VN', airline: 'VN', balance: 450_000_000, alertThreshold: 50_000_000, lastTopUp: 200_000_000 },
-    { id: 'VJ', airline: 'VJ', balance: 18_000_000, alertThreshold: 30_000_000, lastTopUp: 100_000_000 },
-    { id: 'QH', airline: 'QH', balance: 120_000_000, alertThreshold: 20_000_000, lastTopUp: 80_000_000 },
-    { id: 'BL', airline: 'BL', balance: 45_000_000, alertThreshold: 15_000_000, lastTopUp: 50_000_000 },
-    { id: 'VU', airline: 'VU', balance: 25_000_000, alertThreshold: 10_000_000, lastTopUp: 30_000_000 },
-  ];
-
-  const depositList = deposits ?? sampleDeposits;
+  const depositList = deposits ?? [];
 
   return (
     <div className="space-y-4">
@@ -260,6 +252,19 @@ function DepositsTab() {
         Theo dõi số dư tài khoản đặt cọc tại các hãng hàng không. Cảnh báo khi số dư thấp hơn ngưỡng.
       </p>
 
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => <div key={i} className="card h-[200px] animate-pulse" />)}
+        </div>
+      ) : isError ? (
+        <div className="card p-8 text-center text-[13px] text-red-500">
+          Không tải được danh sách deposit. Vui lòng thử lại.
+        </div>
+      ) : depositList.length === 0 ? (
+        <div className="card p-8 text-center text-[13px] text-muted-foreground">
+          Chưa có deposit hãng nào. Dùng form bên dưới để thêm hãng và bắt đầu theo dõi số dư.
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {depositList.map((d: { id: string; airline: string; balance: number; alertThreshold: number; lastTopUp: number }) => {
           const isLow = d.balance < d.alertThreshold;
@@ -357,6 +362,7 @@ function DepositsTab() {
           );
         })}
       </div>
+      )}
 
       {/* Form thêm deposit hãng mới */}
       <AddDepositForm />
