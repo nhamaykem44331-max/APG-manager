@@ -420,16 +420,40 @@ function AddDepositForm() {
   );
 }
 
-// ===== TAB: CÔNG NỢ =====
+// ===== TAB: TUỔI NỢ (AR aging) =====
+type OverdueLedger = {
+  id: string;
+  code: string;
+  direction: string;
+  remaining: number;
+  dueDate: string;
+  status: string;
+  customerCode?: string | null;
+  customer?: { fullName?: string; customerCode?: string | null; phone?: string } | null;
+};
+
 function DebtsTab() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['debts'],
-    queryFn: () => financeApi.getDebts(),
-    select: (r) => r.data,
+  const { data: agingData, isLoading, isError } = useQuery({
+    queryKey: ['ledger', 'aging', 'RECEIVABLE'],
+    queryFn: () =>
+      ledgerApi
+        .getAging('RECEIVABLE')
+        .then((r) => r.data as Array<{ direction: string; buckets: Record<string, number>; total: number }>),
+  });
+  const { data: overdue } = useQuery({
+    queryKey: ['ledger', 'overdue'],
+    queryFn: () => ledgerApi.getOverdue().then((r) => r.data as OverdueLedger[]),
   });
 
-  const aging = { '0-30': 150_000_000, '30-60': 100_000_000, '60-90': 80_000_000, '>90': 20_000_000 };
+  const buckets = agingData?.[0]?.buckets ?? {};
+  const aging = {
+    '0-30': buckets['0-30'] ?? 0,
+    '30-60': buckets['30-60'] ?? 0,
+    '60-90': buckets['60-90'] ?? 0,
+    '>90': buckets['>90'] ?? 0,
+  };
   const totalDebt = Object.values(aging).reduce((a, b) => a + b, 0);
+  const overdueRows = (overdue ?? []).filter((l) => l.direction === 'RECEIVABLE');
 
   const DEBT_COLORS = { '0-30': '#3b82f6', '30-60': '#f59e0b', '60-90': '#f97316', '>90': '#ef4444' };
   const DEBT_STATUS: Record<string, string> = {
@@ -441,6 +465,23 @@ function DebtsTab() {
   const DEBT_STATUS_LABEL: Record<string, string> = {
     ACTIVE: 'Đang nợ', PARTIAL_PAID: 'Trả một phần', OVERDUE: 'Quá hạn', PAID: 'Đã trả',
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        <div className="card h-44 animate-pulse" />
+        <div className="card h-64 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="card p-8 text-center text-[13px] text-red-500">
+        Không tải được dữ liệu tuổi nợ. Vui lòng thử lại.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -458,80 +499,74 @@ function DebtsTab() {
               </div>
               <p className="text-[13px] text-muted-foreground mt-1">{bucket} ngày</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {Math.round((amount / totalDebt) * 100)}%
+                {totalDebt > 0 ? Math.round((amount / totalDebt) * 100) : 0}%
               </p>
             </div>
           ))}
         </div>
         {/* Total bar */}
-        <div className="mt-5 flex rounded-full overflow-hidden h-2">
-          {Object.entries(aging).map(([bucket, amount]) => (
-            <div
-              key={bucket}
-              style={{
-                width: `${Math.round((amount / totalDebt) * 100)}%`,
-                backgroundColor: DEBT_COLORS[bucket as keyof typeof DEBT_COLORS],
-              }}
-            />
-          ))}
-        </div>
+        {totalDebt > 0 && (
+          <div className="mt-5 flex rounded-full overflow-hidden h-2">
+            {Object.entries(aging).map(([bucket, amount]) => (
+              <div
+                key={bucket}
+                style={{
+                  width: `${Math.round((amount / totalDebt) * 100)}%`,
+                  backgroundColor: DEBT_COLORS[bucket as keyof typeof DEBT_COLORS],
+                }}
+              />
+            ))}
+          </div>
+        )}
         <p className="text-[13px] text-foreground font-medium mt-3 text-right">
           Tổng: {formatVNDFull(totalDebt)}
         </p>
       </div>
 
-      {/* Debt table */}
+      {/* Overdue list */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="text-[13px] font-semibold text-foreground">Danh sách công nợ</h3>
+          <h3 className="text-[13px] font-semibold text-foreground">Khoản phải thu quá hạn</h3>
+          <span className="text-[11px] text-muted-foreground">{overdueRows.length} khoản</span>
         </div>
-        <DataTable
-          data={SAMPLE_DEBTS}
-          columns={[
-            {
-              header: 'Khách hàng',
-              cell: (d) => (
-                <div>
-                  <p className="font-medium text-foreground text-[13px]">{d.customerName}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{d.phone}</p>
-                </div>
-              ),
-            },
-            {
-              header: 'Tổng nợ',
-              cell: (d) => <span className="font-medium inline-block font-tabular text-foreground">{formatVND(d.total)}</span>,
-              className: 'text-right',
-            },
-            {
-              header: 'Đã trả',
-              cell: (d) => <span className="text-emerald-500 font-medium inline-block font-tabular">{formatVND(d.paid)}</span>,
-              className: 'text-right',
-            },
-            {
-              header: 'Còn lại',
-              cell: (d) => <span className="font-bold text-orange-500 inline-block font-tabular">{formatVND(d.remaining)}</span>,
-              className: 'text-right',
-            },
-            {
-              header: 'Hạn TT',
-              cell: (d) => <span className="text-muted-foreground font-tabular">{formatDate(d.dueDate)}</span>,
-              className: 'text-right',
-            },
-            {
-              header: 'Trạng thái',
-              cell: (d) => (
-                <span className={cn('inline-block px-1.5 py-0.5 rounded text-[11px] font-medium', DEBT_STATUS[d.status] ?? '')}>
-                  {DEBT_STATUS_LABEL[d.status]}
-                </span>
-              ),
-            },
-            {
-              header: '',
-              cell: () => <button className="text-[13px] font-medium text-foreground underline hover:no-underline hover:text-primary transition-colors">Nhắc nợ</button>,
-              className: 'text-right',
-            },
-          ]}
-        />
+        {overdueRows.length === 0 ? (
+          <div className="px-5 py-8 text-center text-[13px] text-muted-foreground">
+            Không có khoản phải thu nào quá hạn.
+          </div>
+        ) : (
+          <DataTable
+            data={overdueRows}
+            columns={[
+              {
+                header: 'Khách hàng',
+                cell: (d) => (
+                  <div>
+                    <p className="font-medium text-foreground text-[13px]">{d.customer?.fullName ?? d.customerCode ?? '—'}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{d.code}</p>
+                  </div>
+                ),
+              },
+              {
+                header: 'Còn lại',
+                cell: (d) => <span className="font-bold text-orange-500 inline-block font-tabular">{formatVND(Number(d.remaining))}</span>,
+                className: 'text-right',
+              },
+              {
+                header: 'Hạn TT',
+                cell: (d) => <span className="text-muted-foreground font-tabular">{formatDate(d.dueDate)}</span>,
+                className: 'text-right',
+              },
+              {
+                header: 'Trạng thái',
+                cell: (d) => (
+                  <span className={cn('inline-block px-1.5 py-0.5 rounded text-[11px] font-medium', DEBT_STATUS[d.status] ?? '')}>
+                    {DEBT_STATUS_LABEL[d.status] ?? d.status}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        )}
       </div>
     </div>
   );
@@ -649,22 +684,3 @@ function ReconcileTab() {
     </div>
   );
 }
-
-// Dữ liệu mẫu công nợ
-const SAMPLE_DEBTS = [
-  {
-    id: '1', customerName: 'Thép Miền Bắc', phone: '0243456789',
-    total: 180_000_000, paid: 50_000_000, remaining: 130_000_000,
-    dueDate: '2026-03-15', status: 'OVERDUE',
-  },
-  {
-    id: '2', customerName: 'Nguyễn Văn Hải', phone: '0901111222',
-    total: 8_500_000, paid: 5_000_000, remaining: 3_500_000,
-    dueDate: '2026-03-30', status: 'PARTIAL_PAID',
-  },
-  {
-    id: '3', customerName: 'Công ty Du lịch Sao Mai', phone: '0282345678',
-    total: 45_000_000, paid: 0, remaining: 45_000_000,
-    dueDate: '2026-04-10', status: 'ACTIVE',
-  },
-];
