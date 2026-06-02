@@ -1245,9 +1245,10 @@ export class InvoiceService {
     return this.enrichInvoice(this.serializeInvoice(record));
   }
 
-  async create(dto: CreateInvoiceDto, userId: string) {
+  async create(dto: CreateInvoiceDto, userId: string, tx?: Prisma.TransactionClient) {
     await this.ensureInvoiceStorageReady();
 
+    const writeClient: Prisma.TransactionClient = tx ?? this.prisma;
     const code = await this.generateCode(dto.direction);
     let normalizedLines = dto.lines.map((line, index) => this.normalizeLine(line, index));
     if (normalizedLines.length === 0) {
@@ -1322,7 +1323,7 @@ export class InvoiceService {
       supplierBankName: dto.supplierBankName ?? supplierBaseSnapshot.supplierBankName,
     };
 
-    const created: InvoiceRecordWithRelations = await this.prisma.invoiceRecord.create({
+    const created: InvoiceRecordWithRelations = await writeClient.invoiceRecord.create({
       data: {
         code,
         direction: dto.direction,
@@ -1993,12 +1994,15 @@ export class InvoiceService {
     return this.findOne(id);
   }
 
-  async addAttachment(id: string, dto: CreateInvoiceAttachmentDto, userId: string) {
+  async addAttachment(id: string, dto: CreateInvoiceAttachmentDto, userId: string, tx?: Prisma.TransactionClient) {
+    const writeClient: Prisma.TransactionClient = tx ?? this.prisma;
+
     await this.ensureInvoiceStorageReady();
+    if (!tx) {
+      await this.findOne(id);
+    }
 
-    await this.findOne(id);
-
-    const attachment = await this.prisma.invoiceAttachment.create({
+    const attachment = await writeClient.invoiceAttachment.create({
       data: {
         invoiceId: id,
         type: dto.type ?? InvoiceAttachmentType.OTHER,
@@ -2011,7 +2015,7 @@ export class InvoiceService {
       },
     });
 
-    await this.prisma.invoiceReviewLog.create({
+    await writeClient.invoiceReviewLog.create({
       data: {
         invoiceId: id,
         action: 'ADD_ATTACHMENT',

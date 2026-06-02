@@ -566,7 +566,8 @@ export class InvoiceImportService {
       throw new BadRequestException('OCR batch chua co dong line nao de tao hoa don.');
     }
 
-    const invoiceRecord = await this.invoice.create({
+    const invoiceRecord = await this.prisma.$transaction(async (tx) => {
+      const created = await this.invoice.create({
       direction: 'INCOMING',
       sourceType: 'OCR_IMPORT',
       status: existing.status === InvoiceImportStatus.VERIFIED ? 'VERIFIED' : 'NEED_REVIEW',
@@ -609,23 +610,26 @@ export class InvoiceImportService {
         serviceFee: this.parseNumber(line.serviceFee, 0),
         notes: typeof line.notes === 'string' ? line.notes : undefined,
       })),
-    }, userId);
+    }, userId, tx);
 
-    await this.invoice.addAttachment(invoiceRecord.id, {
-      type: this.getAttachmentType(existing.mimeType),
-      fileName: existing.fileName,
-      mimeType: existing.mimeType ?? undefined,
-      storagePath: existing.storagePath ?? undefined,
-      externalUrl: existing.externalUrl ?? undefined,
-      notes: `OCR import batch ${existing.id}`,
-    }, userId);
+      await this.invoice.addAttachment(created.id, {
+        type: this.getAttachmentType(existing.mimeType),
+        fileName: existing.fileName,
+        mimeType: existing.mimeType ?? undefined,
+        storagePath: existing.storagePath ?? undefined,
+        externalUrl: existing.externalUrl ?? undefined,
+        notes: `OCR import batch ${existing.id}`,
+      }, userId, tx);
 
-    await this.prisma.invoiceImportBatch.update({
-      where: { id },
-      data: {
-        invoiceId: invoiceRecord.id,
-        status: InvoiceImportStatus.IMPORTED,
-      },
+      await tx.invoiceImportBatch.update({
+        where: { id },
+        data: {
+          invoiceId: created.id,
+          status: InvoiceImportStatus.IMPORTED,
+        },
+      });
+
+      return created;
     });
 
     return this.invoice.findOne(invoiceRecord.id);
