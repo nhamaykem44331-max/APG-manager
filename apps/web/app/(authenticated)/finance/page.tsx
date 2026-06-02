@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, TrendingUp, TrendingDown, AlertCircle, RefreshCw,
   ArrowUpCircle, ArrowDownCircle, CheckCircle2, Loader2,
-  BarChart3, CreditCard, Building2, Scale,
+  BarChart3, CreditCard, Building2, Scale, HandCoins,
 } from 'lucide-react';
 import { financeApi, ledgerApi } from '@/lib/api';
 import {
@@ -22,6 +22,7 @@ import { CashFlowTab } from '@/components/finance/cashflow-tab';
 import { ExpenseTab } from '@/components/finance/expense-tab';
 import { FundsTab } from '@/components/finance/funds-tab';
 import { ReconciliationTab } from '@/components/finance/reconciliation-tab';
+import { CommissionTab } from '@/components/finance/commission-tab';
 import type { LedgerSummary } from '@/types';
 
 const TABS = [
@@ -35,6 +36,7 @@ const TABS = [
   { key: 'debts', label: 'Công nợ cũ', icon: AlertCircle },
   { key: 'reconcile', label: 'Đối soát', icon: CheckCircle2 },
   { key: 'recon-bsp', label: '⚖️ Đối soát BSP', icon: Scale },
+  { key: 'commission', label: '🤝 Hoa hồng', icon: HandCoins },
   { key: 'suppliers', label: 'NCC & Đối tác', icon: Building2 },
 ];
 
@@ -80,6 +82,7 @@ export default function FinancePage() {
       {activeTab === 'debts' && <DebtsTab />}
       {activeTab === 'reconcile' && <ReconcileTab />}
       {activeTab === 'recon-bsp' && <ReconciliationTab />}
+      {activeTab === 'commission' && <CommissionTab />}
       {activeTab === 'suppliers' && <SuppliersTab />}
     </div>
   );
