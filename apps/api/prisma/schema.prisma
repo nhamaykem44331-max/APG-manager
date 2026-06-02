@@ -998,3 +998,70 @@ model SalesLead {
   @@index([customerCode])
   @@map("sales_leads")
 }
+
+// ========== GĐ2: SỔ SỰ KIỆN TÀI CHÍNH TRUNG TÂM ==========
+
+enum TxnDirection {
+  INFLOW // Giá trị vào APG (hoặc vào một quỹ)
+  OUTFLOW // Giá trị ra khỏi APG (hoặc ra một quỹ)
+}
+
+enum TxnType {
+  // Thu
+  TICKET_SALE_RECEIPT // Khách trả tiền vé
+  AR_COLLECTION // Thu công nợ khách
+  COMMISSION_INCOME // Hoa hồng nhận từ hãng/BSP
+  AIRLINE_REFUND_IN // Hãng hoàn về APG
+  OTHER_INCOME
+  // Chi
+  AP_PAYMENT // Trả NCC/hãng/BSP
+  DEPOSIT_TOPUP // Nạp deposit hãng
+  CUSTOMER_REFUND // Hoàn tiền khách
+  PARTNER_FEEDBACK // Trả hoa hồng đối tác
+  OPERATING_EXPENSE // Chi phí vận hành
+  OTHER_EXPENSE
+  // Khác
+  FUND_TRANSFER // Chuyển quỹ nội bộ (2 chân)
+  ADJUSTMENT // Điều chỉnh số dư
+}
+
+// Mọi sự kiện tiền hợp nhất về đây (nguồn chân lý cho báo cáo).
+// Loose-coupling như CashFlowEntry: chỉ lưu *Id, KHÔNG FK.
+model FinancialTransaction {
+  id         String       @id @default(uuid())
+  dedupeKey  String       @unique @map("dedupe_key") // chống đếm trùng: "cfe:<id>", "ledgerPayment:<id>"...
+  occurredAt DateTime     @map("occurred_at") // ngày hạch toán (business date)
+  direction  TxnDirection
+  type       TxnType
+  amount     Decimal // luôn > 0
+  currency   String       @default("VND")
+
+  fundAccount             FundAccount? @map("fund_account")
+  counterpartyFundAccount FundAccount? @map("counterparty_fund_account")
+  transferGroupId         String?      @map("transfer_group_id")
+
+  // Liên kết chứng từ nguồn (loose, không FK)
+  bookingId  String? @map("booking_id")
+  ledgerId   String? @map("ledger_id")
+  invoiceId  String? @map("invoice_id")
+  customerId String? @map("customer_id")
+  supplierId String? @map("supplier_id")
+  expenseId  String? @map("expense_id")
+  paymentId  String? @map("payment_id")
+
+  pic          String?
+  description  String
+  reference    String?
+  reason       String? // bắt buộc khi type=ADJUSTMENT
+  reversedById String?  @map("reversed_by_id")
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([occurredAt])
+  @@index([type, occurredAt])
+  @@index([direction, occurredAt])
+  @@index([fundAccount, occurredAt])
+  @@index([bookingId])
+  @@index([ledgerId])
+  @@map("financial_transactions")
+}
