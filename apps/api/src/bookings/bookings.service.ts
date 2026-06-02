@@ -604,14 +604,13 @@ export class BookingsService {
   }
 
   private getPrimaryTicketLedgerWhere(direction: 'RECEIVABLE' | 'PAYABLE'): Prisma.AccountsLedgerWhereInput {
-    // Ledger cũ có thể có category = null nên match cả TICKET lẫn null (Prisma type không biểu diễn được null trên cột non-null)
+    // ledger_category là cột NOT NULL DEFAULT 'TICKET' (migration 20260401123000) — không tồn tại hàng category = null.
+    // Lọc thêm { category: null } khiến Prisma 5.22 ném PrismaClientValidationError ("Argument `category` is missing"),
+    // nuốt trong try/catch của updateStatus → AR/AP không được tạo khi xuất vé. Chỉ cần lọc đúng TICKET.
     return {
       direction,
-      OR: [
-        { category: 'TICKET' },
-        { category: null },
-      ],
-    } as Prisma.AccountsLedgerWhereInput;
+      category: 'TICKET',
+    };
   }
 
   private async markPrimaryTicketLedgersRefunded(
