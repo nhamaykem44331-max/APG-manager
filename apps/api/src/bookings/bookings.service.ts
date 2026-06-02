@@ -14,6 +14,8 @@ import { AddTicketDto } from './dto/add-ticket.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { AddAdjustmentDto } from './dto/add-adjustment.dto';
 import { NamedCreditService } from './named-credit.service';
+import { FinancialLedgerService } from '../finance/financial-ledger.service';
+import { TxnDedupe } from '../finance/txn-type.util';
 
 /** ChuyÃ¡Â»Æ’n chuÃ¡Â»â€”i ISO thÃƒÂ nh Date; fallback vÃ¡Â»Â now nÃ¡ÂºÂ¿u invalid Ã„â€˜Ã¡Â»Æ’ trÃƒÂ¡nh lÃ¡Â»â€”i DB */
 function safeDate(iso: string, label = 'date'): Date {
@@ -109,6 +111,7 @@ export class BookingsService {
     private n8n: N8nService,
     private customers: CustomersService,
     private namedCreditService: NamedCreditService,
+    private financialLedger: FinancialLedgerService,
   ) {}
 
   private async refreshAffectedCustomers(...customerIds: Array<string | null | undefined>) {
@@ -1676,20 +1679,41 @@ export class BookingsService {
         },
       });
 
+      const cashDescription = `KH thanh toan ${booking.bookingCode} - ${booking.contactName}`;
+      const cashReference = booking.pnr || booking.bookingCode;
+
       await tx.cashFlowEntry.create({
         data: {
           direction: 'INFLOW',
           category: 'TICKET_PAYMENT',
           amount: dto.amount,
           pic: booking.staff?.fullName ?? 'System',
-          description: `KH thanh toan ${booking.bookingCode} - ${booking.contactName}`,
-          reference: booking.pnr || booking.bookingCode,
+          description: cashDescription,
+          reference: cashReference,
           date: paidAt,
           status: 'DONE',
           fundAccount: dto.fundAccount as any,
           notes: dto.notes ?? null,
+          // Gắn nguồn để backfill suy ra đúng dedupeKey FinancialTransaction (payment:<id>)
+          sourceType: 'BOOKING_PAYMENT',
+          sourceId: createdPayment.id,
         },
       });
+
+      await this.financialLedger.post({
+        type: 'TICKET_SALE_RECEIPT',
+        direction: 'INFLOW',
+        amount: dto.amount,
+        occurredAt: paidAt,
+        dedupeKey: TxnDedupe.payment(createdPayment.id),
+        fundAccount: (dto.fundAccount as any) ?? null,
+        bookingId,
+        customerId: booking.customerId,
+        paymentId: createdPayment.id,
+        pic: booking.staff?.fullName ?? 'System',
+        description: cashDescription,
+        reference: cashReference,
+      }, tx);
 
       const openReceivables = await tx.accountsLedger.findMany({
         where: {

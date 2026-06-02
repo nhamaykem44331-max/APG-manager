@@ -6,15 +6,22 @@ import { PrismaService } from '../src/common/prisma.service';
 import { CashFlowService } from '../src/finance/cashflow.service';
 import { FinancialLedgerService } from '../src/finance/financial-ledger.service';
 import { LedgerService } from '../src/finance/ledger.service';
+import { BookingsService } from '../src/bookings/bookings.service';
+import { CustomersService } from '../src/customers/customers.service';
+import { NamedCreditService } from '../src/bookings/named-credit.service';
 
 const prisma = new PrismaService();
 const n8n: any = {
   sendLedgerPaymentNotification: async () => undefined,
   sendDailyReport: async () => undefined,
+  triggerWebhook: async () => undefined,
 };
 const cashflow = new CashFlowService(prisma);
 const financialLedger = new FinancialLedgerService(prisma);
 const ledger = new LedgerService(prisma, n8n, cashflow, financialLedger);
+const customers = new CustomersService(prisma);
+const namedCredit = new NamedCreditService(prisma);
+const bookings = new BookingsService(prisma, n8n, customers, namedCredit, financialLedger);
 
 const USER = 'TEST-USER';
 let passN = 0;
@@ -74,6 +81,20 @@ async function seedRefs() {
     where: { id: 'TEST-SUP-VN' },
     update: {},
     create: { id: 'TEST-SUP-VN', code: 'VN', name: 'Vietnam Airlines (test)', type: 'AIRLINE', isActive: true },
+  });
+  await prisma.booking.upsert({
+    where: { id: 'TEST-BK-1' },
+    update: {},
+    create: {
+      id: 'TEST-BK-1',
+      bookingCode: 'TEST-BK-0001',
+      staffId: USER,
+      customerId: 'TEST-CUST-1',
+      supplierId: 'TEST-SUP-VN',
+      contactName: 'KH Test',
+      contactPhone: '0900000001',
+      pnr: 'TESTPNR',
+    },
   });
 }
 
@@ -157,6 +178,26 @@ async function testPayBatch() {
   check('Batch: FT amount=1,000,000', Number(ft?.amount) === 1_000_000, String(ft?.amount));
 }
 
+// ─── M3: bookings.addPayment — nhánh tiền mặt ─────────────────────────────
+async function testBookingCash() {
+  console.log('\n[M3] bookings.addPayment — thu tiền mặt vé (TICKET_SALE_RECEIPT)');
+  const before = await counts();
+  await bookings.addPayment('TEST-BK-1', { amount: 850_000, method: 'CASH', fundAccount: 'CASH_OFFICE' } as any);
+  const after = await counts();
+  check('Booking: +1 CFE', after.cfe - before.cfe === 1, `Δcfe=${after.cfe - before.cfe}`);
+  check('Booking: +1 FT', after.ft - before.ft === 1, `Δft=${after.ft - before.ft}`);
+  const ft = await prisma.financialTransaction.findFirst({ where: { bookingId: 'TEST-BK-1' }, orderBy: { createdAt: 'desc' } });
+  check('Booking: FT type=TICKET_SALE_RECEIPT', ft?.type === 'TICKET_SALE_RECEIPT', String(ft?.type));
+  check('Booking: FT direction=INFLOW', ft?.direction === 'INFLOW', String(ft?.direction));
+  check('Booking: FT amount=850000', Number(ft?.amount) === 850_000, String(ft?.amount));
+  check('Booking: FT paymentId set', !!ft?.paymentId, String(ft?.paymentId));
+  check('Booking: FT customerId set', ft?.customerId === 'TEST-CUST-1', String(ft?.customerId));
+  check('Booking: FT dedupeKey payment:*', !!ft?.dedupeKey.startsWith('payment:'), String(ft?.dedupeKey));
+  // CFE gắn nguồn để backfill suy ra cùng key
+  const cfe = await prisma.cashFlowEntry.findFirst({ where: { sourceType: 'BOOKING_PAYMENT', sourceId: ft?.paymentId ?? '' } });
+  check('Booking: CFE sourceType=BOOKING_PAYMENT + sourceId=paymentId', !!cfe, `cfe=${!!cfe}`);
+}
+
 async function assertInvariant() {
   console.log('\n[INVARIANT] Σ FinancialTransaction theo quỹ == Σ CashFlowEntry theo quỹ');
   const cfe = await sumByFund('cfe');
@@ -179,6 +220,7 @@ async function main() {
   await testLedgerPayAR();
   await testLedgerPayAP();
   await testPayBatch();
+  await testBookingCash();
   await assertInvariant();
 
   console.log(`\n==== KẾT QUẢ: ${passN} PASS / ${failN} FAIL ====`);
