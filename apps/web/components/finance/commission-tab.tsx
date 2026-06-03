@@ -3,7 +3,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X, HandCoins, Plus } from 'lucide-react';
+import { Loader2, X, HandCoins, Plus, Users } from 'lucide-react';
 import { commissionApi, supplierApi } from '@/lib/api';
 import { cn, formatVND, formatDate } from '@/lib/utils';
 import type { SupplierProfile } from '@/types';
@@ -22,6 +22,13 @@ type CommissionRow = {
   supplierId: string | null; description: string;
 };
 
+type PartnerSummary = {
+  partner: { id: string; code: string; name: string };
+  totals: { customerCount: number; bookingCount: number; revenue: number; profit: number; paidFeedback: number };
+  customers: { id: string; fullName: string; customerCode: string | null; bookings: number; revenue: number; profit: number }[];
+  payouts: { id: string; amount: string | number; status: string; occurredAt: string; description: string }[];
+};
+
 export function CommissionTab() {
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -32,6 +39,7 @@ export function CommissionTab() {
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState('');
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
 
   const { data: recordsRaw, isLoading } = useQuery({
     queryKey: ['commission-records'],
@@ -50,6 +58,12 @@ export function CommissionTab() {
     suppliers.forEach((s) => m.set(s.id, s.name));
     return m;
   }, [suppliers]);
+
+  const { data: partnerSummary } = useQuery<PartnerSummary | undefined>({
+    queryKey: ['partner-summary', selectedPartnerId],
+    queryFn: () => commissionApi.partnerSummary(selectedPartnerId).then((r) => r.data),
+    enabled: !!selectedPartnerId,
+  });
 
   const num = (v: string | number) => Number(v ?? 0);
   const totalIncome = records.filter((r) => r.kind === 'AIRLINE_INCOME' && r.status !== 'CANCELLED').reduce((s, r) => s + num(r.amount), 0);
@@ -95,6 +109,83 @@ export function CommissionTab() {
           <p className="mt-1 font-tabular text-[24px] font-bold text-orange-500">{formatVND(totalPayout)}</p>
           <p className="text-[11px] text-muted-foreground">đã chi</p>
         </div>
+      </div>
+
+      {/* Tổng hợp theo đối tác giới thiệu (đầu mối đem về vs đã feedback) */}
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center gap-2 border-b border-border pb-2.5">
+          <Users className="w-4 h-4 text-primary" />
+          <h3 className="text-[13px] font-semibold text-foreground">Theo đối tác giới thiệu</h3>
+        </div>
+        <select
+          value={selectedPartnerId}
+          onChange={(e) => setSelectedPartnerId(e.target.value)}
+          className="w-full sm:max-w-xs px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">— Chọn đối tác để xem đầu mối —</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+        </select>
+
+        {selectedPartnerId && partnerSummary && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-[11px] text-muted-foreground">Số khách đầu mối</p>
+                <p className="font-tabular text-[16px] font-bold text-foreground">{partnerSummary.totals.customerCount}</p>
+                <p className="text-[10px] text-muted-foreground">{partnerSummary.totals.bookingCount} booking</p>
+              </div>
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-[11px] text-muted-foreground">Doanh số đem về</p>
+                <p className="font-tabular text-[16px] font-bold text-foreground">{formatVND(partnerSummary.totals.revenue)}</p>
+              </div>
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-[11px] text-muted-foreground">Lãi đem về</p>
+                <p className="font-tabular text-[16px] font-bold text-emerald-500">{formatVND(partnerSummary.totals.profit)}</p>
+              </div>
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-[11px] text-muted-foreground">Đã feedback</p>
+                <p className="font-tabular text-[16px] font-bold text-orange-500">{formatVND(partnerSummary.totals.paidFeedback)}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Hoa hồng đối tác thỏa thuận từng đợt — số liệu trên chỉ là cơ sở tham khảo để thương lượng.</p>
+              <button
+                onClick={() => { setPartnerId(selectedPartnerId); setShowModal(true); }}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <HandCoins className="w-3.5 h-3.5" /> Trả hoa hồng
+              </button>
+            </div>
+
+            {partnerSummary.customers.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {['Khách giới thiệu', 'Mã KH', 'Booking', 'Doanh số', 'Lãi'].map((h) => (
+                        <th key={h} className="text-left text-[11px] font-semibold text-muted-foreground px-3 py-2 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {partnerSummary.customers.map((c) => (
+                      <tr key={c.id} className="hover:bg-muted/30">
+                        <td className="px-3 py-2 text-xs text-foreground">{c.fullName}</td>
+                        <td className="px-3 py-2 text-xs font-mono text-primary">{c.customerCode ?? '—'}</td>
+                        <td className="px-3 py-2 text-xs font-tabular text-muted-foreground">{c.bookings}</td>
+                        <td className="px-3 py-2 text-xs font-tabular text-foreground">{formatVND(c.revenue)}</td>
+                        <td className="px-3 py-2 text-xs font-tabular text-emerald-500">{formatVND(c.profit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted-foreground px-1">Chưa có khách nào gắn đối tác này. Vào hồ sơ khách → chọn &quot;Đối tác giới thiệu&quot;.</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between">

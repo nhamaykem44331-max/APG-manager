@@ -272,6 +272,7 @@ export const commissionApi = {
     partnerId: string; amount: number; fundAccount: string;
     date?: string; reference?: string; notes?: string; reason?: string;
   }) => apiClient.post('/finance/commission/partner-payout', data),
+  partnerSummary: (id: string) => apiClient.get(`/finance/partners/${id}/summary`),
 };
 
 export const invoiceApi = {

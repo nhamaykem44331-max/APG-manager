@@ -12,7 +12,7 @@ import {
   Send, Building2, TrendingUp, Activity, Shield, Trash2,
 } from 'lucide-react';
 import {
-  customersApi, customerIntelligenceApi, interactionsApi,
+  customersApi, customerIntelligenceApi, interactionsApi, supplierApi,
 } from '@/lib/api';
 import {
   cn, formatVND, formatVNDFull, formatDate, formatDateTime,
@@ -22,7 +22,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { DataTable } from '@/components/ui/data-table';
 import type {
   Customer, Booking, CustomerInteraction, CustomerNote, NamedCredit,
-  RfmScore, CustomerStats, TimelineItem,
+  RfmScore, CustomerStats, TimelineItem, SupplierProfile,
 } from '@/types';
 
 // ===== CONSTANTS =====
@@ -305,6 +305,14 @@ export default function CustomerDetailPage() {
 
 function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmScore; stats?: CustomerStats }) {
   const queryClient = useQueryClient();
+  const { data: suppliersRaw } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => supplierApi.list().then((r) => r.data),
+  });
+  const partners: SupplierProfile[] = ((Array.isArray(suppliersRaw)
+    ? suppliersRaw
+    : (suppliersRaw as { data?: SupplierProfile[] })?.data ?? []) as SupplierProfile[]
+  ).filter((s) => s.type === 'PARTNER');
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
     fullName: customer.fullName || '', phone: customer.phone || '',
@@ -313,6 +321,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
     dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
     customerCode: customer.customerCode || '',
     preferredSeat: customer.preferredSeat || '',
+    referredByPartnerId: customer.referredByPartnerId || '',
     companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
   });
 
@@ -338,7 +347,8 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
       dateOfBirth: editForm.dateOfBirth || null,
       preferredSeat: editForm.preferredSeat.trim() || null,
       companyName: editForm.companyName.trim() || null,
-      companyTaxId: editForm.companyTaxId.trim() || null
+      companyTaxId: editForm.companyTaxId.trim() || null,
+      referredByPartnerId: editForm.referredByPartnerId || ''
     });
   };
 
@@ -360,6 +370,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                     dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().slice(0, 10) : '',
                     customerCode: customer.customerCode || '',
                     preferredSeat: customer.preferredSeat || '',
+                    referredByPartnerId: customer.referredByPartnerId || '',
                     companyName: customer.companyName || '', companyTaxId: customer.companyTaxId || ''
                   });
                   setEditMode(true);
@@ -456,6 +467,14 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                   </div>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Đối tác giới thiệu</label>
+                  <select value={editForm.referredByPartnerId} onChange={(e) => setEditForm(p => ({ ...p, referredByPartnerId: e.target.value }))} className="w-full px-3 h-8 text-[13px] rounded-md border border-border bg-background focus:ring-1 focus:ring-primary outline-none">
+                    <option value="">— Không —</option>
+                    {partners.map((sp) => (<option key={sp.id} value={sp.id}>{sp.code} — {sp.name}</option>))}
+                  </select>
+                </div>
+
                 {customer.type === 'CORPORATE' && (
                   <div className="pt-3 mt-3 border-t border-border">
                     <p className="text-[11px] text-foreground font-semibold uppercase tracking-wide mb-3">Thông tin doanh nghiệp</p>
@@ -491,6 +510,7 @@ function ProfileTab({ customer, rfm, stats }: { customer: Customer; rfm?: RfmSco
                {label: 'Hộ chiếu', value: customer.passport ?? '—', mono: true},
                {label: 'Ngày sinh', value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—'},
                {label: 'Ghế ưa thích', value: customer.preferredSeat ?? '—'},
+               {label: 'Đối tác giới thiệu', value: customer.referredByPartner?.name ?? '—'},
                {label: 'Ngày tạo', value: formatDate(customer.createdAt)},
               ].map((row, idx, arr) => (
                 <div key={row.label} className={cn('flex items-center justify-between py-2.5', idx !== arr.length - 1 && 'border-b border-border/50')}>

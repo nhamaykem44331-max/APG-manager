@@ -15,9 +15,9 @@ import {
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterBar } from '@/components/ui/filter-bar';
 import { DataTable } from '@/components/ui/data-table';
-import { customersApi } from '@/lib/api';
+import { customersApi, supplierApi } from '@/lib/api';
 import { cn, formatDate, formatVND, VIP_TIER_LABELS } from '@/lib/utils';
-import type { Customer, CustomerSummary } from '@/types';
+import type { Customer, CustomerSummary, SupplierProfile } from '@/types';
 
 const VIP_FILTERS = [
   { key: '', label: 'Tất cả' },
@@ -65,6 +65,7 @@ export default function CustomersPage() {
     companyTaxId: '',
     passport: '',
     idNumber: '',
+    referredByPartnerId: '',
   });
 
   const createMutation = useMutation({
@@ -83,6 +84,7 @@ export default function CustomersPage() {
         companyTaxId: '',
         passport: '',
         idNumber: '',
+        referredByPartnerId: '',
       });
     },
   });
@@ -105,6 +107,15 @@ export default function CustomersPage() {
       } as Record<string, string | number>),
     select: (response) => response.data,
   });
+
+  const { data: suppliersRaw } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => supplierApi.list().then((r) => r.data),
+  });
+  const partners: SupplierProfile[] = ((Array.isArray(suppliersRaw)
+    ? suppliersRaw
+    : (suppliersRaw as { data?: SupplierProfile[] })?.data ?? []) as SupplierProfile[]
+  ).filter((s) => s.type === 'PARTNER');
 
   const customers: Customer[] = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -395,6 +406,19 @@ export default function CustomersPage() {
                     onChange={(event) => setAddForm((form) => ({ ...form, email: event.target.value }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-shadow focus:ring-1 focus:ring-primary"
                   />
+                </Field>
+
+                <Field label="Đối tác giới thiệu">
+                  <select
+                    value={addForm.referredByPartnerId}
+                    onChange={(event) => setAddForm((form) => ({ ...form, referredByPartnerId: event.target.value }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-shadow focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">— Không —</option>
+                    {partners.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                    ))}
+                  </select>
                 </Field>
 
                 <Field label="CCCD / CMND">

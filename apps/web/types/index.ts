@@ -121,6 +121,8 @@ export interface Customer {
   bookings?: Booking[];
   ledgers?: AccountsLedger[];
   namedCredits?: NamedCredit[];
+  referredByPartnerId?: string | null;
+  referredByPartner?: { id: string; code: string; name: string } | null;
 }
 
 export interface Booking {
